@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa Interativo Pro — ARTESP</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="">
+  <style>
+    :root {
+      --bg-dark: #060912;
+      --accent: #3b82f6;
+      --glass: rgba(15, 23, 42, 0.85);
+      --border: rgba(255, 255, 255, 0.1);
+    }
+    body, html, #map { height: 100%; margin: 0; background: var(--bg-dark); }
+    * { box-sizing: border-box; }
+
+    /* HUD sobre o mapa */
+    .map-overlay {
+      position: absolute;
+      top: 20px; left: 20px; z-index: 1000;
+      pointer-events: none;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .map-overlay * { pointer-events: auto; }
+    .glass-panel {
+      background: var(--glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      padding: 15px; border-radius: 12px;
+      color: white;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .glass-panel h2 { margin: 0; font-size: 1.2rem; }
+    .glass-panel .sub { font-size: 0.75rem; opacity: 0.7; margin: 5px 0 0 0; }
+    .glass-panel select {
+      margin-top: 8px; padding: 6px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.08);
+      color: white; font-size: 13px; cursor: pointer; min-width: 200px;
+    }
+    .glass-panel select:focus { outline: none; border-color: var(--accent); }
+    .glass-panel select option { background: #1a2f42; color: #fff; }
+
+    .gps-btn {
+      background: var(--accent);
+      color: white; border: none;
+      width: 45px; height: 45px;
+      border-radius: 50%; cursor: pointer;
+      font-size: 1.2rem; transition: 0.3s;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    }
+    .gps-btn:hover { transform: scale(1.1); background: #2563eb; }
+    .gps-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    /* Popups */
+    .leaflet-popup-content-wrapper {
+      background: var(--glass) !important;
+      color: white !important;
+      border-radius: 12px; border: 1px solid var(--accent);
+      backdrop-filter: blur(8px);
+    }
+    .leaflet-popup-tip { background: var(--accent); }
+    .leaflet-popup-content { margin: 12px 14px; min-width: 200px; }
+    .popup-card h3 { color: var(--accent); margin: 0 0 8px 0; font-size: 1.1rem; }
+    .popup-card p { font-size: 0.9rem; margin: 5px 0; line-height: 1.4; color: #cbd5e1; }
+    .popup-card hr { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0; }
+    .km-tag {
+      background: rgba(59, 130, 246, 0.2);
+      padding: 2px 6px; border-radius: 4px; color: #60a5fa;
+      font-family: 'JetBrains Mono', 'Consolas', monospace;
+    }
+    .leaflet-control-attribution { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="map-overlay">
+    <div class="glass-panel">
+      <h2><i class="fas fa-map-location-dot"></i> <span id="titulo-mapa">Monitorização ARTESP</span></h2>
+      <p class="sub">Interatividade em tempo real v2.0</p>
+    </div>
+    <div class="glass-panel" id="panel-rodovia" style="display: none;">
+      <label for="rodovia-select" style="font-size: 0.8rem; opacity: 0.9;">Rodovia</label>
+      <select id="rodovia-select" onchange="filterMap()">
+        <option value="">Todas as Rodovias</option>
+      </select>
+    </div>
+    <button type="button" class="gps-btn" id="btn-gps" title="Minha localização">
+      <i class="fas fa-crosshairs"></i>
+    </button>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    (function() {
+      var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
+      var streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+      });
+      var map = L.map('map', {
+        center: [-23.45, -47.45],
+        zoom: 12,
+        layers: [satellite]
+      });
+      var baseMaps = { 'Satélite': satellite, 'Ruas': streets };
+      L.control.layers(baseMaps, null, { collapsed: false }).addTo(map);
+
+      var geoLayer = null;
+      var allFeatures = [];
+      var userMarker = null;
+      var userAccuracyCircle = null;
+
+      window.filterMap = function filterMap() {
+        var sel = document.getElementById('rodovia-select');
+        var val = sel ? sel.value : '';
+        if (!geoLayer || !val) {
+          if (geoLayer) geoLayer.eachLayer(function(l) { l.setStyle({ opacity: 1, weight: 4 }); });
+          return;
+        }
+        geoLayer.eachLayer(function(layer) {
+          var f = layer.feature;
+          var p = (f && f.properties) || {};
+          var rod = (p.rodovia || p.Rodovia || '').toString().replace(/[\s\-]/g, '');
+          var show = rod.toUpperCase() === val.toUpperCase();
+          layer.setStyle({ opacity: show ? 1 : 0.25, weight: show ? 4 : 2 });
+          if (show) layer.bringToFront();
+        });
+      };
+
+      function buildRodoviaOptions(features) {
+        var rodovias = {};
+        features.forEach(function(f) {
+          var p = (f.properties || {});
+          var r = (p.rodovia || p.Rodovia || '').toString().trim();
+          if (r && !rodovias[r]) rodovias[r] = r;
+        });
+        var sel = document.getElementById('rodovia-select');
+        var panel = document.getElementById('panel-rodovia');
+        if (!sel) return;
+        var current = sel.value;
+        sel.innerHTML = '<option value="">Todas as Rodovias</option>';
+        Object.keys(rodovias).sort().forEach(function(r) {
+          var norm = r.replace(/[\s\-]/g, '');
+          var opt = document.createElement('option');
+          opt.value = norm;
+          opt.textContent = r;
+          if (norm === current) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        panel.style.display = Object.keys(rodovias).length ? 'block' : 'none';
+      }
+
+      function loadGeoJSON(geojson) {
+        if (!geojson || !geojson.features) return;
+        allFeatures = geojson.features;
+        if (geoLayer) map.removeLayer(geoLayer);
+        geoLayer = L.geoJSON(geojson, {
+          style: function(feature) {
+            return feature.geometry && feature.geometry.type === 'LineString'
+              ? { color: '#3498db', weight: 4, opacity: 0.9 }
+              : undefined;
+          },
+          pointToLayer: function(feature, latlng) {
+            return L.circleMarker(latlng, {
+              radius: 8,
+              fillColor: '#ff4757',
+              color: '#ffffff',
+              weight: 2,
+              opacity: 1,
+              fillOpacity: 0.8
+            });
+          },
+          onEachFeature: function(feature, layer) {
+            var isPoint = feature.geometry && feature.geometry.type === 'Point';
+            var props = feature.properties || {};
+
+            if (isPoint) {
+              layer.on({
+                mouseover: function(e) {
+                  var l = e.target;
+                  l.setStyle({
+                    radius: 12,
+                    fillOpacity: 1,
+                    weight: 4,
+                    fillColor: '#3b82f6'
+                  });
+                  l.bringToFront();
+                },
+                mouseout: function(e) {
+                  geoLayer.resetStyle(e.target);
+                },
+                click: function(e) {
+                  map.flyTo(e.latlng, 16);
+                }
+              });
+            } else {
+              layer.on({
+                mouseover: function(e) {
+                  e.target.setStyle({ weight: 6, opacity: 1 });
+                  e.target.bringToFront();
+                },
+                mouseout: function(e) {
+                  geoLayer.resetStyle(e.target);
+                }
+              });
+            }
+
+            var popupContent = buildPopupContent(props, isPoint);
+            if (popupContent) {
+              layer.bindPopup(popupContent, { closeButton: false, offset: L.point(0, -10) });
+            }
+          }
+        }).addTo(map);
+
+        if (geoLayer.getBounds && geoLayer.getBounds().isValid()) {
+          map.fitBounds(geoLayer.getBounds(), { padding: [50, 50] });
+        }
+        buildRodoviaOptions(geojson.features);
+        filterMap();
+        var tituloEl = document.getElementById('titulo-mapa');
+        if (tituloEl) {
+          var m = (typeof window !== 'undefined' && window.location && window.location.search)
+            ? (window.location.search.match(/[?&]geojson=([^&]+)/) || [])[1] || ''
+            : '';
+          if (/L13/i.test(m)) tituloEl.textContent = 'Monitorização L13';
+          else if (/L21/i.test(m)) tituloEl.textContent = 'Monitorização L21';
+          else if (/L26/i.test(m)) tituloEl.textContent = 'Monitorização L26';
+          else tituloEl.textContent = 'Monitorização ARTESP';
+        }
+      }
+
+      function buildPopupContent(props, isPoint) {
+        var nc = props.NC || props.nc || props.numero_nc || 'NC s/ Código';
+        var km = props.KM != null ? props.KM : (props.km != null ? props.km : '--');
+        var sentido = props.Sentido || props.sentido || '';
+        var desc = props.Descricao || props.descricao || props.patologia || 'Nenhuma patologia descrita.';
+        return '<div class="popup-card">' +
+          '<h3>' + nc + '</h3>' +
+          '<p><strong>Local:</strong> <span class="km-tag">' + km + '</span> ' + (sentido ? '| ' + sentido : '') + '</p>' +
+          '<hr>' +
+          '<p><em>' + desc + '</em></p>' +
+          '</div>';
+      }
+
+      function findMe() {
+        if (!navigator.geolocation) {
+          alert('Geolocalização não suportada neste navegador.');
+          return;
+        }
+        var btn = document.getElementById('btn-gps');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
+      }
+      map.on('locationfound', function(e) {
+        if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
+        if (userMarker) map.removeLayer(userMarker);
+        userAccuracyCircle = L.circle(e.latlng, e.accuracy).addTo(map);
+        userMarker = L.marker(e.latlng).addTo(map).bindPopup('Você está aqui').openPopup();
+        var btn = document.getElementById('btn-gps');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-crosshairs"></i>'; }
+      });
+      map.on('locationerror', function() {
+        var btn = document.getElementById('btn-gps');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-crosshairs"></i>'; }
+        alert('Não foi possível obter a localização. Verifique o GPS e as permissões.');
+      });
+      document.getElementById('btn-gps').addEventListener('click', findMe);
+
+      var qs = new URLSearchParams(window.location.search);
+      var geojsonUrl = qs.get('geojson');
+      if (geojsonUrl) {
+        fetch(geojsonUrl, { credentials: 'include' })
+          .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+          .then(loadGeoJSON)
+          .catch(function() { console.warn('Falha ao carregar GeoJSON:', geojsonUrl); });
+      }
+    })();
+  </script>
+
+</body>
+</html>

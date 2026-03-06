@@ -1,0 +1,39 @@
+# ── Servidor Web e Framework ────────────────────────────────────────────────
+fastapi
+uvicorn
+gunicorn
+python-multipart
+
+# ── Processamento Geoespacial e Dados ───────────────────────────────────────
+pandas
+geopandas
+shapely
+fiona
+pyproj
+
+# ── Validação e Utilitários ──────────────────────────────────────────────────
+pydantic
+jsonschema
+python-dotenv
+PyJWT
+
+# ── Excel e datas ────────────────────────────────────────────────────────────
+openpyxl
+xlrd
+python-dateutil
+
+# ── Geração de PDF (relatório de auditoria) ──────────────────────────────────
+reportlab
+
+# ── Módulo Fotos de Campo ─────────────────────────────────────────────────────
+# Processamento de imagens + extração de GPS do EXIF
+pillow
+piexif
+# Extração de imagens de PDF de NC Constatação Artesp
+pymupdf
+# Extração de texto de PDF (alternativa para MA)
+pdfplumber
+
+# ── Testes ────────────────────────────────────────────────────────────────────
+pytest>=7.0
+httpx

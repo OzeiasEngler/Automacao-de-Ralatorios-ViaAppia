@@ -1,0 +1,24 @@
+# Exported from Render on 2026-02-12T17:10:06Z
+version: "1"
+services:
+- type: web
+  name: artesp-geojson-api
+  runtime: docker
+  # Repositório do projeto (ajuste o URL se for outro: ex. GeradorARTESP)
+  repo: https://github.com/oseiasengler/GeradorARTESP
+  plan: standard
+  envVars:
+  - key: ARTESP_JWT_SECRET
+    sync: false
+  - key: ARTESP_WEB_USERS
+    sync: false
+  - key: ARTESP_WEB_PBKDF2_ITERATIONS
+    sync: false
+  - key: ARTESP_PFX_PASSWORD
+    sync: false
+  - key: ARTESP_PFX_CONTENT
+    sync: false
+  region: ohio
+  dockerContext: .
+  dockerfilePath: ./Dockerfile
+  autoDeployTrigger: commit

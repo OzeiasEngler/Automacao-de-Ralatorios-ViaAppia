@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fotos de Campo — ARTESP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    /* Layout Fotos (igual NC Preview: duas colunas, glass cards) */
+    .fotos-page .page-content { padding: 24px 20px; max-width: none; }
+    .fotos-page .dashboard-grid {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 25px;
+      align-items: start;
+    }
+    .fotos-page .glass-card {
+      background: rgba(17, 24, 39, 0.8);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 25px;
+    }
+    .fotos-page .glass-card .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .fotos-page .glass-card .card-title i { color: var(--accent); }
+    .fotos-page .upload-zone {
+      border: 2px dashed #2a3a52;
+      border-radius: 12px;
+      padding: 40px 20px;
+      background: rgba(59, 130, 246, 0.02);
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+    .fotos-page .upload-zone:hover,
+    .fotos-page .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(59, 130, 246, 0.08);
+    }
+    .fotos-page .log-container {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      background: #0a0e17;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      min-height: 400px;
+    }
+    .fotos-page .btn-action {
+      width: 100%;
+      padding: 14px;
+      margin-top: 16px;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      border: none;
+      border-radius: 10px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.3s;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+    .fotos-page .btn-action:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4); }
+    .fotos-page .btn-action:active { transform: scale(0.98); }
+    .fotos-page .btn-action:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .fotos-page .result-area { margin-top: 20px; }
+    .fotos-page .log-container .log-empty { min-height: 360px; }
+    @media (max-width: 1024px) {
+      .fotos-page .dashboard-grid { grid-template-columns: 1fr; }
+      .fotos-page .log-container { min-height: 300px; }
+    }
+  </style>
+</head>
+<body class="fotos-page">
+  <div id="upload-indicator" class="upload-indicator" role="status" aria-live="polite" aria-label="Enviando arquivos"></div>
+
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card animate-in">
+      <div class="logo">
+        <div class="icon">🛣️</div>
+        <h2>Plataforma de Conservação e Obras</h2>
+        <p>Geração de relatórios georreferenciados e automação de relatórios internos. Faça login para continuar.</p>
+      </div>
+      <form id="formLogin">
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="loginEmail" class="form-input" placeholder="usuario@empresa.com" required>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Senha</label>
+          <input type="password" id="loginSenha" class="form-input" placeholder="Sua senha" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+          <i class="fas fa-sign-in-alt"></i> Entrar
+        </button>
+        <div id="loginFeedback"></div>
+      </form>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="icon">🛣️</span>
+      <span>PLATAFORMA DE CONSERVAÇÃO E OBRAS - Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</span>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-user">
+        <div class="avatar" id="userAvatar">U</div>
+        <span id="userEmailDisplay">usuario</span>
+      </div>
+      <button class="btn-logout" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Sair</button>
+    </div>
+  </header>
+
+  <nav class="topnav">
+    <a href="/web"><span class="nav-icon"><i class="fas fa-home"></i></span> Início</a>
+    <a href="/web/geojson"><span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> GeoJSON ARTESP</a>
+    <a href="/web/fotos" class="active"><span class="nav-icon"><i class="fas fa-camera"></i></span> Fotos de Campo</a>
+    <a href="/web/nc"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP</a>
+    <div class="topnav-spacer"></div>
+    <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
+  </nav>
+
+  <div class="page-content">
+    <div class="dashboard-grid">
+      <!-- Esquerda: Configurar / Upload -->
+      <div class="glass-card">
+        <div class="card-title">
+          <i class="fas fa-cog"></i> Configurar envio
+          <span style="margin-left:auto;font-size:0.75rem;font-weight:500;color:var(--text-muted);" class="status-badge idle" id="statusBadge"><i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando</span>
+        </div>
+
+        <label style="display:block;margin-bottom:6px;font-size:0.85rem;color:var(--text-muted);">Relação Total (lote)</label>
+        <select id="selectLote" style="width:100%;padding:10px 12px;margin-bottom:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(17,24,39,0.9);color:var(--text);font-size:0.9rem;">
+          <option value="13">Lote 13</option>
+          <option value="21">Lote 21</option>
+          <option value="26">Lote 26</option>
+        </select>
+
+        <label style="display:block;margin-bottom:8px;font-size:0.85rem;color:var(--text-muted);">Fotos (ZIP, arquivos ou pasta)</label>
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fotosInput" accept="image/*,.jpg,.jpeg,.png,.gif,.bmp,.tif,.tiff,.JPG,.JPEG,.PNG" multiple style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;">
+          <input type="file" id="fotosInputPasta" webkitdirectory directory multiple style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;">
+          <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
+          <p style="font-size:0.9rem;margin:0 0 4px;">Arraste fotos aqui ou use os botões abaixo</p>
+          <span style="font-size:0.75rem;color:var(--text-muted);">JPG, PNG · use <strong>Arquivos</strong> para escolher várias fotos de uma vez</span>
+          <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+            <button type="button" class="btn btn-outline" id="btnSelecionarArquivos" style="padding:8px 16px"><i class="fas fa-file-image"></i> Arquivos</button>
+            <button type="button" class="btn btn-outline" id="btnSelecionarPasta" style="padding:8px 16px"><i class="fas fa-folder-open"></i> Pasta</button>
+          </div>
+          <p style="font-size:0.7rem;color:var(--text-muted);margin-top:10px;max-width:340px;margin-left:auto;margin-right:auto;">Se o <strong>Chrome</strong> ou o <strong>Edge</strong> mostrarem pasta vazia ao usar Pasta, use <strong>Arquivos</strong>: abra a pasta no Explorer, selecione as fotos (Ctrl+A) e arraste aqui, ou use Arquivos e navegue até a pasta para selecionar os arquivos.</p>
+        </div>
+
+        <div class="file-info" id="fileInfo">
+          <i class="fas fa-images"></i>
+          <span id="fileInfoText">0 foto(s) selecionada(s)</span>
+          <button type="button" class="btn btn-outline" id="btnLimparFotos" style="margin-left:auto;padding:4px 10px;font-size:.75rem"><i class="fas fa-times"></i> Limpar</button>
+        </div>
+
+        <div class="progress-bar-container" id="progressContainer">
+          <div class="progress-bar-fill" id="progressFill"></div>
+        </div>
+
+        <button type="button" class="btn btn-action" id="btnProcessarFotos" disabled><i class="fas fa-play"></i> Iniciar processamento</button>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline" id="btnLimparTudo" style="padding:8px 16px"><i class="fas fa-redo"></i> Limpar</button>
+        </div>
+
+        <div id="fotosProcessarFeedback" style="margin-top:12px"></div>
+
+        <div class="result-area" id="resultArea">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+            <strong>Processamento concluído</strong>
+          </div>
+          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Teste com poucas fotos primeiro; o download de ZIP grande pode demorar.</p>
+          <button type="button" class="btn btn-action" id="btnDownloadZipFotos"><i class="fas fa-download"></i> Baixar ZIP</button>
+        </div>
+      </div>
+
+      <!-- Direita: Status do processamento -->
+      <div class="glass-card">
+        <div class="card-title">
+          <i class="fas fa-terminal"></i> Status do processamento
+          <button type="button" class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" id="btnLimparLog"><i class="fas fa-eraser"></i> Limpar</button>
+        </div>
+        <div class="log-container" id="logBox">
+          <div class="log-empty">
+            <i class="fas fa-terminal"></i>
+            <span>Nenhuma atividade registrada</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ═══ Auth (igual GeoJSON) ═══ */
+    const loginOverlay = document.getElementById('loginOverlay');
+    const token = localStorage.getItem('artesp_token');
+    const userEmail = localStorage.getItem('artesp_user_email');
+
+    function showApp() {
+      if (loginOverlay) loginOverlay.style.display = 'none';
+      if (userEmail) {
+        const el = document.getElementById('userEmailDisplay');
+        const av = document.getElementById('userAvatar');
+        if (el) el.textContent = userEmail;
+        if (av) av.textContent = userEmail.charAt(0).toUpperCase();
+      }
+    }
+    function showLogin(msg) {
+      if (loginOverlay) loginOverlay.style.display = 'flex';
+      const fb = document.getElementById('loginFeedback');
+      if (fb) fb.innerHTML = msg ? '<div class="alert alert-warning">' + msg + '</div>' : '';
+    }
+    if (token && userEmail) showApp();
+    else showLogin('');
+
+    document.getElementById('formLogin').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const senha = (document.getElementById('loginSenha').value || '').trim();
+      const fb = document.getElementById('loginFeedback');
+      fb.innerHTML = '';
+      if (!email || !senha) {
+        fb.innerHTML = '<div class="alert alert-danger">Preencha e-mail e senha.</div>';
+        return;
+      }
+      try {
+        const r = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, senha: senha }),
+          credentials: 'include'
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          const msg = typeof data.detail === 'string' ? data.detail : (Array.isArray(data.detail) && data.detail[0] && data.detail[0].msg) || 'Credenciais inválidas.';
+          fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
+          return;
+        }
+        const tok = data.access_token || data.token;
+        if (!tok) {
+          fb.innerHTML = '<div class="alert alert-danger">Servidor não retornou token.</div>';
+          return;
+        }
+        localStorage.setItem('artesp_token', tok);
+        localStorage.setItem('artesp_user_email', data.email || email);
+        showApp();
+      } catch (err) {
+        fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-wifi"></i> Falha na conexão. Verifique se o servidor está rodando.</div>';
+      }
+    });
+
+    document.getElementById('btnLogout').addEventListener('click', () => {
+      localStorage.removeItem('artesp_token');
+      localStorage.removeItem('artesp_user_email');
+      location.reload();
+    });
+
+    /* ═══ Estado e elementos ═══ */
+    let uploadedFotosFiles = [];
+    const uploadZone = document.getElementById('uploadZone');
+    const fotosInput = document.getElementById('fotosInput');
+    const fotosInputPasta = document.getElementById('fotosInputPasta');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileInfoText = document.getElementById('fileInfoText');
+    const btnProcessarFotos = document.getElementById('btnProcessarFotos');
+    const statusBadge = document.getElementById('statusBadge');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const resultArea = document.getElementById('resultArea');
+    const btnDownloadZipFotos = document.getElementById('btnDownloadZipFotos');
+    const fotosProcessarFeedback = document.getElementById('fotosProcessarFeedback');
+    const logBox = document.getElementById('logBox');
+    let logStarted = false;
+
+    function updateStatus(type, text) {
+      if (!statusBadge) return;
+      statusBadge.className = 'status-badge ' + type;
+      const icons = { idle: 'circle', processing: 'spinner fa-spin', done: 'check-circle', error: 'times-circle' };
+      statusBadge.innerHTML = '<i class="fas fa-' + (icons[type] || 'circle') + '" style="font-size:.5rem"></i> ' + text;
+    }
+
+    function logMsg(text, type) {
+      if (!logStarted && logBox) {
+        logBox.innerHTML = '';
+        logStarted = true;
+      }
+      if (!logBox) return;
+      const now = new Date().toLocaleTimeString('pt-BR');
+      const div = document.createElement('div');
+      div.className = 'log-line ' + (type || '');
+      div.innerHTML = '<span class="time">[' + now + ']</span> ' + text;
+      logBox.appendChild(div);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function ehImagem(f) {
+      if (!f) return false;
+      if (f.type && f.type.indexOf('image') === 0) return true;
+      return /\.(jpe?g|png|gif|bmp|webp|tiff?)$/i.test(f.name || '');
+    }
+
+    function atualizarFileInfo() {
+      const n = uploadedFotosFiles.length;
+      if (fileInfoText) fileInfoText.textContent = n + ' foto(s) selecionada(s)';
+      if (fileInfo) fileInfo.style.display = n ? 'flex' : 'none';
+      if (btnProcessarFotos) btnProcessarFotos.disabled = n === 0;
+      resultArea.classList.remove('show');
+      fotosProcessarFeedback.innerHTML = '';
+      updateStatus(n ? 'idle' : 'idle', n ? 'Pronto' : 'Aguardando');
+    }
+
+    function addFiles(files, append) {
+      const novos = files && files.length ? Array.from(files).filter(ehImagem) : [];
+      if (append && novos.length) uploadedFotosFiles = uploadedFotosFiles.concat(novos);
+      else if (!append) uploadedFotosFiles = novos;
+      atualizarFileInfo();
+      if (novos.length) logMsg('Arquivo(s) adicionado(s): ' + novos.length + ' foto(s)', 'info');
+    }
+
+    fotosInput.addEventListener('change', function() {
+      if (this.files && this.files.length) addFiles(this.files, true);
+      this.value = '';
+    });
+    fotosInputPasta.addEventListener('change', function() {
+      if (this.files && this.files.length) addFiles(this.files, true);
+      this.value = '';
+    });
+    document.getElementById('btnSelecionarArquivos').addEventListener('click', () => fotosInput.click());
+    document.getElementById('btnSelecionarPasta').addEventListener('click', () => fotosInputPasta.click());
+    document.getElementById('btnLimparFotos').addEventListener('click', () => addFiles([], false));
+
+    function lerPasta(entry, lista) {
+      if (!entry) return Promise.resolve();
+      if (entry.isFile) {
+        return new Promise(function(resolve) {
+          entry.file(function(f) {
+            if (ehImagem(f)) lista.push(f);
+            resolve();
+          }, function() { resolve(); });
+        });
+      }
+      if (entry.isDirectory) {
+        const reader = entry.createReader();
+        return new Promise(function(resolve) {
+          reader.readEntries(function(entries) {
+            Promise.all(entries.map(function(e) { return lerPasta(e, lista); })).then(resolve);
+          }, function() { resolve(); });
+        });
+      }
+      return Promise.resolve();
+    }
+
+    uploadZone.addEventListener('dragover', function(e) { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', function() { uploadZone.classList.remove('dragover'); });
+    uploadZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      const items = e.dataTransfer && e.dataTransfer.items;
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (items && items.length) {
+        const lista = [];
+        const proms = [];
+        for (let i = 0; i < items.length; i++) {
+          const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+          if (entry) proms.push(lerPasta(entry, lista));
+          else if (items[i].kind === 'file') {
+            const f = items[i].getAsFile();
+            if (f && ehImagem(f)) lista.push(f);
+          }
+        }
+        if (proms.length) Promise.all(proms).then(() => addFiles(lista, true));
+        else if (lista.length) addFiles(lista, true);
+      } else if (files && files.length) {
+        addFiles(Array.from(files).filter(ehImagem), true);
+      }
+    });
+
+    document.getElementById('btnLimparLog').addEventListener('click', function() {
+      if (logBox) logBox.innerHTML = '<div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>';
+      logStarted = false;
+      progressContainer.classList.remove('show');
+    });
+
+    document.getElementById('btnLimparTudo').addEventListener('click', function() {
+      addFiles([], false);
+      resultArea.classList.remove('show');
+      progressContainer.classList.remove('show');
+      fotosProcessarFeedback.innerHTML = '';
+      revokeLastBlobUrl();
+      lastDownloadId = null;
+      lastZipBase64 = null;
+      updateStatus('idle', 'Aguardando');
+    });
+
+    function getAuthHeader() {
+      const tk = localStorage.getItem('artesp_token');
+      return tk ? { 'Authorization': 'Bearer ' + tk } : {};
+    }
+
+    let lastDownloadId = null;
+    let lastNameZip = 'Fotos_Processamento.zip';
+    let lastZipBase64 = null;
+    let lastBlobUrl = null;
+
+    function revokeLastBlobUrl() {
+      if (lastBlobUrl) {
+        try { URL.revokeObjectURL(lastBlobUrl); } catch (e) {}
+        lastBlobUrl = null;
+      }
+    }
+
+    function triggerDownloadFromBlob(blob, nome) {
+      revokeLastBlobUrl();
+      const u = URL.createObjectURL(blob);
+      lastBlobUrl = u;
+      const a = document.createElement('a');
+      a.href = u;
+      a.download = nome || lastNameZip;
+      a.click();
+    }
+
+    btnProcessarFotos.addEventListener('click', async function() {
+      if (uploadedFotosFiles.length === 0) return;
+      const tk = localStorage.getItem('artesp_token');
+      if (!tk) { showLogin('Faça login para processar.'); return; }
+
+      fotosProcessarFeedback.innerHTML = '';
+      btnProcessarFotos.disabled = true;
+      progressContainer.classList.add('show');
+      progressContainer.classList.add('indeterminate');
+      if (progressFill) progressFill.style.width = '5%';
+      updateStatus('processing', 'Processando...');
+      var uploadInd = document.getElementById('upload-indicator');
+      if (uploadInd) uploadInd.classList.add('show');
+      logMsg('Montando ZIP das fotos...', 'info');
+
+      try {
+        if (typeof JSZip === 'undefined') {
+          logMsg('Biblioteca JSZip não carregada. Recarregue a página.', 'error');
+          fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">Biblioteca JSZip não carregada.</div>';
+          btnProcessarFotos.disabled = false;
+          updateStatus('error', 'Erro');
+          return;
+        }
+        const zip = new JSZip();
+        for (let i = 0; i < uploadedFotosFiles.length; i++) {
+          const f = uploadedFotosFiles[i];
+          let path = (f.webkitRelativePath && f.webkitRelativePath.trim()) || f.name || ('foto_' + i + '.jpg');
+          path = path.replace(/^\/+/, '').replace(/\\/g, '/');
+          zip.file(path, f);
+        }
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const fd = new FormData();
+        var selLote = document.getElementById('selectLote');
+        var loteVal = (selLote && selLote.value) ? String(selLote.value).trim() : '13';
+        fd.append('lote', loteVal);
+        fd.append('fotos_zip', new File([blob], 'fotos_enviadas.zip', { type: 'application/zip' }));
+
+        logMsg('Enviando arquivos para processamento (Relação Total: Lote ' + loteVal + ')...', 'info');
+
+        const r = await fetch('/fotos/processar-completo-progresso', {
+          method: 'POST',
+          headers: getAuthHeader(),
+          body: fd,
+          credentials: 'include'
+        });
+
+        if (r.status === 401) {
+          localStorage.removeItem('artesp_token');
+          localStorage.removeItem('artesp_user_email');
+          showLogin('Sessão expirada. Faça login novamente.');
+          logMsg('Sessão expirada. Faça login novamente.', 'error');
+          btnProcessarFotos.disabled = false;
+          updateStatus('error', 'Não autenticado');
+          return;
+        }
+        if (!r.ok || !r.body) {
+          const data = await r.json().catch(() => ({}));
+          logMsg('Erro: ' + (data.detail || r.statusText), 'error');
+          fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">' + (data.detail || r.statusText) + '</div>';
+          btnProcessarFotos.disabled = false;
+          updateStatus('error', 'Erro');
+          return;
+        }
+
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        lastDownloadId = null;
+        lastNameZip = 'Fotos_Processamento.zip';
+        lastZipBase64 = null;
+        revokeLastBlobUrl();
+
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffer += decoder.decode(chunk.value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (let i = 0; i < parts.length; i++) {
+            const line = parts[i];
+            if (line.indexOf('data: ') !== 0) continue;
+            try {
+              const ev = JSON.parse(line.slice(6));
+              if (ev.type === 'progress' && ev.status) {
+                logMsg(ev.status, 'info');
+                if (typeof ev.progresso === 'number' && progressFill) {
+                  progressContainer.classList.remove('indeterminate');
+                  progressFill.style.width = Math.min(100, ev.progresso) + '%';
+                }
+              }
+              if (ev.type === 'ping' && ev.status) logMsg(ev.status, 'info');
+              if (ev.type === 'result') {
+                if (ev.status === 'sucesso') {
+                  lastDownloadId = ev.download_id;
+                  lastNameZip = ev.nome_zip || 'Fotos_Processamento.zip';
+                  lastZipBase64 = ev.zip_base64 || null;
+                  if (progressFill) progressFill.style.width = '100%';
+                  updateStatus('done', 'Concluído');
+                  logMsg('Processamento concluído com sucesso.', 'success');
+                  logMsg('────────────────────────────────────────', 'info');
+                  logMsg('<strong>EXECUÇÃO CONCLUÍDA</strong>', 'success');
+                  logMsg('Fotos processadas: ' + (ev.total_fotos != null ? ev.total_fotos : 0), 'info');
+                  logMsg('ZIP: ' + lastNameZip, 'info');
+                  logMsg('Para conferir a execução, teste primeiro com poucas fotos; ZIP grande pode demorar para baixar.', 'info');
+                  logMsg('────────────────────────────────────────', 'info');
+                  resultArea.classList.add('show');
+                  if (lastZipBase64) {
+                    try {
+                      const binary = atob(lastZipBase64);
+                      const bytes = new Uint8Array(binary.length);
+                      for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+                      const blob = new Blob([bytes], { type: 'application/zip' });
+                      const u = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = u;
+                      a.download = lastNameZip;
+                      a.click();
+                      URL.revokeObjectURL(u);
+                    } catch (e) {}
+                  }
+                } else {
+                  logMsg('Erro: ' + (ev.detail || 'Falha no processamento'), 'error');
+                  fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">' + (ev.detail || '') + '</div>';
+                  updateStatus('error', 'Erro');
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (err) {
+        logMsg('Erro: ' + (err.message || 'Falha na conexão'), 'error');
+        fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">' + (err.message || '') + '</div>';
+        updateStatus('error', 'Erro');
+      } finally {
+        progressContainer.classList.remove('indeterminate');
+        uploadInd = document.getElementById('upload-indicator');
+        if (uploadInd) uploadInd.classList.remove('show');
+      }
+      btnProcessarFotos.disabled = uploadedFotosFiles.length === 0;
+    });
+
+    btnDownloadZipFotos.addEventListener('click', function() {
+      if (lastBlobUrl) {
+        const a = document.createElement('a');
+        a.href = lastBlobUrl;
+        a.download = lastNameZip;
+        a.click();
+        return;
+      }
+      if (lastZipBase64) {
+        try {
+          const binary = atob(lastZipBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blob = new Blob([bytes], { type: 'application/zip' });
+          triggerDownloadFromBlob(blob, lastNameZip);
+        } catch (e) {
+          fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">Erro ao gerar download: ' + (e.message || '') + '</div>';
+        }
+        return;
+      }
+      if (!lastDownloadId) return;
+      const url = '/fotos/download/' + lastDownloadId;
+      const tok = localStorage.getItem('artesp_token');
+      const btn = btnDownloadZipFotos;
+      const oldText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Baixando... (ZIP grande pode demorar até 30 min)';
+      const controller = new AbortController();
+      const timeoutId = setTimeout(function() { controller.abort(); }, 30 * 60 * 1000);
+      fetch(url, { headers: tok ? { 'Authorization': 'Bearer ' + tok } : {}, credentials: 'include', signal: controller.signal })
+        .then(function(res) {
+          if (!res.ok) {
+            return res.json().catch(() => ({ detail: res.statusText })).then(function(err) {
+              let msg = err.detail || 'Erro ao baixar ZIP.';
+              if (res.status === 401) msg = 'Sessão expirada. Faça login novamente.';
+              if (res.status === 404) msg = 'Download não encontrado ou expirado. Processe as fotos novamente e clique em "Baixar ZIP" logo em seguida.';
+              fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">' + msg + '</div>';
+            });
+          }
+          return res.blob();
+        })
+        .then(function(blob) {
+          clearTimeout(timeoutId);
+          btn.disabled = false;
+          btn.innerHTML = oldText;
+          if (!blob || blob.size === 0) return;
+          if (blob.type && blob.type.indexOf('json') !== -1) return;
+          triggerDownloadFromBlob(blob, lastNameZip);
+        })
+        .catch(function(e) {
+          clearTimeout(timeoutId);
+          btn.disabled = false;
+          btn.innerHTML = oldText;
+          var msg = e.name === 'AbortError' ? 'Download demorou mais de 30 minutos. Tente com menos fotos para testar ou tente novamente.' : ('Falha na conexão: ' + (e.message || ''));
+          fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">' + msg + '</div>';
+        })
+        .finally(function() {
+          btn.disabled = false;
+          btn.innerHTML = oldText;
+        });
+    });
+  </script>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <span class="app-footer-brand">Plataforma de Conservação e Obras</span>
+      <span class="app-footer-sep">·</span>
+      <span class="app-footer-dev">Desenvolvido por Ozeias Engler</span>
+      <span class="app-footer-tagline">Geração de relatórios georreferenciados e automação de relatórios internos</span>
+    </div>
+  </footer>
+</body>
+</html>

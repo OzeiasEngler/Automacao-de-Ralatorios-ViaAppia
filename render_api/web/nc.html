@@ -1,0 +1,2703 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NC ARTESP — Não Conformidades</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    /* NC: ícone da página (destaque vermelho) */
+    #nc-page .page-header .icon-box { background: linear-gradient(135deg, var(--danger), #dc2626); }
+    /* Padrão igual a Separar NC e Modelo Foto: formulário à esquerda, log à direita */
+    .step-panel-form-log .grid-2 {
+      grid-template-columns: minmax(280px, 1fr) minmax(340px, 400px);
+      gap: 24px;
+      align-items: start;
+    }
+    .step-panel-form-log .grid-2 .card:first-child {
+      grid-column: 1;
+      min-width: 0;
+    }
+    .step-panel-form-log .grid-2 .card:last-child {
+      grid-column: 2;
+      position: sticky;
+      top: calc(var(--topbar-h) + var(--nav-h) + 20px);
+      max-height: calc(100vh - var(--topbar-h) - var(--nav-h) - 40px);
+      display: flex;
+      flex-direction: column;
+    }
+    .step-panel-form-log .grid-2 .card:last-child .card-body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .step-panel-form-log .grid-2 .card:last-child .log-container {
+      flex: 1;
+      min-height: 200px;
+      max-height: 50vh;
+    }
+    @media (max-width: 900px) {
+      .step-panel-form-log .grid-2 {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+      }
+      .step-panel-form-log .grid-2 .card:last-child {
+        position: static;
+        max-height: none;
+      }
+      .step-panel-form-log .grid-2 .card:last-child .log-container {
+        max-height: 380px;
+      }
+    }
+
+    /* ── Step tabs ──────────────────────────────────────────────────────── */
+    .step-tabs {
+      display: flex; gap: 4px; flex-wrap: wrap;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 8px;
+    }
+    .step-tab {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: var(--radius-sm);
+      font-size: .8rem; font-weight: 600;
+      color: var(--text-secondary); cursor: pointer;
+      border: none; background: transparent;
+      transition: var(--transition); white-space: nowrap;
+      font-family: inherit;
+    }
+    .step-tab:hover { background: var(--bg-surface-3); color: var(--text-primary); }
+    .step-tab.active {
+      background: rgba(239,68,68,.15);
+      color: var(--danger);
+      border: 1px solid rgba(239,68,68,.25);
+    }
+    .step-tab .step-num {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--bg-surface-3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: .65rem; font-weight: 700;
+    }
+    .step-tab.active .step-num { background: var(--danger); color: #fff; }
+
+    /* ── Step panels ────────────────────────────────────────────────────── */
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+
+    /* ── Upload zone ────────────────────────────────────────────────────── */
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* ── Barra de sessão ────────────────────────────────────────────────── */
+    .sessao-bar {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: 8px 16px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      font-size: .78rem;
+    }
+    .sessao-bar .sessao-label { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+    .sessao-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--bg-surface-3); border: 1px solid var(--border-color);
+      border-radius: 12px; padding: 3px 10px; font-size: .75rem;
+      color: var(--text-secondary);
+    }
+    .sessao-chip.has-files { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: var(--success); }
+    .sessao-chip.has-pdf   { background: rgba(59,130,246,.12); border-color: rgba(59,130,246,.3); color: var(--accent); }
+    .tab-sessao-dot {
+      display: inline-block; margin-left: 5px;
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--success); vertical-align: middle;
+    }
+    .sessao-aviso {
+      font-size: .75rem; padding: 6px 12px;
+      background: rgba(16,185,129,.08);
+      border: 1px solid rgba(16,185,129,.2);
+      border-radius: var(--radius-sm); color: var(--success);
+      display: none; align-items: center; gap: 8px; margin-top: 10px;
+    }
+    .sessao-aviso.show { display: flex; }
+
+  </style>
+</head>
+<body>
+  <div id="upload-indicator" class="upload-indicator" role="status" aria-live="polite" aria-label="Enviando arquivos"></div>
+
+  <!-- ═══ LOGIN OVERLAY ═══ -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card animate-in">
+      <div class="logo">
+        <div class="icon">🛣️</div>
+        <h2>Plataforma de Conservação e Obras</h2>
+        <p>Geração de relatórios georreferenciados e automação de relatórios internos. Faça login para continuar.</p>
+      </div>
+      <form id="formLogin">
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="loginEmail" class="form-input" placeholder="usuario@empresa.com" required>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Senha</label>
+          <input type="password" id="loginSenha" class="form-input" placeholder="Sua senha" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+          <i class="fas fa-sign-in-alt"></i> Entrar
+        </button>
+        <div id="loginFeedback"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══ TOPBAR ═══ -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="icon">🛣️</span>
+      <span>PLATAFORMA DE CONSERVAÇÃO E OBRAS - Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</span>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-user">
+        <div class="avatar" id="userAvatar">U</div>
+        <span id="userEmailDisplay">usuario</span>
+      </div>
+      <button class="btn-logout" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Sair</button>
+    </div>
+  </header>
+
+  <!-- ═══ TOPNAV ═══ -->
+  <nav class="topnav">
+    <a href="/web"><span class="nav-icon"><i class="fas fa-home"></i></span> Início</a>
+    <a href="/web/geojson"><span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> GeoJSON ARTESP</a>
+    <a href="/web/fotos"><span class="nav-icon"><i class="fas fa-camera"></i></span> Fotos de Campo</a>
+    <a href="/web/nc" class="active"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP</a>
+    <div class="topnav-spacer"></div>
+    <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
+  </nav>
+
+  <!-- ═══ PAGE CONTENT ═══ -->
+  <div class="page-content" id="nc-page">
+
+    <div class="page-header animate-in">
+      <div class="icon-box"><i class="fas fa-clipboard-check"></i></div>
+      <div>
+        <h1>NC ARTESP</h1>
+        <p>Pipeline de Não Conformidades — as EAFs entregam Excel + PDF; faça upload uma vez e use em todos os módulos</p>
+      </div>
+    </div>
+
+    <!-- ═══ BARRA DE SESSÃO ═══ -->
+    <div class="sessao-bar animate-in" id="sessaoBar" style="animation-delay:.05s">
+      <span class="sessao-label"><i class="fas fa-database"></i> Sessão:</span>
+      <span class="sessao-chip" id="sessaoChipEAF"><i class="fas fa-file-excel"></i> EAF: nenhum</span>
+      <span class="sessao-chip" id="sessaoChipPDF"><i class="fas fa-file-pdf"></i> PDFs: 0</span>
+      <span style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-outline" id="btnSessaoLimpar"
+                style="padding:3px 12px;font-size:.72rem;display:none">
+          <i class="fas fa-times"></i> Limpar sessão
+        </button>
+      </span>
+    </div>
+
+    <!-- ═══ STEP TABS ═══ -->
+    <div class="step-tabs animate-in" style="animation-delay:.1s" id="stepTabs">
+      <button class="step-tab active" data-step="receber-eaf"
+              style="background:rgba(59,130,246,.15);color:var(--accent);border:1px solid rgba(59,130,246,.3)">
+        <span class="step-num" style="background:var(--accent);color:#fff">📋</span>
+        <i class="fas fa-inbox"></i> Receber EAF
+      </button>
+      <button class="step-tab" data-step="analisar-pdf" style="color:#e67e22">
+        <span class="step-num" style="background:#e67e22;color:#fff">⚡</span>
+        <i class="fas fa-search-location"></i> Análise PDF
+      </button>
+      <button class="step-tab" data-step="extrair-pdf">
+        <span class="step-num">0</span> <i class="fas fa-file-pdf"></i> Extrair PDF
+      </button>
+      <button class="step-tab" data-step="separar">
+        <span class="step-num">1</span> <i class="fas fa-cut"></i> Separar NC
+      </button>
+      <button class="step-tab" data-step="criar-email">
+        <span class="step-num">✉</span> <i class="fas fa-envelope"></i> E-mail
+      </button>
+      <button class="step-tab" data-step="modelo-foto">
+        <span class="step-num">2</span> <i class="fas fa-images"></i> Modelo Foto
+      </button>
+      <button class="step-tab" data-step="conservacao">
+        <span class="step-num">3</span> <i class="fas fa-road"></i> Conservação
+      </button>
+      <button class="step-tab" data-step="juntar">
+        <span class="step-num">4</span> <i class="fas fa-layer-group"></i> Acumulado
+      </button>
+      <button class="step-tab" data-step="inserir-numero">
+        <span class="step-num">5</span> <i class="fas fa-hashtag"></i> Inserir Nº
+      </button>
+      <button class="step-tab" data-step="exportar-calendario">
+        <span class="step-num">6</span> <i class="fas fa-calendar-alt"></i> Calendário
+      </button>
+      <button class="step-tab" data-step="meio-ambiente">
+        <span class="step-num">7</span> <i class="fas fa-leaf"></i> Meio Ambiente
+      </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         RECEBER EAF — Upload único de Excel + PDFs
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel active animate-in" id="panel-receber-eaf" style="animation-delay:.15s">
+      <div class="card">
+        <div class="card-header" style="border-left:3px solid var(--accent)">
+          <i class="fas fa-inbox" style="color:var(--accent)"></i>
+          Receber arquivos da EAF — Excel + PDFs de apontamento
+        </div>
+        <div class="card-body">
+          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:16px">
+            As EAFs entregam <strong>um arquivo Excel</strong> (planilha EAF) e
+            <strong>um ou mais PDFs</strong> com imagens dos apontamentos.
+            Faça o upload aqui <b>uma única vez</b> — os arquivos ficam disponíveis
+            automaticamente em <em>Análise PDF</em>, <em>Extrair PDF</em> e <em>Separar NC</em>.
+          </p>
+          <p style="font-size:0.7rem;color:var(--text-muted);margin-bottom:16px;padding:8px 12px;background:var(--bg-surface);border-radius:var(--radius-sm);border:1px solid var(--border-color);">
+            <i class="fas fa-info-circle"></i> No <strong>Edge</strong> ou <strong>Chrome</strong>, se a pasta aparecer vazia ao selecionar arquivos, navegue até a pasta e selecione os arquivos manualmente (ou arraste da pasta para a área de upload).
+          </p>
+
+          <div class="grid-2" style="gap:20px">
+            <!-- EAF Excel (múltiplos) -->
+            <div>
+              <label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">
+                <i class="fas fa-file-excel" style="color:var(--success)"></i>
+                Planilhas EAF (.xlsx ou .xls) — uma por empresa
+              </label>
+              <div class="upload-zone" id="zone-receber-eafs" style="padding:24px">
+                <input type="file" id="file-receber-eafs" accept=".xlsx,.xls" multiple>
+                <div class="icon" style="font-size:1.8rem;margin-bottom:8px"><i class="fas fa-file-excel" style="color:var(--success)"></i></div>
+                <h3 style="font-size:.9rem">Planilhas EAF</h3>
+                <p>Uma ou mais · toque ou Ctrl+clique para selecionar vários</p>
+              </div>
+              <div id="lista-receber-eafs" style="display:none;margin-top:8px"></div>
+            </div>
+
+            <!-- PDFs -->
+            <div>
+              <label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">
+                <i class="fas fa-file-pdf" style="color:var(--danger)"></i>
+                PDFs de NC Constatação (um ou mais)
+              </label>
+              <div class="upload-zone" id="zone-receber-pdfs" style="padding:24px">
+                <input type="file" id="file-receber-pdfs" accept=".pdf" multiple>
+                <div class="icon" style="font-size:1.8rem;margin-bottom:8px"><i class="fas fa-file-pdf" style="color:var(--danger)"></i></div>
+                <h3 style="font-size:.9rem">PDFs de apontamento</h3>
+                <p>Um ou mais PDFs · toque ou Ctrl+clique para selecionar vários</p>
+              </div>
+              <div id="lista-receber-pdfs" style="display:none;margin-top:8px"></div>
+            </div>
+          </div>
+
+          <div id="sessao-result" style="display:none;margin-top:16px;padding:14px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:var(--radius-sm)">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+              <strong>Sessão iniciada — arquivos disponíveis em todos os módulos</strong>
+            </div>
+            <div id="sessao-result-info" style="font-size:.8rem;color:var(--text-secondary)"></div>
+            <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-outline" onclick="irParaAba('analisar-pdf')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-search-location" style="color:#e67e22"></i> Ir para Análise PDF
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('extrair-pdf')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-file-pdf"></i> Ir para Extrair PDF
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('separar')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-cut"></i> Ir para Separar NC
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('criar-email')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-envelope"></i> Ir para E-mail
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('modelo-foto')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-images"></i> Ir para Gerar Kria e Resposta
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('conservacao')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-road"></i> Ir para Kcor-Kria Conservação
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('meio-ambiente')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-leaf"></i> Ir para Kcor-Kria Meio Ambiente
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('juntar')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-layer-group"></i> Ir para Acumulado
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('inserir-numero')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-hashtag"></i> Ir para Inserir número Kria
+              </button>
+              <button class="btn btn-outline" onclick="irParaAba('exportar-calendario')" style="padding:6px 14px;font-size:.78rem">
+                <i class="fas fa-calendar-alt"></i> Ir para Exportar calendário
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="btn-receber-eaf" disabled>
+              <i class="fas fa-save"></i> Salvar na sessão
+            </button>
+            <button class="btn btn-outline" id="reset-receber-eaf">
+              <i class="fas fa-redo"></i> Limpar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ANÁLISE PDF — Sequência de KM, Alertas, Emergenciais, Por Tipo
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-analisar-pdf" style="animation-delay:.15s">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header" style="border-left:3px solid var(--warning)">
+            <i class="fas fa-search-location" style="color:var(--warning)"></i>
+            Análise de KM e NCs — PDF de Constatação
+            <span class="status-badge idle" id="status-analisar-pdf" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <div class="alert alert-warning" style="margin-bottom:14px;font-size:.8rem">
+              <i class="fas fa-info-circle"></i>
+              <strong>O que esta análise faz:</strong> Lê o PDF original sem alterar nada.
+              Verifica a sequência de KMs por rodovia/sentido, detecta
+              <strong>saltos de KM</strong> (possíveis panelas não apontadas — prazo 24 h),
+              identifica <strong>NCs emergenciais</strong> e devolve um PDF com as NCs
+              agrupadas por tipo em sequência de KM, dados intactos.
+            </div>
+
+            <div class="upload-zone" id="zone-analisar-pdf"
+                 style="padding:28px 20px">
+              <input type="file" id="file-analisar-pdf" accept=".pdf" multiple>
+              <div class="icon"><i class="fas fa-file-pdf" style="color:var(--warning)"></i></div>
+              <h3>PDFs de NC Constatação de Rotina</h3>
+              <p>Arraste um ou mais PDFs · Múltiplas rodovias aceitas</p>
+              <p style="font-size:.72rem;color:var(--text-muted);margin-top:4px">
+                <i class="fas fa-info-circle"></i> Selecione vários arquivos de uma vez (toque ou Ctrl+clique)
+              </p>
+            </div>
+
+            <!-- Lista de arquivos selecionados -->
+            <div id="lista-pdfs-analise" style="display:none;margin-top:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                <span style="font-size:.78rem;font-weight:600;color:var(--text-secondary)">
+                  <i class="fas fa-file-pdf" style="color:var(--warning)"></i>
+                  <span id="count-pdfs-analise">0</span> arquivo(s) selecionado(s)
+                </span>
+                <button type="button" id="clear-analisar-pdf"
+                        class="btn btn-outline" style="padding:3px 10px;font-size:.72rem">
+                  <i class="fas fa-times"></i> Limpar tudo
+                </button>
+              </div>
+              <ul id="ul-pdfs-analise"
+                  style="list-style:none;max-height:140px;overflow-y:auto;
+                         background:var(--bg-surface-3);border-radius:var(--radius-sm);
+                         padding:8px 10px;font-size:.78rem;color:var(--text-secondary)">
+              </ul>
+            </div>
+
+            <div class="form-group" style="margin-top:14px">
+              <label>
+                <i class="fas fa-ruler-horizontal"></i>
+                Limiar de gap (km) para alerta de panela
+                <span style="color:var(--text-muted);font-weight:400">(padrão: 2 km)</span>
+              </label>
+              <input type="number" id="limiar-analisar-pdf" class="form-input"
+                     value="2" min="0.5" max="50" step="0.5" style="width:120px">
+            </div>
+
+            <div class="progress-bar-container" id="prog-analisar-pdf">
+              <div class="progress-bar-fill" id="progfill-analisar-pdf"
+                   style="background:linear-gradient(90deg,var(--warning),var(--danger))"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-analisar-pdf" disabled
+                      style="background:var(--warning);box-shadow:0 2px 8px rgba(230,126,34,.3)">
+                <i class="fas fa-play"></i> Analisar e gerar relatório
+              </button>
+              <button class="btn btn-outline" id="reset-analisar-pdf">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-analisar-pdf"></div>
+
+            <div class="result-area" id="result-analisar-pdf"
+                 style="background:rgba(230,126,34,.06);border-color:rgba(230,126,34,.2)">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Análise concluída</strong>
+              </div>
+              <div id="resumo-analisar-pdf" style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px"></div>
+              <button class="btn btn-success" id="download-analisar-pdf">
+                <i class="fas fa-file-pdf"></i> Baixar PDF de Análise
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem"
+                    onclick="limparLog('log-analisar-pdf')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-analisar-pdf">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Extrair PDF
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-extrair-pdf">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-file-pdf"></i> Extrair imagens dos PDFs de NC
+            <span class="status-badge idle" id="status-extrair-pdf" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              Gera <strong>nc(N).jpg</strong> (só foto) e <strong>PDF(N).jpg</strong> (texto + foto) por NC.
+              Com múltiplos PDFs a numeração é sequencial global.
+            </p>
+
+            <div class="upload-zone" id="zone-extrair-pdf">
+              <input type="file" id="file-extrair-pdf" accept=".pdf" multiple>
+              <div class="icon"><i class="fas fa-file-pdf"></i></div>
+              <h3>PDFs de NC Constatação</h3>
+              <p>Arraste um ou mais PDFs · Ctrl+clique para selecionar vários</p>
+            </div>
+            <div id="lista-multi-extrair-pdf" style="display:none;margin-top:10px"></div>
+
+            <div class="form-group" style="margin-top:14px">
+              <label>DPI de extração</label>
+              <input type="number" id="dpi-extrair-pdf" class="form-input" value="150" min="72" max="300" style="width:120px">
+            </div>
+
+            <div class="progress-bar-container" id="prog-extrair-pdf">
+              <div class="progress-bar-fill" id="progfill-extrair-pdf"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-extrair-pdf" disabled>
+                <i class="fas fa-play"></i> Extrair imagens
+              </button>
+              <button class="btn btn-outline" id="reset-extrair-pdf">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-extrair-pdf"></div>
+            <div class="result-area" id="result-extrair-pdf">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Extração concluída</strong>
+              </div>
+              <button class="btn btn-success" id="download-extrair-pdf">
+                <i class="fas fa-download"></i> Baixar ZIP de imagens
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-extrair-pdf')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-extrair-pdf">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Separar constatações da planilha EAF
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-separar">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-cut"></i> Separar NC da planilha EAF
+            <span class="status-badge idle" id="status-separar" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:16px">
+              Processa a planilha EAF e gera arquivos <strong>XLS individuais</strong> por combinação Data + Rodovia + Tipo NC.
+            </p>
+
+            <div class="upload-zone" id="zone-separar">
+              <input type="file" id="file-separar" accept=".xlsx,.xls" multiple>
+              <div class="icon"><i class="fas fa-file-excel"></i></div>
+              <h3>Planilhas EAF (.xlsx ou .xls)</h3>
+              <p>Arraste uma ou mais planilhas · Ctrl+clique para várias</p>
+            </div>
+            <div id="lista-multi-separar" style="display:none;margin-top:10px"></div>
+
+            <div class="progress-bar-container" id="prog-separar">
+              <div class="progress-bar-fill" id="progfill-separar"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-separar" disabled>
+                <i class="fas fa-play"></i> Separar NCs
+              </button>
+              <button class="btn btn-outline" id="reset-separar">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-separar"></div>
+            <div class="result-area" id="result-separar">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>NCs separadas com sucesso</strong>
+              </div>
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">Próxima etapa: <strong>E-mail</strong> ou <strong>Modelo Foto</strong></p>
+              <button class="btn btn-success" id="download-separar">
+                <i class="fas fa-download"></i> Baixar ZIP de XLS individuais (para usar em E-mail ou Modelo Foto)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-separar')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-separar">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         E-mail — Gerar rascunhos .eml (resposta NC)
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-criar-email">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header" style="border-left:3px solid #0ea5e9">
+            <i class="fas fa-envelope" style="color:#0ea5e9"></i> Gerar E-mails de Resposta NC
+            <span class="status-badge idle" id="status-criar-email" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              Gera arquivos <strong>.eml</strong> (rascunhos de resposta à Artesp). Use o ZIP da etapa <strong>Separar NC</strong>.
+              Opcionalmente envie um ZIP com imagens <strong>PDF (N).jpg</strong> da etapa <strong>Extrair PDF</strong> para as fotos aparecerem no corpo do e-mail.
+            </p>
+            <div class="form-group">
+              <label><i class="fas fa-file-archive"></i> ZIP da etapa <strong>Separar NC</strong> (XLS individuais) <span style="color:var(--danger)">*</span></label>
+              <div class="upload-zone" id="zone-email-xls" style="padding:18px">
+                <input type="file" id="file-email-xls" accept=".zip"
+                       onchange="bindFile('file-email-xls','info-email-xls','infotext-email-xls','btn-criar-email',['file-email-xls'])">
+                <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-archive"></i></div>
+                <p style="font-size:.8rem">ZIP com XLS individuais</p>
+              </div>
+              <div class="file-info" id="info-email-xls">
+                <i class="fas fa-file-archive" style="color:var(--accent)"></i>
+                <span id="infotext-email-xls">nenhum</span>
+                <button type="button" onclick="clearFile('email-xls');updateBtnState('btn-criar-email',['file-email-xls'])" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label><i class="fas fa-images"></i> ZIP com imagens PDF (opcional)</label>
+              <div class="upload-zone" id="zone-email-fotos" style="padding:16px">
+                <input type="file" id="file-email-fotos" accept=".zip">
+                <p style="font-size:.75rem;color:var(--text-muted)">Saída do Extrair PDF: <code>PDF (N).jpg</code> para embutir fotos nos e-mails.</p>
+              </div>
+              <div class="file-info" id="info-email-fotos">
+                <i class="fas fa-images" style="color:var(--info)"></i>
+                <span id="infotext-email-fotos">nenhum</span>
+                <button type="button" onclick="clearFile('email-fotos')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+            <div class="progress-bar-container" id="prog-criar-email">
+              <div class="progress-bar-fill" id="progfill-criar-email"></div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-criar-email" disabled style="border-color:#0ea5e9;background:linear-gradient(135deg,#0ea5e9,#0284c7)">
+                <i class="fas fa-envelope"></i> Gerar E-mails
+              </button>
+              <button class="btn btn-outline" id="reset-criar-email">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-criar-email"></div>
+            <div class="result-area" id="result-criar-email">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>E-mails gerados</strong>
+              </div>
+              <button class="btn btn-success" id="download-criar-email">
+                <i class="fas fa-download"></i> Baixar ZIP de e-mails (.eml)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-criar-email')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-criar-email">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Gerar Kria e Resposta (modelo foto)
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-modelo-foto">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-images"></i> Gerar Kria e Resposta
+            <span class="status-badge idle" id="status-modelo-foto" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              Gera planilha <strong>Kria</strong> e relatório de <strong>Resposta</strong>. Use o ZIP da etapa <strong>Separar NC</strong>.
+              Opcional: ZIP com fotos <strong>nc (N).jpg</strong> ou <strong>PDF (N).jpg</strong> (etapa Extrair PDF) para aparecer nos relatórios.
+            </p>
+
+            <div class="alert alert-success" style="font-size:.78rem;margin-bottom:12px">
+              <i class="fas fa-database"></i> Modelos Kria e Resposta carregados automaticamente pelo servidor.
+            </div>
+
+            <div class="form-group">
+              <label><i class="fas fa-file-archive"></i> ZIP da etapa <strong>Separar NC</strong> (XLS individuais) <span style="color:var(--danger)">*</span></label>
+              <div class="upload-zone" id="zone-m02-xls" style="padding:18px">
+                <input type="file" id="file-m02-xls" accept=".zip"
+                       onchange="bindFile('file-m02-xls','info-m02-xls','infotext-m02-xls','btn-modelo-foto',['file-m02-xls'])">
+                <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-archive"></i></div>
+                <p style="font-size:.8rem">ZIP com XLS individuais</p>
+              </div>
+              <div class="file-info" id="info-m02-xls">
+                <i class="fas fa-file-archive" style="color:var(--accent)"></i>
+                <span id="infotext-m02-xls">nenhum</span>
+                <button type="button" onclick="clearFile('m02-xls');updateBtnState('btn-modelo-foto',['file-m02-xls'])" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label><i class="fas fa-images"></i> ZIP com fotos para Kria e Resposta <span style="color:var(--text-muted)">(opcional)</span></label>
+              <div class="upload-zone" id="zone-m02-fotos" style="padding:16px">
+                <input type="file" id="file-m02-fotos" accept=".zip">
+                <p style="font-size:.75rem;color:var(--text-muted)">Kria: <code>nc (N).jpg</code> — Resposta: <code>PDF (N).jpg</code>. Pode ter subpastas.</p>
+              </div>
+              <div class="file-info" id="info-m02-fotos">
+                <i class="fas fa-images" style="color:var(--info)"></i>
+                <span id="infotext-m02-fotos">nenhum</span>
+                <button type="button" onclick="clearFile('m02-fotos')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="progress-bar-container" id="prog-modelo-foto">
+              <div class="progress-bar-fill" id="progfill-modelo-foto"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-modelo-foto" disabled>
+                <i class="fas fa-play"></i> Gerar modelos
+              </button>
+              <button class="btn btn-outline" id="reset-modelo-foto">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-modelo-foto"></div>
+            <div class="result-area" id="result-modelo-foto">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Modelos gerados</strong>
+              </div>
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">Próxima etapa: <strong>Conservação</strong></p>
+              <button class="btn btn-success" id="download-modelo-foto">
+                <i class="fas fa-download"></i> Baixar ZIP Kria + Resposta (para usar em Conservação)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-modelo-foto')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-modelo-foto">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Inserir NC na planilha Kcor-Kria Conservação
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-conservacao">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-road"></i> Kcor-Kria Conservação
+            <span class="status-badge idle" id="status-conservacao" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              Use o ZIP da etapa <strong>Modelo Foto</strong> (Kria + Resposta). Insere na planilha Kcor-Kria Conservação Rotina.
+            </p>
+
+            <div class="form-group">
+              <label><i class="fas fa-file-archive"></i> ZIP da etapa <strong>Modelo Foto</strong> (Kria + Resposta) <span style="color:var(--danger)">*</span></label>
+              <div class="upload-zone" id="zone-m03-kria" style="padding:20px">
+                <input type="file" id="file-m03-kria" accept=".zip">
+                <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-archive"></i></div>
+                <p style="font-size:.8rem">ZIP da etapa Modelo Foto</p>
+              </div>
+              <div class="file-info" id="info-m03-kria">
+                <i class="fas fa-file-archive" style="color:var(--accent)"></i>
+                <span id="infotext-m03-kria">nenhum</span>
+                <button type="button" onclick="clearFile('m03-kria')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="alert alert-success" style="font-size:.78rem;margin-bottom:12px">
+              <i class="fas fa-database"></i> Modelo Kcor-Kria carregado automaticamente pelo servidor.
+            </div>
+
+            <div class="form-group">
+              <label><i class="fas fa-images"></i> ZIP com fotos PDF (N).jpg <span style="color:var(--text-muted)">(opcional)</span></label>
+              <div class="upload-zone" id="zone-m03-fotos" style="padding:18px">
+                <input type="file" id="file-m03-fotos" accept=".zip">
+                <p style="font-size:.75rem;color:var(--text-muted)">ZIP de fotos</p>
+              </div>
+              <div class="file-info" id="info-m03-fotos">
+                <i class="fas fa-images" style="color:var(--info)"></i>
+                <span id="infotext-m03-fotos">nenhum</span>
+                <button type="button" onclick="clearFile('m03-fotos')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="progress-bar-container" id="prog-conservacao">
+              <div class="progress-bar-fill" id="progfill-conservacao"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-conservacao" disabled>
+                <i class="fas fa-play"></i> Gerar Kcor Conservação
+              </button>
+              <button class="btn btn-outline" id="reset-conservacao">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-conservacao"></div>
+            <div class="result-area" id="result-conservacao">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Kcor Conservação gerado</strong>
+              </div>
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">Próxima etapa: <strong>Acumulado</strong></p>
+              <button class="btn btn-success" id="download-conservacao">
+                <i class="fas fa-download"></i> Baixar ZIP Kcor-Kria Conservação (para usar em Acumulado)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-conservacao')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-conservacao">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Inserir NC na planilha Kcor-Kria Meio Ambiente
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-meio-ambiente">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-leaf"></i> Kcor-Kria Meio Ambiente
+            <span class="status-badge idle" id="status-meio-ambiente" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              A partir do <strong>PDF</strong>: gera a planilha EAF e executa o <strong>Separar NC</strong> (ZIP com EAF + NCs separados). Ou envie um ZIP com planilhas Kria MA para gerar Kcor-Kria.
+            </p>
+
+            <div class="form-group">
+              <label><i class="fas fa-file-pdf"></i> PDF(s) de NC Meio Ambiente <span style="color:var(--success)">(recomendado)</span></label>
+              <div class="upload-zone" id="zone-m07-pdf" style="padding:18px;border:1px dashed rgba(34,197,94,.4)">
+                <input type="file" id="file-m07-pdf" accept=".pdf" multiple>
+                <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-pdf" style="color:var(--danger)"></i></div>
+                <p style="font-size:.8rem">Envie um ou vários PDFs — os dados são extraídos e a planilha é gerada automaticamente</p>
+              </div>
+              <div class="file-info" id="info-m07-pdf">
+                <i class="fas fa-file-pdf" style="color:var(--danger)"></i>
+                <span id="infotext-m07-pdf">nenhum</span>
+                <button type="button" onclick="clearFile('m07-pdf');updateBtnMeioAmbiente()" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <p style="font-size:.75rem;color:var(--text-muted);margin:12px 0">ou</p>
+
+            <div class="form-group">
+              <label><i class="fas fa-file-archive"></i> ZIP com planilhas Kria MA <span style="color:var(--text-muted)">(se já tiver)</span></label>
+              <div class="upload-zone" id="zone-m07-kria" style="padding:20px">
+                <input type="file" id="file-m07-kria" accept=".zip">
+                <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-archive"></i></div>
+                <p style="font-size:.8rem">ZIP Kria MA</p>
+              </div>
+              <div class="file-info" id="info-m07-kria">
+                <i class="fas fa-file-archive" style="color:var(--accent)"></i>
+                <span id="infotext-m07-kria">nenhum</span>
+                <button type="button" onclick="clearFile('m07-kria');updateBtnMeioAmbiente()" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="alert alert-success" style="font-size:.78rem;margin-bottom:12px">
+              <i class="fas fa-database"></i> Modelo Kcor-Kria carregado automaticamente pelo servidor.
+            </div>
+
+            <div class="progress-bar-container" id="prog-meio-ambiente">
+              <div class="progress-bar-fill" id="progfill-meio-ambiente"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-meio-ambiente" disabled>
+                <i class="fas fa-play"></i> Gerar Kcor Meio Ambiente
+              </button>
+              <button class="btn btn-outline" id="reset-meio-ambiente">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-meio-ambiente"></div>
+            <div class="result-area" id="result-meio-ambiente">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Meio Ambiente gerado</strong>
+              </div>
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">Próxima etapa: <strong>Acumulado</strong></p>
+              <button class="btn btn-success" id="download-meio-ambiente">
+                <i class="fas fa-download"></i> Baixar ZIP Kcor-Kria Meio Ambiente (para usar em Acumulado)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-meio-ambiente')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-meio-ambiente">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Juntar arquivos — Planilha acumulada para exportar Kria
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-juntar">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-layer-group"></i> Acumulado (juntar arquivos)
+            <span class="status-badge idle" id="status-juntar" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              Consolida em uma única planilha. Use o ZIP que você <strong>baixou na etapa anterior</strong> (Conservação ou Meio Ambiente).
+            </p>
+
+            <div class="form-group">
+              <label><i class="fas fa-file-archive"></i> ZIP <strong>Kcor-Kria</strong> (arquivo da etapa Conservação ou Meio Ambiente) <span style="color:var(--danger)">*</span></label>
+              <div class="upload-zone" id="zone-m04-kcor" style="padding:20px">
+                <input type="file" id="file-m04-kcor" accept=".zip">
+                <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-archive"></i></div>
+                <p style="font-size:.8rem">Use o arquivo <strong>kcor_conservacao.zip</strong> ou <strong>kcor_ma.zip</strong> (não use nc_separados.zip da etapa Separar NC)</p>
+              </div>
+              <div class="file-info" id="info-m04-kcor">
+                <i class="fas fa-file-archive" style="color:var(--accent)"></i>
+                <span id="infotext-m04-kcor">nenhum</span>
+                <button type="button" onclick="clearFile('m04-kcor')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label><i class="fas fa-file-excel"></i> Planilha acumulada da rede (opcional; se não enviar, use a base do servidor)</label>
+              <div class="upload-zone" id="zone-m04-acum" style="padding:18px">
+                <input type="file" id="file-m04-acum" accept=".xlsx">
+                <p style="font-size:.75rem;color:var(--text-muted)">Busque o arquivo acumulado na rede. Sem ele nada é gerado.</p>
+              </div>
+              <div class="file-info" id="info-m04-acum">
+                <i class="fas fa-file-excel" style="color:var(--success)"></i>
+                <span id="infotext-m04-acum">nenhum</span>
+                <button type="button" onclick="clearFile('m04-acum')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label><i class="fas fa-tag"></i> Nome do arquivo de saída <span style="color:var(--text-muted);font-weight:400">(opcional)</span></label>
+              <input type="text" id="m04-nome-arquivo" class="form-input" placeholder="Ex.: 20260220-1313 - 20260220-1310 - 20260213 - CONSTATAÇÕES NC LOTE 13 (SP 075 - PAVIMENTO - DEPRESSÃO) - Prazo - 20-02-2026.xlsx" style="font-size:.8rem">
+              <p style="font-size:.75rem;color:var(--text-muted);margin-top:4px">Se preenchido, o arquivo salvo e o download terão exatamente este nome. Caso contrário, será usado data/hora + nome padrão.</p>
+            </div>
+
+            <div class="progress-bar-container" id="prog-juntar">
+              <div class="progress-bar-fill" id="progfill-juntar"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-juntar" disabled>
+                <i class="fas fa-play"></i> Consolidar
+              </button>
+              <button class="btn btn-outline" id="reset-juntar">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-juntar"></div>
+            <div class="result-area" id="result-juntar">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Acumulado gerado</strong>
+              </div>
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">Próxima etapa: <strong>Inserir Nº</strong> ou <strong>Calendário</strong></p>
+              <button class="btn btn-success" id="download-juntar">
+                <i class="fas fa-download"></i> Baixar XLSX Acumulado (para usar em Inserir Nº ou Calendário)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-juntar')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-juntar">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Inserir numeração Kria no acumulado
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-inserir-numero">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-hashtag"></i> Inserir número Kria no acumulado
+            <span class="status-badge idle" id="status-inserir-numero" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              Use a planilha da etapa <strong>Acumulado</strong>: baixe lá, insira no sistema Kria e, após a sequência ser gerada, envie aqui com número inicial e sufixo.
+            </p>
+
+            <div class="alert alert-success" style="font-size:.78rem;margin-bottom:14px;padding:12px 14px">
+              <strong><i class="fas fa-download"></i> Relatório para inserção no Kria</strong><br>
+              Baixe o arquivo da etapa <strong>Acumulado</strong> para inserir no sistema Kria. Depois envie a planilha aqui com número inicial e sufixo.
+              <div style="margin-top:10px">
+                <button type="button" class="btn btn-outline" id="btn-puxar-relatorio-kria" style="font-size:.8rem">
+                  <i class="fas fa-file-download"></i> Baixar relatório (etapa Acumulado)
+                </button>
+                <span id="puxar-relatorio-hint" style="font-size:.75rem;color:var(--text-muted);margin-left:8px;display:none">Execute primeiro a etapa <strong>Acumulado</strong> e baixe o arquivo de lá.</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label><i class="fas fa-file-excel"></i> Planilha da etapa <strong>Acumulado</strong> (.xlsx) <span style="color:var(--danger)">*</span></label>
+              <div class="upload-zone" id="zone-m05-acum" style="padding:20px">
+                <input type="file" id="file-m05-acum" accept=".xlsx">
+                <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-excel"></i></div>
+                <p style="font-size:.8rem">Acumulado (.xlsx)</p>
+              </div>
+              <div class="file-info" id="info-m05-acum">
+                <i class="fas fa-file-excel" style="color:var(--success)"></i>
+                <span id="infotext-m05-acum">nenhum</span>
+                <button type="button" onclick="clearFile('m05-acum')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Número inicial</label>
+                <input type="number" id="m05-numero" class="form-input" value="1" min="1">
+              </div>
+              <div class="form-group">
+                <label>Sufixo (ex: 13, 21, 26)</label>
+                <input type="text" id="m05-sufixo" class="form-input" value="26" maxlength="10">
+              </div>
+            </div>
+
+            <div class="progress-bar-container" id="prog-inserir-numero">
+              <div class="progress-bar-fill" id="progfill-inserir-numero"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-inserir-numero" disabled>
+                <i class="fas fa-play"></i> Inserir numeração
+              </button>
+              <button class="btn btn-outline" id="reset-inserir-numero">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-inserir-numero"></div>
+            <div class="result-area" id="result-inserir-numero">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Numeração inserida com sucesso</strong>
+              </div>
+              <button class="btn btn-success" id="download-inserir-numero">
+                <i class="fas fa-download"></i> Baixar XLSX Numerado (Inserir Nº)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-inserir-numero')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-inserir-numero">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         Exportar calendário (.ics)
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="step-panel step-panel-form-log" id="panel-exportar-calendario">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-calendar-alt"></i> Exportar eventos para calendário (.ics)
+            <span class="status-badge idle" id="status-exportar-calendario" style="margin-left:auto">
+              <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+            </span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
+              Gera um arquivo <strong>.ics</strong> com um evento por NC.
+              Importável no Outlook, Google Calendar ou Apple Calendar.<br>
+              <strong>Assunto:</strong> TipoNC — Rodovia KM Sentido — Kria: {nº}<br>
+              <strong>Data:</strong> extraída da coluna U (Observações) · <strong>Descrição:</strong> ObsGestor + Dados
+            </p>
+
+            <div class="upload-zone" id="zone-m06-acum" style="padding:20px">
+              <input type="file" id="file-m06-acum" accept=".xlsx">
+              <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-excel"></i></div>
+              <h3>Planilha da etapa <strong>Acumulado</strong></h3>
+              <p style="font-size:.8rem">Use o XLSX da etapa <strong>Acumulado</strong> (coluna Y preenchida)</p>
+            </div>
+            <div class="file-info" id="info-m06-acum">
+              <i class="fas fa-file-excel" style="color:var(--success)"></i>
+              <span id="infotext-m06-acum">nenhum</span>
+              <button type="button" onclick="clearFile('m06-acum')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+            </div>
+
+            <div class="progress-bar-container" id="prog-exportar-calendario">
+              <div class="progress-bar-fill" id="progfill-exportar-calendario"></div>
+            </div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="btn-exportar-calendario" disabled>
+                <i class="fas fa-play"></i> Gerar .ics
+              </button>
+              <button class="btn btn-outline" id="reset-exportar-calendario">
+                <i class="fas fa-redo"></i> Limpar
+              </button>
+            </div>
+            <div id="feedback-exportar-calendario"></div>
+            <div class="result-area" id="result-exportar-calendario">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                <strong>Calendário gerado</strong>
+                <span id="info-eventos-calendario" style="font-size:.8rem;color:var(--text-muted)"></span>
+              </div>
+              <button class="btn btn-success" id="download-exportar-calendario">
+                <i class="fas fa-calendar-alt"></i> Baixar arquivo .ics (Calendário)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-terminal"></i> Log de Processamento
+            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-exportar-calendario')">
+              <i class="fas fa-eraser"></i> Limpar
+            </button>
+          </div>
+          <div class="card-body">
+            <div class="log-container" id="log-exportar-calendario">
+              <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-content -->
+
+  <script>
+  /* ════════════════════════════════════════════════════════════════
+     AUTH
+  ════════════════════════════════════════════════════════════════ */
+  const loginOverlay = document.getElementById('loginOverlay');
+  const token = localStorage.getItem('artesp_token');
+  const userEmail = localStorage.getItem('artesp_user_email');
+
+  function showApp() {
+    if (loginOverlay) loginOverlay.style.display = 'none';
+    if (userEmail) {
+      const el = document.getElementById('userEmailDisplay');
+      const av = document.getElementById('userAvatar');
+      if (el) el.textContent = userEmail;
+      if (av) av.textContent = userEmail.charAt(0).toUpperCase();
+    }
+  }
+  function showLogin(msg) {
+    if (loginOverlay) loginOverlay.style.display = 'flex';
+    const fb = document.getElementById('loginFeedback');
+    if (fb) fb.innerHTML = msg ? '<div class="alert alert-warning">' + msg + '</div>' : '';
+  }
+  if (token && userEmail) showApp();
+  else showLogin('');
+
+  document.getElementById('formLogin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    const senha = (document.getElementById('loginSenha').value || '').trim();
+    const fb = document.getElementById('loginFeedback');
+    fb.innerHTML = '';
+    if (!email || !senha) { fb.innerHTML = '<div class="alert alert-danger">Preencha e-mail e senha.</div>'; return; }
+    try {
+      const r = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, senha }),
+        credentials: 'include'
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = typeof data.detail === 'string' ? data.detail
+          : (Array.isArray(data.detail) && data.detail[0]?.msg) || 'Credenciais inválidas.';
+        fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
+        return;
+      }
+      const tok = data.access_token || data.token;
+      if (!tok) { fb.innerHTML = '<div class="alert alert-danger">Servidor não retornou token.</div>'; return; }
+      localStorage.setItem('artesp_token', tok);
+      localStorage.setItem('artesp_user_email', data.email || email);
+      showApp();
+    } catch {
+      fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
+    }
+  });
+
+  document.getElementById('btnLogout').addEventListener('click', () => {
+    localStorage.removeItem('artesp_token');
+    localStorage.removeItem('artesp_user_email');
+    location.reload();
+  });
+
+  function getAuthHeader() {
+    const tk = localStorage.getItem('artesp_token');
+    return tk ? { 'Authorization': 'Bearer ' + tk } : {};
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+     CONTRATO NC — job_id (ver CONTRATO_FRONTEND_NC.md)
+     localStorage persiste entre recarregamentos; usar nas etapas de pipeline.
+  ════════════════════════════════════════════════════════════════ */
+  const NC_JOB_KEY = 'artesp_nc_job_id';
+  function getNcJobId() { return localStorage.getItem(NC_JOB_KEY) || ''; }
+  function setNcJobId(id) { if (id) localStorage.setItem(NC_JOB_KEY, id); else localStorage.removeItem(NC_JOB_KEY); }
+  function clearNcJobId() { localStorage.removeItem(NC_JOB_KEY); }
+
+  /* Nomes das etapas = texto dos botões/abas (para "Saída para:" e "Use arquivo da etapa:") */
+  const STEP_NAMES = {
+    'receber-eaf': 'Receber EAF',
+    'analisar-pdf': 'Análise PDF',
+    'extrair-pdf': 'Extrair PDF',
+    'separar': 'Separar NC',
+    'criar-email': 'E-mail',
+    'modelo-foto': 'Modelo Foto',
+    'conservacao': 'Conservação',
+    'juntar': 'Acumulado',
+    'inserir-numero': 'Inserir Nº',
+    'exportar-calendario': 'Calendário',
+    'meio-ambiente': 'Meio Ambiente'
+  };
+  /** Próxima(s) etapa(s) que usam a saída desta (para exibir "Saída para usar em: X"). */
+  const NEXT_STEP_LABEL = {
+    'separar': 'E-mail, Modelo Foto',
+    'criar-email': '—',
+    'modelo-foto': 'Conservação',
+    'conservacao': 'Acumulado',
+    'meio-ambiente': 'Acumulado',
+    'juntar': 'Inserir Nº, Calendário',
+    'inserir-numero': '—',
+    'exportar-calendario': '—',
+    'extrair-pdf': 'E-mail (imagens), Separar NC'
+  };
+  function getNextStepLabel(stepId) { return NEXT_STEP_LABEL[stepId] || '—'; }
+  function getStepName(stepId) { return STEP_NAMES[stepId] || stepId; }
+
+  /* ════════════════════════════════════════════════════════════════
+     SESSÃO COMPARTILHADA
+     _sessao.eaf  → File (Excel EAF) disponível para Separar NC
+     _sessao.pdfs → File[] (PDFs) disponível para Análise + Extrair PDF
+  ════════════════════════════════════════════════════════════════ */
+  const _sessao   = { eafs: [], pdfs: [] };  // eafs: array de File Excel (um por EAF/empresa)
+  const _gestores = {};                       // gestores de múltiplos arquivos por aba
+  const _fileKeyToBtnState = {};              // key (ex: m04-kcor) -> { btnId, requiredIds } para updateBtnState após clearFile
+
+  function _sessaoAtualizar() {
+    const chipEAF = document.getElementById('sessaoChipEAF');
+    const chipPDF = document.getElementById('sessaoChipPDF');
+    const btnLimpar = document.getElementById('btnSessaoLimpar');
+    const temAlgo = _sessao.eafs.length > 0 || _sessao.pdfs.length > 0;
+
+    if (chipEAF) {
+      const n = _sessao.eafs.length;
+      chipEAF.innerHTML = '<i class="fas fa-file-excel"></i> EAF: <b>' + n + '</b>' +
+        (n > 0 ? ' arquivo(s)' : ' — nenhum');
+      chipEAF.className = 'sessao-chip' + (n > 0 ? ' has-files' : '');
+    }
+    if (chipPDF) {
+      chipPDF.innerHTML = '<i class="fas fa-file-pdf"></i> PDFs: <b>' + _sessao.pdfs.length + '</b>';
+      chipPDF.className = 'sessao-chip' + (_sessao.pdfs.length > 0 ? ' has-pdf' : '');
+    }
+    if (btnLimpar) btnLimpar.style.display = temAlgo ? 'inline-flex' : 'none';
+
+    // Dots nas abas que têm dados de sessão disponíveis
+    _sessaoAtualizarDots();
+  }
+
+  function _sessaoAtualizarDots() {
+    document.querySelectorAll('.tab-sessao-dot').forEach(d => d.remove());
+    if (_sessao.pdfs.length > 0) {
+      ['analisar-pdf', 'extrair-pdf'].forEach(step => {
+        const tab = document.querySelector(`[data-step="${step}"]`);
+        if (tab && !tab.classList.contains('active')) {
+          const dot = document.createElement('span');
+          dot.className = 'tab-sessao-dot';
+          dot.title = `${_sessao.pdfs.length} PDF(s) da sessão disponíveis`;
+          tab.appendChild(dot);
+        }
+      });
+    }
+    if (_sessao.eafs.length > 0) {
+      const tab = document.querySelector('[data-step="separar"]');
+      if (tab && !tab.classList.contains('active')) {
+        const dot = document.createElement('span');
+        dot.className = 'tab-sessao-dot';
+        dot.title = `${_sessao.eafs.length} EAF(s) da sessão disponíveis`;
+        tab.appendChild(dot);
+      }
+    }
+  }
+
+  function _sessaoCarregarPDFsEmTab(gestorId) {
+    // Carrega PDFs da sessão no gestor da aba (se não tiver arquivos próprios)
+    const gestor = _gestores[gestorId];
+    if (!gestor || _sessao.pdfs.length === 0) return false;
+    if (gestor.getFiles().length > 0) return false;  // já tem arquivos próprios
+    const nomes = new Set(gestor.getFiles().map(f => f.name));
+    _sessao.pdfs.forEach(f => { if (!nomes.has(f.name)) gestor._addExterno(f); });
+    return true;
+  }
+
+  document.getElementById('btnSessaoLimpar').addEventListener('click', () => {
+    _sessao.eafs = [];
+    _sessao.pdfs = [];
+    _sessaoAtualizar();
+    const sr = document.getElementById('sessao-result');
+    if (sr) sr.style.display = 'none';
+  });
+
+  function irParaAba(step) {
+    document.querySelectorAll('.step-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+    const tab = document.querySelector(`[data-step="${step}"]`);
+    if (tab) tab.classList.add('active');
+    const panel = document.getElementById('panel-' + step);
+    if (panel) panel.classList.add('active');
+    _sessaoAtualizarDots();
+    _sessaoOferecer(step);
+    if (typeof atualizarBotoesSessao === 'function') atualizarBotoesSessao();
+  }
+
+  function _sessaoOferecer(step) {
+    // Sincroniza sessão com os arquivos já selecionados em Receber EAF (dispensa clicar em "Salvar na sessão")
+    if (typeof _sessaoSyncDesdeReceberEAF === 'function') _sessaoSyncDesdeReceberEAF();
+    // Quando a aba abrir, mostra aviso de sessão se aplicável
+    if ((step === 'analisar-pdf' || step === 'extrair-pdf') && _sessao.pdfs.length > 0) {
+      const gestorId = step === 'extrair-pdf' ? 'file-extrair-pdf' : null;
+      if (gestorId && _gestores[gestorId]) {
+        if (_gestores[gestorId].getFiles().length === 0) {
+          _sessao.pdfs.forEach(f => _gestores[gestorId]._addExterno(f));
+        }
+      } else if (step === 'analisar-pdf') {
+        if (_pdfsAnalise.length === 0) {
+          const nomes = new Set(_pdfsAnalise.map(f => f.name));
+          _sessao.pdfs.forEach(f => { if (!nomes.has(f.name)) _pdfsAnalise.push(f); });
+          _renderListaPdfs();
+        }
+      }
+    }
+    if (step === 'separar' && _sessao.eafs.length > 0) {
+      const gestorSep = _gestores['file-separar'];
+      if (gestorSep && gestorSep.getFiles().length === 0) {
+        _sessao.eafs.forEach(f => gestorSep._addExterno(f));
+      }
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+     STEP TABS
+  ════════════════════════════════════════════════════════════════ */
+  const _stepBtnState = {
+    'criar-email': { btnId: 'btn-criar-email', requiredIds: ['file-email-xls'] },
+    'juntar': { btnId: 'btn-juntar', requiredIds: ['file-m04-kcor', 'file-m04-acum'] },
+    'inserir-numero': { btnId: 'btn-inserir-numero', requiredIds: ['file-m05-acum'] },
+    'exportar-calendario': { btnId: 'btn-exportar-calendario', requiredIds: ['file-m06-acum'] },
+    'meio-ambiente': { btnId: 'btn-meio-ambiente', requiredIds: ['file-m07-kria'] },
+  };
+  document.getElementById('stepTabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.step-tab');
+    if (!tab) return;
+    const step = tab.dataset.step;
+    document.querySelectorAll('.step-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    const panel = document.getElementById('panel-' + step);
+    if (panel) panel.classList.add('active');
+    _sessaoAtualizarDots();
+    _sessaoOferecer(step);
+    const btnState = _stepBtnState[step];
+    if (btnState) updateBtnState(btnState.btnId, btnState.requiredIds);
+    atualizarBotoesSessao();
+  });
+
+  /* ════════════════════════════════════════════════════════════════
+     UTILITÁRIOS
+  ════════════════════════════════════════════════════════════════ */
+  function _msgErroRede(err) {
+    const m = (err && err.message) ? String(err.message).trim() : '';
+    if (!m) return 'Falha na conexão.';
+    if (m === 'Failed to fetch' || m.toLowerCase().includes('failed to fetch') || m === 'NetworkError when attempting to fetch resource.') {
+      return 'Falha na conexão com o servidor. Verifique se o servidor está rodando e se a URL está correta.';
+    }
+    if (m.toLowerCase().includes('network') || m.toLowerCase().includes('load')) {
+      return 'Erro de rede: ' + m;
+    }
+    return m;
+  }
+
+  // Padrão GeoJSON (referência: PADRAO_GEOJSON_REFERENCIA.md). Ao alterar logMsg ou limparLog,
+  // verificar TODOS os usos no arquivo (buscar por logMsg( e limparLog()).
+  // IDs de log NC: log-analisar-pdf, log-extrair-pdf, log-separar, log-modelo-foto, log-conservacao,
+  // log-meio-ambiente, log-juntar, log-inserir-numero, log-exportar-calendario, log-organizar-imagens.
+  function limparLog(id) {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>';
+  }
+
+  function logMsg(logId, text, type) {
+    const box = document.getElementById(logId);
+    if (!box) return;
+    const empty = box.querySelector('.log-empty');
+    if (empty) empty.remove();
+    const now = new Date().toLocaleTimeString('pt-BR');
+    const div = document.createElement('div');
+    div.className = 'log-line ' + (type || '');
+    div.innerHTML = '<span class="time">[' + now + ']</span> ' + text;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function setStatus(id, type, text) {
+    const el = document.getElementById('status-' + id);
+    if (!el) return;
+    const icons = { idle: 'circle', processing: 'spinner fa-spin', done: 'check-circle', error: 'times-circle' };
+    el.className = 'status-badge ' + type;
+    el.innerHTML = '<i class="fas fa-' + (icons[type] || 'circle') + '" style="font-size:.5rem"></i> ' + text;
+  }
+
+  function setProgress(id, pct, show) {
+    const c = document.getElementById('prog-' + id);
+    const f = document.getElementById('progfill-' + id);
+    if (!c || !f) return;
+    if (show) c.classList.add('show'); else c.classList.remove('show');
+    if (show && pct < 30) c.classList.add('indeterminate'); else c.classList.remove('indeterminate');
+    f.style.width = pct + '%';
+  }
+  function _uploadIndicatorShow() { const el = document.getElementById('upload-indicator'); if (el) el.classList.add('show'); }
+  function _uploadIndicatorHide() { const el = document.getElementById('upload-indicator'); if (el) el.classList.remove('show'); }
+
+  function showFeedback(id, html) {
+    const el = document.getElementById('feedback-' + id);
+    if (el) el.innerHTML = html;
+  }
+
+  function showResult(id, show) {
+    const el = document.getElementById('result-' + id);
+    if (el) el.classList.toggle('show', show);
+  }
+
+  /* ── Upload de arquivo único ── */
+  function bindFile(inputId, infoId, infotextId, btnId, requiredInputs) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const key = inputId.replace(/^file-/, '');
+    if (btnId && requiredInputs && requiredInputs.length) _fileKeyToBtnState[key] = { btnId, requiredIds: requiredInputs };
+    input.addEventListener('change', function () {
+      const f = this.files && this.files[0];
+      const info = document.getElementById(infoId);
+      const infotext = document.getElementById(infotextId);
+      if (f) {
+        if (info) info.classList.add('show');
+        if (infotext) infotext.textContent = f.name + ' (' + (f.size / 1024).toFixed(0) + ' KB)';
+      } else {
+        if (info) info.classList.remove('show');
+        if (infotext) infotext.textContent = 'nenhum';
+      }
+      if (btnId) updateBtnState(btnId, requiredInputs);
+    });
+  }
+
+  /* ── Upload múltiplos arquivos (ex.: vários PDFs) ── */
+  function bindFileMultiple(inputId, infoId, infotextId, btnId, requiredInputs, onUpdate) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const key = inputId.replace(/^file-/, '');
+    if (btnId && requiredInputs && requiredInputs.length) _fileKeyToBtnState[key] = { btnId, requiredIds: requiredInputs };
+    input.addEventListener('change', function () {
+      const files = this.files;
+      const info = document.getElementById(infoId);
+      const infotext = document.getElementById(infotextId);
+      if (files && files.length > 0) {
+        if (info) info.classList.add('show');
+        if (infotext) {
+          if (files.length === 1) {
+            infotext.textContent = files[0].name + ' (' + (files[0].size / 1024).toFixed(0) + ' KB)';
+          } else {
+            const totalKB = Array.from(files).reduce((s, f) => s + f.size, 0) / 1024;
+            infotext.textContent = files.length + ' arquivo(s) (' + totalKB.toFixed(0) + ' KB)';
+          }
+        }
+      } else {
+        if (info) info.classList.remove('show');
+        if (infotext) infotext.textContent = 'nenhum';
+      }
+      if (btnId) updateBtnState(btnId, requiredInputs);
+      if (typeof onUpdate === 'function') onUpdate();
+    });
+  }
+
+  function clearFile(key) {
+    const input = document.getElementById('file-' + key);
+    const info = document.getElementById('info-' + key);
+    const infotext = document.getElementById('infotext-' + key);
+    if (input) { input.value = ''; }
+    if (info) info.classList.remove('show');
+    if (infotext) infotext.textContent = 'nenhum';
+    const reg = _fileKeyToBtnState[key];
+    if (reg) updateBtnState(reg.btnId, reg.requiredIds);
+  }
+
+  function updateBtnState(btnId, requiredInputIds) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    const ok = requiredInputIds.every(id => {
+      const el = document.getElementById(id);
+      return el && el.files && el.files.length > 0;
+    });
+    btn.disabled = !ok;
+  }
+
+  /* ── Download de blob: enquanto não baixar, próxima fase segue sem upload (usa blob). Depois do download, exige upload do arquivo baixado. ── */
+  const _blobs = {};
+  /** True quando o usuário clicou em "Baixar" — a partir daí a próxima etapa exige upload do arquivo baixado (não usa mais o blob). */
+  const _downloadFeito = {};
+  /** Arquivo do input ou, se ainda não fez download, o blob da etapa anterior (para continuar sem upload). */
+  function getFileFromInputOrBlob(inputId, blobKey) {
+    const input = document.getElementById(inputId);
+    if (input && input.files && input.files.length > 0) return input.files[0];
+    const keys = Array.isArray(blobKey) ? blobKey : [blobKey];
+    for (const k of keys) {
+      if (!k || _downloadFeito[k]) continue;
+      const b = _blobs[k];
+      if (b) return new File([b.data], b.filename || 'arquivo', { type: b.mimeType || 'application/octet-stream' });
+    }
+    return null;
+  }
+  function atualizarBotoesSessao() {
+    const btnEmail = document.getElementById('btn-criar-email');
+    if (btnEmail) btnEmail.disabled = !getFileFromInputOrBlob('file-email-xls', 'separar');
+    const btnModelo = document.getElementById('btn-modelo-foto');
+    if (btnModelo) btnModelo.disabled = !getFileFromInputOrBlob('file-m02-xls', 'separar');
+    const btnConserv = document.getElementById('btn-conservacao');
+    if (btnConserv) btnConserv.disabled = !getFileFromInputOrBlob('file-m03-kria', 'modelo-foto');
+    const btnJuntar = document.getElementById('btn-juntar');
+    if (btnJuntar) btnJuntar.disabled = !getFileFromInputOrBlob('file-m04-kcor', ['conservacao', 'meio-ambiente']);
+    const btnInserir = document.getElementById('btn-inserir-numero');
+    if (btnInserir) btnInserir.disabled = !getFileFromInputOrBlob('file-m05-acum', 'juntar');
+    const btnExportar = document.getElementById('btn-exportar-calendario');
+    if (btnExportar) btnExportar.disabled = !getFileFromInputOrBlob('file-m06-acum', 'juntar');
+  }
+  function storeBlobForDownload(key, data, filename, mimeType) {
+    if (_blobs[key]) { try { URL.revokeObjectURL(_blobs[key].url); } catch (e) {} }
+    const blob = new Blob([data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    _blobs[key] = { url, filename, data, mimeType };
+    atualizarBotoesSessao();
+  }
+
+  async function triggerDownload(key) {
+    const b = _blobs[key];
+    if (!b) return;
+    _downloadFeito[key] = true;
+    atualizarBotoesSessao();
+    // Se o navegador suportar, abre janela para escolher onde salvar (Save As)
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        const ext = (b.filename.match(/\.[a-z0-9]+$/i) || ['.bin'])[0];
+        const handle = await window.showSaveFilePicker({
+          suggestedName: b.filename,
+          types: [{ description: 'Arquivo', accept: { [b.mimeType || 'application/octet-stream']: [ext] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([b.data], { type: b.mimeType }));
+        await writable.close();
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return; // usuário cancelou
+        // fallback para link
+      }
+    }
+    const a = document.createElement('a');
+    a.href = b.url;
+    a.download = b.filename;
+    a.click();
+  }
+
+  /* ── Chamada POST multipart e download ── */
+  async function executarModulo({ stepId, endpoint, buildFormData, filename, mimeType, logId, timeoutMs }) {
+    const tk = localStorage.getItem('artesp_token');
+    if (!tk) { showLogin('Faça login para continuar.'); return; }
+
+    const btn = document.getElementById('btn-' + stepId);
+    if (btn) btn.disabled = true;
+    setStatus(stepId, 'processing', 'Processando...');
+    setProgress(stepId, 10, true);
+    showResult(stepId, false);
+    showFeedback(stepId, '');
+    logMsg(logId, 'Enviando arquivos para o servidor...', 'info');
+    logMsg(logId, 'Processando no servidor... (aguarde, pode levar alguns minutos)', 'info');
+    _uploadIndicatorShow();
+
+    let abortController = null;
+    if (timeoutMs && timeoutMs > 0) {
+      abortController = new AbortController();
+      setTimeout(() => abortController && abortController.abort(), timeoutMs);
+    }
+
+    try {
+      const fd = buildFormData();
+      setProgress(stepId, 30, true);
+
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: fd,
+        credentials: 'include',
+        signal: abortController ? abortController.signal : undefined
+      });
+
+      setProgress(stepId, 70, true);
+
+      if (r.status === 401) {
+        localStorage.removeItem('artesp_token');
+        localStorage.removeItem('artesp_user_email');
+        showLogin('Sessão expirada. Faça login novamente.');
+        logMsg(logId, 'Sessão expirada.', 'error');
+        setStatus(stepId, 'error', 'Não autenticado');
+        return;
+      }
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        let msg = (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) || r.statusText;
+        if (r.status === 404 && (msg.includes('Workspace não encontrado') || msg.includes('primeira etapa'))) {
+          clearNcJobId();
+          msg = 'Sessão expirada ou workspace não encontrado. Inicie de novo: execute a primeira etapa do fluxo (Separar NC ou Meio Ambiente PDF, conforme o caso).';
+        }
+        logMsg(logId, 'Erro: ' + msg, 'error');
+        showFeedback(stepId, '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>');
+        setStatus(stepId, 'error', 'Erro');
+        setProgress(stepId, 0, false);
+        return;
+      }
+
+      logMsg(logId, 'Recebendo resultado do servidor...', 'info');
+      const buffer = await r.arrayBuffer();
+      setProgress(stepId, 100, true);
+
+      const cd = r.headers.get('Content-Disposition') || '';
+      let nome = filename;
+      const m = cd.match(/filename="?([^";]+)"?/);
+      if (m && m[1]) nome = m[1];
+
+      // ZIP vazio ou resposta de erro vinda como 200 (servidor antigo): tamanho mínimo ~100 bytes
+      if (buffer.byteLength < 100 && (nome.endsWith('.zip') || (mimeType && mimeType.includes('zip')))) {
+        let msg = 'O servidor devolveu um ZIP vazio. Verifique: 1) O ZIP de entrada tem planilhas .xlsx/.xls com coluna C (Código) preenchida; 2) Confira os logs do servidor.';
+        try {
+          const asText = new TextDecoder().decode(buffer.slice(0, 500));
+          if (asText.startsWith('{') && asText.includes('detail')) {
+            const o = JSON.parse(asText);
+            if (o.detail) msg = typeof o.detail === 'string' ? o.detail : JSON.stringify(o.detail);
+          }
+        } catch (_) {}
+        logMsg(logId, 'Erro: ' + msg, 'error');
+        showFeedback(stepId, '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>');
+        setStatus(stepId, 'error', 'ZIP vazio');
+        setProgress(stepId, 0, false);
+        return;
+      }
+
+      storeBlobForDownload(stepId, buffer, nome, mimeType);
+      const jobIdHeader = r.headers.get('X-NC-Job-Id');
+      if (jobIdHeader) setNcJobId(jobIdHeader);
+      logMsg(logId, 'Concluído com sucesso — arquivo: ' + nome, 'success');
+      logMsg(logId, '────────────────────────────────────', 'info');
+      setStatus(stepId, 'done', 'Concluído');
+      showResult(stepId, true);
+
+    } catch (err) {
+      const msg = err.name === 'AbortError'
+        ? 'Tempo esgotado. A operação demorou mais do que o limite. Tente com menos arquivos ou execute em lotes.'
+        : _msgErroRede(err);
+      logMsg(logId, 'Erro: ' + msg, 'error');
+      showFeedback(stepId, '<div class="alert alert-danger">' + msg + '</div>');
+      setStatus(stepId, 'error', 'Erro');
+      setProgress(stepId, 0, false);
+    } finally {
+      _uploadIndicatorHide();
+      if (btn) updateBtnState('btn-' + stepId, []);
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════
+     ANÁLISE PDF — múltiplos arquivos
+  ════════════════════════════════════════════════════════════════ */
+  let _pdfsAnalise = [];  // Array de File objects
+
+  function _renderListaPdfs() {
+    const lista   = document.getElementById('lista-pdfs-analise');
+    const ul      = document.getElementById('ul-pdfs-analise');
+    const count   = document.getElementById('count-pdfs-analise');
+    const btn     = document.getElementById('btn-analisar-pdf');
+    if (!lista || !ul || !count) return;
+
+    if (_pdfsAnalise.length === 0) {
+      lista.style.display = 'none';
+      if (btn) btn.disabled = true;
+      return;
+    }
+    lista.style.display = 'block';
+    count.textContent = _pdfsAnalise.length;
+    ul.innerHTML = _pdfsAnalise.map((f, i) =>
+      '<li style="display:flex;align-items:center;gap:8px;padding:3px 0;' +
+      (i < _pdfsAnalise.length - 1 ? 'border-bottom:1px solid var(--border-color)' : '') + '">' +
+      '<i class="fas fa-file-pdf" style="color:var(--warning);flex-shrink:0"></i>' +
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + f.name + '">' + f.name + '</span>' +
+      '<span style="color:var(--text-muted);flex-shrink:0">' + (f.size / 1024).toFixed(0) + ' KB</span>' +
+      '<button type="button" onclick="_removerPdfAnalise(' + i + ')" ' +
+      'style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 4px;font-size:.85rem" title="Remover">' +
+      '<i class="fas fa-times"></i></button></li>'
+    ).join('');
+    if (btn) btn.disabled = false;
+  }
+
+  function _removerPdfAnalise(idx) {
+    _pdfsAnalise.splice(idx, 1);
+    _renderListaPdfs();
+    if (_pdfsAnalise.length === 0) {
+      showResult('analisar-pdf', false);
+      showFeedback('analisar-pdf', '');
+    }
+  }
+
+  // Input change — acumula arquivos (não substitui) e sincroniza com sessão
+  document.getElementById('file-analisar-pdf').addEventListener('change', function () {
+    if (!this.files || !this.files.length) return;
+    const novos = Array.from(this.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    const nomesAtuais = new Set(_pdfsAnalise.map(f => f.name));
+    novos.forEach(f => { if (!nomesAtuais.has(f.name)) _pdfsAnalise.push(f); });
+    this.value = '';
+    _renderListaPdfs();
+    // Sync com sessão
+    const nomesS = new Set(_sessao.pdfs.map(f => f.name));
+    novos.forEach(f => { if (!nomesS.has(f.name)) _sessao.pdfs.push(f); });
+    _sessaoAtualizar();
+    if (novos.length) logMsg('log-analisar-pdf', novos.length + ' arquivo(s) adicionado(s).', 'info');
+  });
+
+  // Drag & drop na upload zone
+  (function () {
+    const zone = document.getElementById('zone-analisar-pdf');
+    if (!zone) return;
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || !files.length) return;
+      const novos = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      const nomesAtuais = new Set(_pdfsAnalise.map(f => f.name));
+      novos.forEach(f => { if (!nomesAtuais.has(f.name)) _pdfsAnalise.push(f); });
+      _renderListaPdfs();
+      if (novos.length) logMsg('log-analisar-pdf', novos.length + ' arquivo(s) adicionado(s) via arraste.', 'info');
+    });
+  })();
+
+  document.getElementById('clear-analisar-pdf').addEventListener('click', () => {
+    _pdfsAnalise = [];
+    _renderListaPdfs();
+    showResult('analisar-pdf', false);
+    showFeedback('analisar-pdf', '');
+    const r = document.getElementById('resumo-analisar-pdf');
+    if (r) r.innerHTML = '';
+  });
+
+  document.getElementById('reset-analisar-pdf').addEventListener('click', () => {
+    _pdfsAnalise = [];
+    _renderListaPdfs();
+    showResult('analisar-pdf', false);
+    showFeedback('analisar-pdf', '');
+    setProgress('analisar-pdf', 0, false);
+    setStatus('analisar-pdf', 'idle', 'Aguardando');
+    limparLog('log-analisar-pdf');
+    const r = document.getElementById('resumo-analisar-pdf');
+    if (r) r.innerHTML = '';
+  });
+
+  document.getElementById('btn-analisar-pdf').addEventListener('click', async () => {
+    if (_pdfsAnalise.length === 0) return;
+    const limiar = parseFloat(document.getElementById('limiar-analisar-pdf').value) || 2.0;
+    const tk = localStorage.getItem('artesp_token');
+    if (!tk) { showLogin('Faça login para continuar.'); return; }
+
+    const btn = document.getElementById('btn-analisar-pdf');
+    btn.disabled = true;
+    setStatus('analisar-pdf', 'processing', 'Analisando...');
+    setProgress('analisar-pdf', 10, true);
+    showResult('analisar-pdf', false);
+    showFeedback('analisar-pdf', '');
+
+    const plural = _pdfsAnalise.length > 1 ? _pdfsAnalise.length + ' PDFs' : '"' + _pdfsAnalise[0].name + '"';
+    logMsg('log-analisar-pdf', 'Enviando ' + plural + ' para análise...', 'info');
+    _uploadIndicatorShow();
+    try {
+      const fd = new FormData();
+      _pdfsAnalise.forEach(f => fd.append('pdfs', f));
+      fd.append('limiar_km', limiar);
+
+      setProgress('analisar-pdf', 30, true);
+      const r = await fetch('/nc/analisar-pdf', {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: fd,
+        credentials: 'include'
+      });
+      setProgress('analisar-pdf', 75, true);
+
+      if (r.status === 401) {
+        localStorage.removeItem('artesp_token');
+        localStorage.removeItem('artesp_user_email');
+        showLogin('Sessão expirada.');
+        logMsg('log-analisar-pdf', 'Sessão expirada.', 'error');
+        setStatus('analisar-pdf', 'error', 'Não autenticado');
+        btn.disabled = false;
+        return;
+      }
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        const msg = (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) || r.statusText;
+        logMsg('log-analisar-pdf', 'Erro: ' + msg, 'error');
+        showFeedback('analisar-pdf', '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>');
+        setStatus('analisar-pdf', 'error', 'Erro');
+        setProgress('analisar-pdf', 0, false);
+        btn.disabled = false;
+        return;
+      }
+
+      const total   = r.headers.get('X-NC-Total')        || '?';
+      const emerg   = r.headers.get('X-NC-Emergenciais') || '0';
+      const gaps    = r.headers.get('X-NC-Alertas')      || '0';
+      const ocultos = r.headers.get('X-NC-Ocultos')      || '0';
+      const narqs   = r.headers.get('X-NC-Arquivos')     || String(_pdfsAnalise.length);
+
+      const cd      = r.headers.get('Content-Disposition') || '';
+      const mNome   = cd.match(/filename="?([^";]+)"?/);
+      const nomePdf = mNome ? mNome[1] : 'analise_nc.pdf';
+
+      const buffer  = await r.arrayBuffer();
+      setProgress('analisar-pdf', 100, true);
+      storeBlobForDownload('analisar-pdf', buffer, nomePdf, 'application/pdf');
+
+      const resumoEl = document.getElementById('resumo-analisar-pdf');
+      if (resumoEl) {
+        resumoEl.innerHTML =
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">' +
+          '<span><i class="fas fa-file-pdf" style="color:var(--warning)"></i> <b>' + narqs + '</b> arquivo(s)</span>' +
+          '<span><i class="fas fa-clipboard-list" style="color:var(--accent)"></i> <b>' + total + '</b> NCs</span>' +
+          '<span><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> <b>' + gaps + '</b> gap(s) de KM</span>' +
+          (parseInt(ocultos) > 0
+            ? '<span style="color:var(--danger);font-weight:700"><i class="fas fa-eye-slash"></i> <b>' + ocultos + '</b> não entregue(s)</span>'
+            : '') +
+          (parseInt(emerg) > 0
+            ? '<span><i class="fas fa-fire" style="color:var(--danger)"></i> <b>' + emerg + '</b> emergencial(is)</span>'
+            : '') +
+          '</div>';
+      }
+
+      logMsg('log-analisar-pdf',
+        narqs + ' PDF(s) · ' + total + ' NCs · ' + gaps + ' alerta(s) · ' + emerg + ' emergencial(is)', 'success');
+      if (parseInt(gaps) > 0)
+        logMsg('log-analisar-pdf', '⚠ Trechos sem apontamento — verifique possíveis panelas!', 'warning');
+      if (parseInt(emerg) > 0)
+        logMsg('log-analisar-pdf', '🚨 NC(s) com prazo emergencial (≤ 24 h)!', 'error');
+      logMsg('log-analisar-pdf', '────────────────────────────────────', 'info');
+      logMsg('log-analisar-pdf', 'Relatório PDF pronto para download.', 'success');
+      setStatus('analisar-pdf', 'done', 'Concluído');
+      showResult('analisar-pdf', true);
+
+    } catch (err) {
+      logMsg('log-analisar-pdf', 'Erro: ' + _msgErroRede(err), 'error');
+      showFeedback('analisar-pdf', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
+      setStatus('analisar-pdf', 'error', 'Erro');
+      setProgress('analisar-pdf', 0, false);
+    } finally {
+      _uploadIndicatorHide();
+    }
+    btn.disabled = _pdfsAnalise.length === 0;
+  });
+
+  document.getElementById('download-analisar-pdf').addEventListener('click', () => triggerDownload('analisar-pdf'));
+
+  /* ════════════════════════════════════════════════════════════════
+     RECEBER EAF — upload combinado Excel + PDFs
+  ════════════════════════════════════════════════════════════════ */
+
+  // EAF Excels (múltiplos)
+  _gestores['file-receber-eafs'] = criarGestorMulti({
+    inputId: 'file-receber-eafs', zoneId: 'zone-receber-eafs',
+    listaId: 'lista-receber-eafs', btnId: null,
+    accept: '.xlsx,.xls', iconCls: 'fas fa-file-excel', cor: 'var(--success)',
+  });
+  const _gestorReceberEAFs = _gestores['file-receber-eafs'];
+
+  // Habilitar btn quando qualquer arquivo é adicionado
+  function _receberAtualizarBtn() {
+    document.getElementById('btn-receber-eaf').disabled =
+      _gestorReceberEAFs.getFiles().length === 0 && _gestorReceberPDFs.getFiles().length === 0;
+  }
+  document.getElementById('file-receber-eafs').addEventListener('change', () => setTimeout(_receberAtualizarBtn, 50));
+
+  // PDFs (multi)
+  _gestores['file-receber-pdfs'] = criarGestorMulti({
+    inputId: 'file-receber-pdfs', zoneId: 'zone-receber-pdfs',
+    listaId: 'lista-receber-pdfs', btnId: null,
+    accept: '.pdf', iconCls: 'fas fa-file-pdf', cor: 'var(--danger)',
+  });
+  const _gestorReceberPDFs = _gestores['file-receber-pdfs'];
+
+  /** Sincroniza _sessao com os arquivos atualmente selecionados em Receber EAF.
+   *  Assim, ao trocar para Analisar PDF / Extrair PDF / Separar, os arquivos já aparecem
+   *  sem precisar clicar em "Salvar na sessão". */
+  function _sessaoSyncDesdeReceberEAF() {
+    if (_gestorReceberEAFs) {
+      const fEAFs = _gestorReceberEAFs.getFiles();
+      const nomes = new Set(_sessao.eafs.map(f => f.name));
+      fEAFs.forEach(f => { if (!nomes.has(f.name)) _sessao.eafs.push(f); });
+    }
+    if (_gestorReceberPDFs) {
+      const fPDFs = _gestorReceberPDFs.getFiles();
+      const nomes = new Set(_sessao.pdfs.map(f => f.name));
+      fPDFs.forEach(f => { if (!nomes.has(f.name)) _sessao.pdfs.push(f); });
+    }
+    _sessaoAtualizar();
+  }
+
+  document.getElementById('file-receber-pdfs').addEventListener('change', () => setTimeout(_receberAtualizarBtn, 50));
+
+  document.getElementById('btn-receber-eaf').addEventListener('click', () => {
+    const fEAFs = _gestorReceberEAFs.getFiles();
+    const fPDFs = _gestorReceberPDFs.getFiles();
+
+    if (fEAFs.length > 0) {
+      const nomes = new Set(_sessao.eafs.map(f => f.name));
+      fEAFs.forEach(f => { if (!nomes.has(f.name)) _sessao.eafs.push(f); });
+    }
+    if (fPDFs.length > 0) {
+      const nomes = new Set(_sessao.pdfs.map(f => f.name));
+      fPDFs.forEach(f => { if (!nomes.has(f.name)) _sessao.pdfs.push(f); });
+    }
+    _sessaoAtualizar();
+
+    const sr   = document.getElementById('sessao-result');
+    const info = document.getElementById('sessao-result-info');
+    if (sr) sr.style.display = 'block';
+    if (info) {
+      info.innerHTML =
+        (fEAFs.length > 0
+          ? '<span style="margin-right:16px"><i class="fas fa-file-excel" style="color:var(--success)"></i> <b>' + fEAFs.length + '</b> Excel(s) → disponível em Separar NC</span>'
+          : '') +
+        (fPDFs.length > 0
+          ? '<span><i class="fas fa-file-pdf" style="color:var(--danger)"></i> <b>' + fPDFs.length + '</b> PDF(s) → disponíveis em Análise PDF e Extrair PDF</span>'
+          : '');
+    }
+  });
+
+  document.getElementById('reset-receber-eaf').addEventListener('click', () => {
+    _gestorReceberEAFs.reset();
+    _gestorReceberPDFs.reset();
+    document.getElementById('btn-receber-eaf').disabled = true;
+    const sr = document.getElementById('sessao-result');
+    if (sr) sr.style.display = 'none';
+  });
+
+  /* ════════════════════════════════════════════════════════════════
+     GESTOR GENÉRICO DE MÚLTIPLOS ARQUIVOS
+     criarGestorMulti(cfg) → { getFiles, reset }
+  ════════════════════════════════════════════════════════════════ */
+  function criarGestorMulti({ inputId, zoneId, listaId, btnId, accept, iconCls, cor }) {
+    let _arquivos = [];
+    const input  = document.getElementById(inputId);
+    const zone   = document.getElementById(zoneId);
+    const listaEl= document.getElementById(listaId);
+    const btn    = document.getElementById(btnId);
+    cor = cor || 'var(--accent)';
+
+    function _render() {
+      if (!listaEl) return;
+      if (_arquivos.length === 0) { listaEl.style.display = 'none'; if (btn) btn.disabled = true; return; }
+      listaEl.style.display = 'block';
+      listaEl.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">' +
+        '<span style="font-size:.78rem;font-weight:600;color:var(--text-secondary)">' +
+        '<i class="' + iconCls + '" style="color:' + cor + '"></i> ' +
+        '<b>' + _arquivos.length + '</b> arquivo(s)</span>' +
+        '<button type="button" onclick="_gestores[\'' + inputId + '\'].clearAll()" ' +
+        'class="btn btn-outline" style="padding:3px 10px;font-size:.72rem">' +
+        '<i class="fas fa-times"></i> Limpar tudo</button></div>' +
+        '<ul style="list-style:none;max-height:130px;overflow-y:auto;background:var(--bg-surface-3);' +
+        'border-radius:var(--radius-sm);padding:8px 10px;font-size:.78rem;color:var(--text-secondary)">' +
+        _arquivos.map((f, i) =>
+          '<li style="display:flex;align-items:center;gap:8px;padding:3px 0;' +
+          (i < _arquivos.length - 1 ? 'border-bottom:1px solid var(--border-color)' : '') + '">' +
+          '<i class="' + iconCls + '" style="color:' + cor + ';flex-shrink:0"></i>' +
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + f.name + '">' + f.name + '</span>' +
+          '<span style="color:var(--text-muted);flex-shrink:0">' + (f.size / 1024).toFixed(0) + ' KB</span>' +
+          '<button type="button" onclick="_gestores[\'' + inputId + '\'].remove(' + i + ')" ' +
+          'style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 4px">' +
+          '<i class="fas fa-times"></i></button></li>'
+        ).join('') + '</ul>';
+      if (btn) btn.disabled = false;
+    }
+
+    function _add(files) {
+      const ext = accept.split(',').map(e => e.trim().toLowerCase());
+      const novos = Array.from(files).filter(f => {
+        const n = f.name.toLowerCase();
+        return ext.some(e => n.endsWith(e.replace('*', '')));
+      });
+      const nomes = new Set(_arquivos.map(f => f.name));
+      novos.forEach(f => { if (!nomes.has(f.name)) _arquivos.push(f); });
+      _render();
+      return novos.length;
+    }
+
+    if (input) {
+      input.addEventListener('change', function () {
+        if (this.files && this.files.length) _add(this.files);
+        this.value = '';
+      });
+      if (zone) {
+        input.style.cssText = 'position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;cursor:pointer;';
+        zone.style.position = 'relative';
+      }
+    }
+    if (zone) {
+      zone.addEventListener('click', function (e) { if (input && !e.target.closest('button')) input.click(); });
+      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+      zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files) _add(e.dataTransfer.files);
+      });
+    }
+
+    const gestor = {
+      getFiles: () => _arquivos,
+      remove:   (i) => { _arquivos.splice(i, 1); _render(); },
+      clearAll: () => { _arquivos = []; _render(); },
+      reset:    () => { _arquivos = []; _render(); },
+      // Adiciona arquivo externo (ex: da sessão) sem disparar input change
+      _addExterno: (f) => { if (!_arquivos.find(x => x.name === f.name)) { _arquivos.push(f); _render(); } },
+    };
+    return gestor;
+  }
+
+  // (declaração movida para o início — ver linha logo abaixo de _sessao)
+
+  /* ════════════════════════════════════════════════════════════════
+     Extrair PDF (múltiplos)
+  ════════════════════════════════════════════════════════════════ */
+  _gestores['file-extrair-pdf'] = criarGestorMulti({
+    inputId: 'file-extrair-pdf', zoneId: 'zone-extrair-pdf',
+    listaId: 'lista-multi-extrair-pdf', btnId: 'btn-extrair-pdf',
+    accept: '.pdf', iconCls: 'fas fa-file-pdf', cor: 'var(--danger)',
+  });
+
+  document.getElementById('reset-extrair-pdf').addEventListener('click', () => {
+    _gestores['file-extrair-pdf'].reset();
+    showResult('extrair-pdf', false);
+    showFeedback('extrair-pdf', '');
+    setProgress('extrair-pdf', 0, false);
+    setStatus('extrair-pdf', 'idle', 'Aguardando');
+    limparLog('log-extrair-pdf');
+  });
+
+  document.getElementById('btn-extrair-pdf').addEventListener('click', async () => {
+    const files = _gestores['file-extrair-pdf'].getFiles();
+    if (!files.length) return;
+    const dpi   = parseInt(document.getElementById('dpi-extrair-pdf').value) || 150;
+    const n     = files.length;
+    const nome  = (n === 1 ? files[0].name.replace(/\.pdf$/i, '') : `lote_${n}_pdfs`) + '_imagens.zip';
+    const logId = 'log-extrair-pdf';
+    const tk    = localStorage.getItem('artesp_token');
+    if (!tk) { showLogin('Faça login para continuar.'); return; }
+
+    const btn = document.getElementById('btn-extrair-pdf');
+    btn.disabled = true;
+    setStatus('extrair-pdf', 'processing', 'Extraindo...');
+    setProgress('extrair-pdf', 10, true);
+    showResult('extrair-pdf', false);
+    showFeedback('extrair-pdf', '');
+    logMsg(logId, `Enviando ${n} PDF(s) para extração...`, 'info');
+    _uploadIndicatorShow();
+    try {
+      const fd = new FormData();
+      files.forEach(f => fd.append('pdfs', f));
+      fd.append('dpi', dpi);
+      setProgress('extrair-pdf', 30, true);
+      const r = await fetch('/nc/extrair-pdf', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
+      setProgress('extrair-pdf', 80, true);
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
+        logMsg(logId, 'Erro: ' + msg, 'error');
+        showFeedback('extrair-pdf', '<div class="alert alert-danger">' + msg + '</div>');
+        setStatus('extrair-pdf', 'error', 'Erro');
+        setProgress('extrair-pdf', 0, false);
+        btn.disabled = false; return;
+      }
+      const buf = await r.arrayBuffer();
+      setProgress('extrair-pdf', 100, true);
+      storeBlobForDownload('extrair-pdf', buf, nome, 'application/zip');
+      logMsg(logId, `${n} PDF(s) extraído(s) → ${nome}`, 'success');
+      setStatus('extrair-pdf', 'done', 'Concluído');
+      showResult('extrair-pdf', true);
+    } catch (err) {
+      logMsg(logId, 'Erro: ' + _msgErroRede(err), 'error');
+      showFeedback('extrair-pdf', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
+      setStatus('extrair-pdf', 'error', 'Erro');
+      setProgress('extrair-pdf', 0, false);
+    } finally {
+      _uploadIndicatorHide();
+    }
+    btn.disabled = _gestores['file-extrair-pdf'].getFiles().length === 0;
+  });
+
+  document.getElementById('download-extrair-pdf').addEventListener('click', () => triggerDownload('extrair-pdf'));
+
+  /* ════════════════════════════════════════════════════════════════
+     Separar NC (múltiplos)
+  ════════════════════════════════════════════════════════════════ */
+  _gestores['file-separar'] = criarGestorMulti({
+    inputId: 'file-separar', zoneId: 'zone-separar',
+    listaId: 'lista-multi-separar', btnId: 'btn-separar',
+    accept: '.xlsx,.xls', iconCls: 'fas fa-file-excel', cor: 'var(--success)',
+  });
+
+  // Sync EAFs para sessão quando adicionados diretamente no Separar NC
+  document.getElementById('file-separar').addEventListener('change', function () {
+    if (this.files && this.files.length) {
+      const nomes = new Set(_sessao.eafs.map(f => f.name));
+      Array.from(this.files).forEach(f => {
+        if (!nomes.has(f.name)) _sessao.eafs.push(f);
+      });
+      _sessaoAtualizar();
+    }
+  });
+
+  document.getElementById('reset-separar').addEventListener('click', () => {
+    _gestores['file-separar'].reset();
+    showResult('separar', false);
+    showFeedback('separar', '');
+    setProgress('separar', 0, false);
+    setStatus('separar', 'idle', 'Aguardando');
+    limparLog('log-separar');
+  });
+
+  document.getElementById('btn-separar').addEventListener('click', async () => {
+    const files = _gestores['file-separar'].getFiles();
+    if (!files.length) return;
+    const n     = files.length;
+    const logId = 'log-separar';
+    const tk    = localStorage.getItem('artesp_token');
+    if (!tk) { showLogin('Faça login para continuar.'); return; }
+
+    const btn = document.getElementById('btn-separar');
+    btn.disabled = true;
+    setStatus('separar', 'processing', 'Separando...');
+    setProgress('separar', 10, true);
+    showResult('separar', false);
+    showFeedback('separar', '');
+    logMsg(logId, `Enviando ${n} planilha(s) EAF para separação...`, 'info');
+    _uploadIndicatorShow();
+    try {
+      const fd = new FormData();
+      files.forEach(f => fd.append('eafs', f));
+      clearNcJobId();
+      setProgress('separar', 30, true);
+      const r = await fetch('/nc/separar', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
+      setProgress('separar', 80, true);
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
+        logMsg(logId, 'Erro: ' + msg, 'error');
+        showFeedback('separar', '<div class="alert alert-danger">' + msg + '</div>');
+        setStatus('separar', 'error', 'Erro');
+        setProgress('separar', 0, false);
+        btn.disabled = false; return;
+      }
+      const buf = await r.arrayBuffer();
+      const jobIdHeader = r.headers.get('X-NC-Job-Id');
+      if (jobIdHeader) setNcJobId(jobIdHeader);
+      setProgress('separar', 100, true);
+      storeBlobForDownload('separar', buf, 'nc_separados.zip', 'application/zip');
+      logMsg(logId, `${n} EAF(s) processada(s) → nc_separados.zip`, 'success');
+      if (jobIdHeader) logMsg(logId, 'job_id: ' + jobIdHeader, 'info');
+      setStatus('separar', 'done', 'Concluído');
+      showResult('separar', true);
+    } catch (err) {
+      logMsg(logId, 'Erro: ' + _msgErroRede(err), 'error');
+      showFeedback('separar', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
+      setStatus('separar', 'error', 'Erro');
+      setProgress('separar', 0, false);
+    } finally {
+      _uploadIndicatorHide();
+    }
+    btn.disabled = _gestores['file-separar'].getFiles().length === 0;
+  });
+
+  document.getElementById('download-separar').addEventListener('click', () => triggerDownload('separar'));
+
+  /* ════════════════════════════════════════════════════════════════
+     E-mail — Gerar .eml
+  ════════════════════════════════════════════════════════════════ */
+  bindFile('file-email-xls', 'info-email-xls', 'infotext-email-xls', 'btn-criar-email', ['file-email-xls']);
+  bindFile('file-email-fotos', 'info-email-fotos', 'infotext-email-fotos', null, []);
+  document.getElementById('file-email-xls').addEventListener('change', atualizarBotoesSessao);
+
+  document.getElementById('reset-criar-email').addEventListener('click', () => {
+    ['email-xls', 'email-fotos'].forEach(clearFile);
+    document.getElementById('btn-criar-email').disabled = true;
+    showResult('criar-email', false);
+    showFeedback('criar-email', '');
+    setProgress('criar-email', 0, false);
+    setStatus('criar-email', 'idle', 'Aguardando');
+    limparLog('log-criar-email');
+  });
+
+  document.getElementById('btn-criar-email').addEventListener('click', async () => {
+    const fXls = getFileFromInputOrBlob('file-email-xls', 'separar');
+    const fFotos = document.getElementById('file-email-fotos').files[0];
+    if (!fXls) {
+      showFeedback('criar-email', _downloadFeito['separar']
+        ? '<div class="alert alert-danger">Envie o ZIP da etapa <strong>Separar NC</strong>.</div>'
+        : '<div class="alert alert-danger">Selecione o ZIP da etapa <strong>Separar NC</strong> ou execute essa etapa e use o resultado aqui.</div>');
+      return;
+    }
+    await executarModulo({
+      stepId: 'criar-email',
+      endpoint: '/nc/criar-email',
+      buildFormData: () => {
+        const fd = new FormData();
+        fd.append('xls_zip', getFileFromInputOrBlob('file-email-xls', 'separar'));
+        if (fFotos) fd.append('imagens_pdf_zip', fFotos);
+        return fd;
+      },
+      filename: 'emails_nc.zip',
+      mimeType: 'application/zip',
+      logId: 'log-criar-email',
+    });
+  });
+
+  document.getElementById('download-criar-email').addEventListener('click', () => triggerDownload('criar-email'));
+
+  /* ════════════════════════════════════════════════════════════════
+     Gerar Kria e Resposta (modelo foto)
+  ════════════════════════════════════════════════════════════════ */
+  // Os inputs usam onchange no HTML + updateBtnState — nada extra necessário aqui
+
+  bindFile('file-m02-xls',  'info-m02-xls',  'infotext-m02-xls',  'btn-modelo-foto', ['file-m02-xls']);
+  bindFile('file-m02-fotos','info-m02-fotos','infotext-m02-fotos', null, []);
+  document.getElementById('file-m02-xls').addEventListener('change', atualizarBotoesSessao);
+
+  document.getElementById('reset-modelo-foto').addEventListener('click', () => {
+    ['m02-xls','m02-fotos'].forEach(clearFile);
+    document.getElementById('btn-modelo-foto').disabled = true;
+    showResult('modelo-foto', false);
+    showFeedback('modelo-foto', '');
+    setProgress('modelo-foto', 0, false);
+    setStatus('modelo-foto', 'idle', 'Aguardando');
+    limparLog('log-modelo-foto');
+  });
+
+  document.getElementById('btn-modelo-foto').addEventListener('click', async () => {
+    const fXls   = getFileFromInputOrBlob('file-m02-xls', 'separar');
+    const fFotos = document.getElementById('file-m02-fotos').files[0];
+    if (!fXls) {
+      showFeedback('modelo-foto', _downloadFeito['separar']
+        ? '<div class="alert alert-danger">Envie o ZIP da etapa <strong>Separar NC</strong>.</div>'
+        : '<div class="alert alert-danger">Selecione o ZIP da etapa <strong>Separar NC</strong> ou execute essa etapa e use o resultado aqui.</div>');
+      return;
+    }
+    await executarModulo({
+      stepId: 'modelo-foto',
+      endpoint: '/nc/gerar-modelo-foto?format=zip',
+      buildFormData: () => {
+        const fd = new FormData();
+        fd.append('xls_zip', getFileFromInputOrBlob('file-m02-xls', 'separar'));
+        if (fFotos) fd.append('fotos_pdf_zip', fFotos);
+        const j = getNcJobId();
+        if (j) fd.append('job_id', j);
+        return fd;
+      },
+      filename: 'modelos_kria.zip',
+      mimeType: 'application/zip',
+      logId: 'log-modelo-foto',
+      timeoutMs: 1800000
+    });
+  });
+
+  document.getElementById('download-modelo-foto').addEventListener('click', () => triggerDownload('modelo-foto'));
+
+  /* ════════════════════════════════════════════════════════════════
+     Kcor-Kria Conservação
+  ════════════════════════════════════════════════════════════════ */
+  ['m03-kria', 'm03-fotos'].forEach(key => {
+    bindFile('file-' + key, 'info-' + key, 'infotext-' + key, 'btn-conservacao', ['file-m03-kria']);
+  });
+  document.getElementById('file-m03-kria').addEventListener('change', atualizarBotoesSessao);
+
+  document.getElementById('reset-conservacao').addEventListener('click', () => {
+    ['m03-kria', 'm03-fotos'].forEach(clearFile);
+    document.getElementById('btn-conservacao').disabled = true;
+    showResult('conservacao', false);
+    showFeedback('conservacao', '');
+    setProgress('conservacao', 0, false);
+    setStatus('conservacao', 'idle', 'Aguardando');
+    limparLog('log-conservacao');
+  });
+
+  document.getElementById('btn-conservacao').addEventListener('click', async () => {
+    const fKria  = getFileFromInputOrBlob('file-m03-kria', 'modelo-foto');
+    const fFotos = document.getElementById('file-m03-fotos').files[0];
+    if (!fKria) {
+      showFeedback('conservacao', _downloadFeito['modelo-foto']
+        ? '<div class="alert alert-danger">Envie o ZIP da etapa <strong>Modelo Foto</strong>.</div>'
+        : '<div class="alert alert-danger">Selecione o ZIP da etapa <strong>Modelo Foto</strong> ou execute essa etapa e use o resultado aqui.</div>');
+      return;
+    }
+    await executarModulo({
+      stepId: 'conservacao',
+      endpoint: '/nc/inserir-conservacao?format=zip',
+      buildFormData: () => {
+        const fd = new FormData();
+        fd.append('kria_zip', getFileFromInputOrBlob('file-m03-kria', 'modelo-foto'));
+        if (fFotos) fd.append('fotos_zip', fFotos);
+        const j = getNcJobId();
+        if (j) fd.append('job_id', j);
+        return fd;
+      },
+      filename: 'kcor_conservacao.zip',
+      mimeType: 'application/zip',
+      logId: 'log-conservacao'
+    });
+  });
+
+  document.getElementById('download-conservacao').addEventListener('click', () => triggerDownload('conservacao'));
+
+  /* ════════════════════════════════════════════════════════════════
+     Kcor-Kria Meio Ambiente (PDF ou ZIP Kria)
+  ════════════════════════════════════════════════════════════════ */
+  function updateBtnMeioAmbiente() {
+    const fKria = document.getElementById('file-m07-kria').files[0];
+    const pdfFiles = document.getElementById('file-m07-pdf').files;
+    const hasPdf = pdfFiles && pdfFiles.length > 0;
+    document.getElementById('btn-meio-ambiente').disabled = !fKria && !hasPdf;
+  }
+  bindFile('file-m07-kria', 'info-m07-kria', 'infotext-m07-kria', null, []);
+  bindFileMultiple('file-m07-pdf', 'info-m07-pdf', 'infotext-m07-pdf', null, [], updateBtnMeioAmbiente);
+  document.getElementById('file-m07-kria').addEventListener('change', updateBtnMeioAmbiente);
+  document.getElementById('file-m07-pdf').addEventListener('change', updateBtnMeioAmbiente);
+  updateBtnMeioAmbiente();
+
+  document.getElementById('reset-meio-ambiente').addEventListener('click', () => {
+    clearFile('m07-kria');
+    clearFile('m07-pdf');
+    document.getElementById('btn-meio-ambiente').disabled = true;
+    showResult('meio-ambiente', false);
+    showFeedback('meio-ambiente', '');
+    setProgress('meio-ambiente', 0, false);
+    setStatus('meio-ambiente', 'idle', 'Aguardando');
+    limparLog('log-meio-ambiente');
+    updateBtnMeioAmbiente();
+  });
+
+  document.getElementById('btn-meio-ambiente').addEventListener('click', async () => {
+    const fKria = document.getElementById('file-m07-kria').files[0];
+    const pdfFiles = document.getElementById('file-m07-pdf').files;
+    if (pdfFiles && pdfFiles.length > 0) {
+      await executarModulo({
+        stepId: 'meio-ambiente',
+        endpoint: '/nc/inserir-meio-ambiente-pdf?format=zip',
+        buildFormData: () => {
+          const fd = new FormData();
+          for (let i = 0; i < pdfFiles.length; i++) fd.append('pdf', pdfFiles[i]);
+          const j = getNcJobId();
+          if (j) fd.append('job_id', j);
+          return fd;
+        },
+        filename: 'nc_separados_ma.zip',
+        mimeType: 'application/zip',
+        logId: 'log-meio-ambiente'
+      });
+    } else if (fKria) {
+      await executarModulo({
+        stepId: 'meio-ambiente',
+        endpoint: '/nc/inserir-meio-ambiente',
+        buildFormData: () => {
+          const fd = new FormData();
+          fd.append('kria_zip', fKria);
+          const j = getNcJobId();
+          if (j) fd.append('job_id', j);
+          return fd;
+        },
+        filename: 'kcor_ma.zip',
+        mimeType: 'application/zip',
+        logId: 'log-meio-ambiente'
+      });
+    } else {
+      showFeedback('meio-ambiente', '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Envie o <strong>PDF</strong> de NC Meio Ambiente ou o <strong>ZIP</strong> com planilhas Kria MA.</div>');
+    }
+  });
+
+  document.getElementById('download-meio-ambiente').addEventListener('click', () => triggerDownload('meio-ambiente'));
+
+  /* ════════════════════════════════════════════════════════════════
+     Acumulado (juntar arquivos)
+  ════════════════════════════════════════════════════════════════ */
+  ['m04-kcor', 'm04-acum'].forEach(key => {
+    bindFile('file-' + key, 'info-' + key, 'infotext-' + key, 'btn-juntar', ['file-m04-kcor', 'file-m04-acum']);
+  });
+  document.getElementById('file-m04-kcor').addEventListener('change', atualizarBotoesSessao);
+
+  document.getElementById('reset-juntar').addEventListener('click', () => {
+    ['m04-kcor', 'm04-acum'].forEach(clearFile);
+    const elNome = document.getElementById('m04-nome-arquivo');
+    if (elNome) elNome.value = '';
+    document.getElementById('btn-juntar').disabled = true;
+    showResult('juntar', false);
+    showFeedback('juntar', '');
+    setProgress('juntar', 0, false);
+    setStatus('juntar', 'idle', 'Aguardando');
+    limparLog('log-juntar');
+  });
+
+  document.getElementById('btn-juntar').addEventListener('click', async () => {
+    const fKcor = getFileFromInputOrBlob('file-m04-kcor', ['conservacao', 'meio-ambiente']);
+    const fAcum = document.getElementById('file-m04-acum').files[0];
+    if (!fKcor) {
+      const baixou = _downloadFeito['conservacao'] || _downloadFeito['meio-ambiente'];
+      showFeedback('juntar', baixou
+        ? '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Envie o arquivo <strong>kcor_conservacao.zip</strong> ou <strong>kcor_ma.zip</strong> (o ZIP que você baixou na etapa Conservação ou Meio Ambiente). Não use nc_separados.zip.</div>'
+        : '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione o ZIP <strong>Kcor-Kria</strong> (kcor_conservacao.zip ou kcor_ma.zip) da etapa anterior. Não use o ZIP da etapa Separar NC.</div>');
+      logMsg('log-juntar', 'Selecione o ZIP antes de consolidar.', 'warning');
+      return;
+    }
+    showFeedback('juntar', '');
+    const nomeArquivoJuntar = (document.getElementById('m04-nome-arquivo') && document.getElementById('m04-nome-arquivo').value.trim()) || '';
+    await executarModulo({
+      stepId: 'juntar',
+      endpoint: '/nc/juntar?format=xlsx',
+      buildFormData: () => {
+        const fd = new FormData();
+        fd.append('kcor_zip', getFileFromInputOrBlob('file-m04-kcor', ['conservacao', 'meio-ambiente']));
+        if (fAcum) fd.append('acumulado', fAcum);
+        if (nomeArquivoJuntar) fd.append('nome_arquivo', nomeArquivoJuntar);
+        fd.append('finalize', '1');
+        const j = getNcJobId();
+        if (j) fd.append('job_id', j);
+        return fd;
+      },
+      filename: nomeArquivoJuntar || 'acumulado.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      logId: 'log-juntar'
+    });
+  });
+
+  document.getElementById('download-juntar').addEventListener('click', () => triggerDownload('juntar'));
+
+  /* ════════════════════════════════════════════════════════════════
+     Inserir número Kria
+  ════════════════════════════════════════════════════════════════ */
+  bindFile('file-m05-acum', 'info-m05-acum', 'infotext-m05-acum', 'btn-inserir-numero', ['file-m05-acum']);
+  document.getElementById('file-m05-acum').addEventListener('change', atualizarBotoesSessao);
+
+  document.getElementById('reset-inserir-numero').addEventListener('click', () => {
+    clearFile('m05-acum');
+    document.getElementById('btn-inserir-numero').disabled = true;
+    showResult('inserir-numero', false);
+    showFeedback('inserir-numero', '');
+    setProgress('inserir-numero', 0, false);
+    setStatus('inserir-numero', 'idle', 'Aguardando');
+    limparLog('log-inserir-numero');
+  });
+
+  document.getElementById('btn-inserir-numero').addEventListener('click', async () => {
+    const f = getFileFromInputOrBlob('file-m05-acum', 'juntar');
+    const num = parseInt(document.getElementById('m05-numero').value, 10) || 1;
+    const suf = (document.getElementById('m05-sufixo').value || '26').trim();
+    if (!f) {
+      showFeedback('inserir-numero', _downloadFeito['juntar']
+        ? '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Envie a planilha da etapa <strong>Acumulado</strong>.</div>'
+        : '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione a planilha da etapa <strong>Acumulado</strong> ou execute essa etapa e use o resultado aqui.</div>');
+      logMsg('log-inserir-numero', 'Selecione o arquivo acumulado antes de inserir a numeração.', 'warning');
+      return;
+    }
+    showFeedback('inserir-numero', '');
+    await executarModulo({
+      stepId: 'inserir-numero',
+      endpoint: '/nc/inserir-numero?format=xlsx',
+      buildFormData: () => {
+        const fd = new FormData();
+        fd.append('acumulado', getFileFromInputOrBlob('file-m05-acum', 'juntar'));
+        fd.append('numero_inicial', String(num));
+        fd.append('sufixo', suf);
+        fd.append('finalize', '1');
+        const j = getNcJobId();
+        if (j) fd.append('job_id', j);
+        return fd;
+      },
+      filename: 'acumulado_' + num + suf + '.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      logId: 'log-inserir-numero'
+    });
+  });
+
+  document.getElementById('download-inserir-numero').addEventListener('click', () => triggerDownload('inserir-numero'));
+
+  /* ════════════════════════════════════════════════════════════════
+     Exportar calendário (.ics)
+  ════════════════════════════════════════════════════════════════ */
+  bindFile('file-m06-acum', 'info-m06-acum', 'infotext-m06-acum', 'btn-exportar-calendario', ['file-m06-acum']);
+  document.getElementById('file-m06-acum').addEventListener('change', atualizarBotoesSessao);
+
+  document.getElementById('reset-exportar-calendario').addEventListener('click', () => {
+    clearFile('m06-acum');
+    document.getElementById('btn-exportar-calendario').disabled = true;
+    showResult('exportar-calendario', false);
+    showFeedback('exportar-calendario', '');
+    setProgress('exportar-calendario', 0, false);
+    setStatus('exportar-calendario', 'idle', 'Aguardando');
+    limparLog('log-exportar-calendario');
+    const el = document.getElementById('info-eventos-calendario');
+    if (el) el.textContent = '';
+  });
+
+  document.getElementById('btn-exportar-calendario').addEventListener('click', async () => {
+    const f = getFileFromInputOrBlob('file-m06-acum', 'juntar');
+    if (!f) {
+      showFeedback('exportar-calendario', _downloadFeito['juntar']
+        ? '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Envie a planilha da etapa <strong>Acumulado</strong> (coluna Y preenchida).</div>'
+        : '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione a planilha da etapa <strong>Acumulado</strong> ou execute essa etapa e use o resultado aqui.</div>');
+      logMsg('log-exportar-calendario', 'Selecione o arquivo acumulado antes de gerar o calendário.', 'warning');
+      return;
+    }
+    const stem = (f.name || 'acumulado').replace(/\.xlsx?$/i, '');
+    const tk = localStorage.getItem('artesp_token');
+    if (!tk) { showLogin('Faça login para continuar.'); return; }
+
+    const btn = document.getElementById('btn-exportar-calendario');
+    btn.disabled = true;
+    showFeedback('exportar-calendario', '');
+    setStatus('exportar-calendario', 'processing', 'Gerando .ics...');
+    setProgress('exportar-calendario', 20, true);
+    showResult('exportar-calendario', false);
+    showFeedback('exportar-calendario', '');
+    logMsg('log-exportar-calendario', 'Gerando arquivo iCalendar...', 'info');
+    _uploadIndicatorShow();
+    try {
+      const fd = new FormData();
+      fd.append('acumulado', f);
+      const r = await fetch('/nc/exportar-calendario', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
+      setProgress('exportar-calendario', 80, true);
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
+        logMsg('log-exportar-calendario', 'Erro: ' + msg, 'error');
+        showFeedback('exportar-calendario', '<div class="alert alert-danger">' + msg + '</div>');
+        setStatus('exportar-calendario', 'error', 'Erro');
+        setProgress('exportar-calendario', 0, false);
+        btn.disabled = false; return;
+      }
+      const nEventos = r.headers.get('X-NC-Eventos') || '?';
+      const buf = await r.arrayBuffer();
+      setProgress('exportar-calendario', 100, true);
+      storeBlobForDownload('exportar-calendario', buf, stem + '_eventos.ics', 'text/calendar');
+      const info = document.getElementById('info-eventos-calendario');
+      if (info) info.textContent = '— ' + nEventos + ' evento(s)';
+      logMsg('log-exportar-calendario', nEventos + ' evento(s) gerado(s) → ' + stem + '_eventos.ics', 'success');
+      setStatus('exportar-calendario', 'done', 'Concluído');
+      showResult('exportar-calendario', true);
+    } catch (err) {
+      logMsg('log-exportar-calendario', 'Erro: ' + _msgErroRede(err), 'error');
+      showFeedback('exportar-calendario', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
+      setStatus('exportar-calendario', 'error', 'Erro');
+      setProgress('exportar-calendario', 0, false);
+    } finally {
+      _uploadIndicatorHide();
+    }
+    btn.disabled = false;
+  });
+
+  document.getElementById('download-exportar-calendario').addEventListener('click', () => triggerDownload('exportar-calendario'));
+
+  /* Organizar Imagens (M08) removido — era usado só em macros VBA */
+
+  /* ── Inserir número Kria: puxar relatório para inserção no sistema Kria ── */
+  function updatePuxarRelatorioButton() {
+    const hint = document.getElementById('puxar-relatorio-hint');
+    const temJuntar = _blobs['juntar'];
+    if (hint) hint.style.display = temJuntar ? 'none' : 'inline';
+  }
+
+  document.getElementById('btn-puxar-relatorio-kria').addEventListener('click', () => {
+    if (_blobs['juntar']) {
+      triggerDownload('juntar');
+    } else {
+      showFeedback('inserir-numero', '<div class="alert alert-warning"><i class="fas fa-info-circle"></i> Execute primeiro a etapa <strong>Acumulado</strong> e baixe o arquivo de lá. Insira no sistema Kria; após a sequência ser gerada, envie a planilha aqui com número inicial e sufixo.</div>');
+    }
+  });
+
+  (function() {
+    const _orig = storeBlobForDownload;
+    storeBlobForDownload = function(key, data, filename, mimeType) {
+      _orig(key, data, filename, mimeType);
+      if (key === 'juntar') updatePuxarRelatorioButton();
+    };
+  })();
+  const panelInserirNumero = document.getElementById('panel-inserir-numero');
+  if (panelInserirNumero) panelInserirNumero.addEventListener('focusin', updatePuxarRelatorioButton);
+  updatePuxarRelatorioButton();
+
+  // ── (Pipeline completo removido) ────────────────────────────────────────────
+
+  </script>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <span class="app-footer-brand">Plataforma de Conservação e Obras</span>
+      <span class="app-footer-sep">·</span>
+      <span class="app-footer-dev">Desenvolvido por Ozeias Engler</span>
+      <span class="app-footer-tagline">Geração de relatórios georreferenciados e automação de relatórios internos</span>
+    </div>
+  </footer>
+</body>
+</html>

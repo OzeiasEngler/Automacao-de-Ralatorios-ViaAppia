@@ -1,0 +1,14 @@
+.geojson-layout {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  min-height: calc(100vh - 60px);
+}
+
+.geojson-left {
+  flex: 0 0 420px;
+}
+
+.geojson-right {
+  flex: 1;
+}

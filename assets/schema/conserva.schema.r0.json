@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Schema para Programação Anual de Conservação",
+  "description": "Valida o GeoJSON da Programação Anual de Conservação (R0)",
+  "type": "object",
+  "properties": {
+    "type": {
+      "description": "Tipo principal do GeoJSON",
+      "type": "string",
+      "const": "FeatureCollection"
+    },
+    "metadata": {
+      "description": "Metadados de controle do arquivo",
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "description": "Versão do schema (R0)",
+          "type": "string",
+          "const": "R0"
+        },
+        "data_geracao": {
+          "description": "Data e hora de geração do arquivo com timezone (RFC3339, ex.: 2025-11-05T10:30:00-03:00)",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "schema_version",
+        "data_geracao"
+      ]
+    },
+    "crs": {
+      "description": "Sistema de Referência de Coordenadas (CRS) — SIRGAS2000 EPSG:4674, coordenadas em graus decimais na ordem [longitude, latitude]",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "name"
+        },
+        "properties": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "const": "urn:ogc:def:crs:EPSG::4674"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "properties"
+      ]
+    },
+    "features": {
+      "description": "Lista de serviços programados (planejados / replanejados para o exercício)",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/FeatureConservacao"
+      }
+    }
+  },
+  "required": [
+    "type",
+    "metadata",
+    "features",
+    "crs"
+  ],
+  "$defs": {
+    "FeatureConservacao": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "Feature"
+        },
+        "geometry": {
+          "$ref": "#/$defs/Geometry"
+        },
+        "properties": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "description": "Identificador único do serviço. Deve ser único em todo o arquivo GeoJSON.",
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            },
+            "lote": {
+              "description": "Identificador do lote da concessionária (formato: L + 2 dígitos, ex: L01, L22)",
+              "type": "string",
+              "pattern": "^L\\d{2}$",
+              "enum": [
+                "L01",
+                "L06",
+                "L07",
+                "L11",
+                "L13",
+                "L16",
+                "L19",
+                "L20",
+                "L21",
+                "L22",
+                "L23",
+                "L24",
+                "L25",
+                "L27",
+                "L28",
+                "L29",
+                "L30",
+                "L31",
+                "L32",
+                "L33",
+                "L34"
+              ]
+            },
+            "sentido": {
+              "description": "Sentido da via (Norte, Sul, etc.) — identidade da linha junto com KM para desenho da malha",
+              "type": "string"
+            },
+            "rodovia": {
+              "description": "Código da rodovia estadual (conforme códigos definidos e diponíveis no Portal de Dados Abertos: https://dadosabertos.artesp.sp.gov.br/dataset/programacao-de-obras)",
+              "type": "string",
+              "minLength": 9,
+              "maxLength": 10,
+              "pattern": "^(\\d{2}SPD\\d{6}|SP\\d{7}|SPM\\d{5}[A-Z]|[A-Z]{3}\\d{6}[A-Z]?)$"
+            },
+            "item": {
+              "description": "Código do item de serviço (Anexo 6). Formato letra.minor-níveis numéricos: ex. 'a.1.2'",
+              "type": "string",
+              "pattern": "^[a-z](\\.\\d+)+$"
+            },
+            "detalhamento_servico": {
+              "description": "Descrição resumida e clara do serviço (evitar siglas internas obscuras)",
+              "type": "string",
+              "minLength": 1
+            },
+            "unidade": {
+              "description": "Unidade de medida do serviço",
+              "type": "string",
+              "enum": [
+                "km",
+                "vb",
+                "un",
+                "t",
+                "kg",
+                "m",
+                "m2",
+                "m3",
+                "H/h",
+                "L",
+                "k"
+              ]
+            },
+            "quantidade": {
+              "description": "Quantidade planejada/replanejada para o período declarado (até 3 casas decimais)",
+              "type": "number",
+              "multipleOf": 0.001
+            },
+            "km_inicial": {
+              "description": "Quilômetro inicial (até 3 casas decimais)",
+              "type": "number",
+              "multipleOf": 0.001
+            },
+            "km_final": {
+              "description": "Quilômetro final (até 3 casas decimais)",
+              "type": "number",
+              "multipleOf": 0.001
+            },
+            "local": {
+              "description": "Códigos de localização predefinidos (pista, faixa, elemento físico etc.)",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "PISTA_NORTE",
+                  "PISTA_SUL",
+                  "PISTA_LESTE",
+                  "PISTA_OESTE",
+                  "CANTEIRO_CENTRAL",
+                  "EIXO_LESTE-OESTE",
+                  "EIXO_NORTE-SUL",
+                  "PISTA_EXTERNA",
+                  "PISTA_INTERNA",
+                  "MARGINAL_SUL",
+                  "MARGINAL_NORTE",
+                  "MARGINAL_LESTE",
+                  "MARGINAL_OESTE",
+                  "DISPOSITIVO",
+                  "ALÇA",
+                  "INTERLIGAÇÃO",
+                  "FX_DOM",
+                  "FX_NAO_EDIF"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "data_inicial": {
+              "description": "Data de início (formato: YYYY-MM-DD, ex.: 2025-11-15). Pode ser anterior a 2026 se a frente continuar em 2026",
+              "type": "string",
+              "format": "date"
+            },
+            "data_final": {
+              "description": "Data de término (formato: YYYY-MM-DD, ex.: 2026-07-20). Pode ser posterior a 2026 se a frente se estender além do exercício",
+              "type": "string",
+              "format": "date"
+            },
+            "observacoes_gerais": {
+              "description": "Observações gerais. Usar null se não houver. Strings vazias não são aceitas",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "description": "Status do trecho para estilo no mapa (Simplestyle): concluido, programado ou anual",
+              "type": "string",
+              "enum": ["concluido", "programado", "anual"]
+            },
+            "stroke": {
+              "description": "Cor da linha em hexadecimal (ex.: #2ecc71)",
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "stroke-width": {
+              "description": "Espessura da linha em pixels",
+              "type": "number",
+              "minimum": 0
+            },
+            "stroke-opacity": {
+              "description": "Transparência da linha (0 a 1)",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "stroke-dasharray": {
+              "description": "Padrão de traço (ex.: \"10, 10\" para tracejado, \"\" para contínuo)",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "lote",
+            "rodovia",
+            "item",
+            "detalhamento_servico",
+            "unidade",
+            "quantidade",
+            "km_inicial",
+            "km_final",
+            "local",
+            "data_inicial",
+            "data_final",
+            "observacoes_gerais"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "geometry",
+        "properties"
+      ]
+    },
+    "Geometry": {
+      "description": "Geometria GeoJSON (Point, LineString, MultiLineString, Polygon, MultiPoint ou GeometryCollection para linha + marcadores). Coordenadas em SIRGAS 2000 (urn:ogc:def:crs:EPSG::4674) [longitude, latitude] em graus decimais",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["Point", "LineString", "MultiLineString", "Polygon", "MultiPoint"] },
+            "coordinates": { "type": "array" }
+          },
+          "required": ["type", "coordinates"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "const": "GeometryCollection" },
+            "geometries": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Geometry" }
+            }
+          },
+          "required": ["type", "geometries"]
+        }
+      ]
+    }
+  }
+}

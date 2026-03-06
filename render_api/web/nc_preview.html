@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise de NC — Profissional</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+    <style>
+        :root {
+            --bg-body: #060912;
+            --bg-card: rgba(17, 24, 39, 0.8);
+            --accent: #3b82f6;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-dim: #9ca3af;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-body);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* Topbar Elegante */
+        .top-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border);
+        }
+        .btn-back {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: 0.2s;
+        }
+        .btn-back:hover { color: var(--accent); }
+
+        .user-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Layout de Duas Colunas (Apenas no PC) */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 25px;
+            align-items: start;
+        }
+
+        .glass-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 25px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-title i { color: var(--accent); }
+
+        /* Estilo da Área de Upload (Dropzone) */
+        .drop-zone {
+            border: 2px dashed #2a3a52;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.3s;
+            background: rgba(59, 130, 246, 0.02);
+        }
+        .drop-zone:hover {
+            border-color: var(--accent);
+            background: rgba(59, 130, 246, 0.08);
+        }
+        .drop-zone i {
+            font-size: 2rem;
+            color: var(--accent);
+            margin-bottom: 15px;
+        }
+
+        /* Terminal/Log de Processamento */
+        .log-container {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            background: #0a0e17;
+            border-radius: 12px;
+            padding: 20px;
+            height: 500px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+        }
+        .log-entry {
+            margin-bottom: 8px;
+            border-left: 2px solid #2a3a52;
+            padding-left: 10px;
+        }
+        .log-entry.success { border-left-color: #10b981; color: #10b981; }
+        .log-entry.info { border-left-color: var(--accent); color: var(--accent); }
+
+        /* Botão de Ação Principal */
+        .btn-action {
+            width: 100%;
+            padding: 14px;
+            margin-top: 20px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        .btn-action:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4);
+        }
+        .btn-action:active { transform: scale(0.98); }
+
+        /* Responsividade Mobile */
+        @media (max-width: 1024px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .log-container { height: 300px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="top-nav">
+        <a href="/web/home" class="btn-back"><i class="fas fa-chevron-left"></i> Voltar ao Início</a>
+        <div class="user-status"><span class="status-dot"></span> Online</div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="glass-card">
+            <div class="card-title"><i class="fas fa-cog"></i> Configurar Extração</div>
+
+            <label style="display:block; margin-bottom: 8px; font-size: 0.85rem; color: var(--text-dim);">Lote/Rodovia</label>
+            <select style="width:100%; background:#1a2236; border:1px solid var(--border); color:white; padding:10px; border-radius:8px; margin-bottom:20px;">
+                <option>Lote 13 - Todas as Rodovias</option>
+                <option>Lote 21 - Rodovias do Tietê</option>
+                <option>Lote 26</option>
+                <option>SP 300 - Marechal Rondon</option>
+            </select>
+
+            <div class="drop-zone">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p style="font-size: 0.9rem;">Arraste os PDFs aqui</p>
+                <span style="font-size: 0.75rem; color: var(--text-dim);">Suporta múltiplos arquivos</span>
+            </div>
+
+            <button type="button" class="btn-action">Iniciar Análise Inteligente</button>
+        </div>
+
+        <div class="glass-card">
+            <div class="card-title"><i class="fas fa-terminal"></i> Status do Processamento</div>
+            <div class="log-container">
+                <div class="log-entry info">[SISTEMA] Aguardando upload de arquivos...</div>
+                <div class="log-entry success">[OK] Purge de diretórios concluído.</div>
+                <div class="log-entry">[DEBUG] Script Python pronto para execução.</div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

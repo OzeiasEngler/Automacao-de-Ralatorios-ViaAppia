@@ -1,0 +1,46 @@
+═══════════════════════════════════════════════════════════════════════════════
+  TEMPLATES — TODOS EM nc_artesp/assets/templates/
+  Nomes dos relatórios de saída conforme as macros ARTESP
+═══════════════════════════════════════════════════════════════════════════════
+
+  M01 — SEPARAR NC
+    Template:     Template_EAF.xlsx
+    Pasta saída:  Exportar
+    Nome saída:   yyyymmdd - CONSTATAÇÕES NC LOTE XX (Rodovia - Tipo) - Prazo - dd-mm-yyyy.xls
+
+  M02 — GERAR MODELO FOTO (Kria + Resposta)
+    Template Kria:    Modelo Abertura Evento Kria Conserva Rotina.xlsx
+    Pasta saída Kria: Arquivos/Arquivo Foto - Conserva
+    Nome saída Kria:  yyyymmdd-hhmm - {Artesp}.xlsx
+
+    Template Resposta: Modelo.xlsx
+    Pasta saída Resp:  _Respostas/_Relatório EAF - NC/Pendentes
+    Nome saída Resp:   yyyymmdd - hhmmss - {rodovia} - dd-mm-yyyy - {nc}.xlsx
+
+  M03 — INSERIR NC CONSERVAÇÃO (Kcor-Kria)
+    Template:     _Planilha Modelo Kcor-Kria.XLSX
+    Pasta saída:  Arquivos/Conservação
+    Nome saída:   yyyymmdd-hhmm - {cco}.xlsx
+
+  M04 — JUNTAR ARQUIVOS (Acumulado para exportar Kria)
+    Template:     Eventos Acumulado Artesp para Exportar Kria.xlsx  (padrão; opcional)
+    Pasta saída:  Arquivos/Conservação/Acumulado
+    Nome saída:   yyyymmdd - hhmmss - Eventos Acumulado Artesp para Exportar Kria.xlsx
+
+  M07 — INSERIR NC MEIO AMBIENTE (Kcor-Kria MA)
+    Template:     _Planilha Modelo Kcor-Kria.XLSX  (mesmo do M03)
+    Pasta saída:  Arquivos/Meio Ambiente
+    Nome saída:   yyyymmdd-hhmm - {cco}.xlsx
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  LISTA DE ARQUIVOS EM assets/templates/
+═══════════════════════════════════════════════════════════════════════════════
+
+  • Template_EAF.xlsx
+  • Modelo Abertura Evento Kria Conserva Rotina.xlsx
+  • Modelo.xlsx
+  • _Planilha Modelo Kcor-Kria.XLSX
+  • Eventos Acumulado Artesp para Exportar Kria.xlsx  (M04 — template padrão do acumulado)
+
+═══════════════════════════════════════════════════════════════════════════════

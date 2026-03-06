@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGC ARTESP | Gestão Multi-Lote (13, 21, 26)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root { --primary: #0F2538; --accent: #3498db; --success: #2ecc71; --warning: #f1c40f; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; }
+        header { background: var(--primary); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 2000; }
+        #map { flex: 1; z-index: 1; }
+
+        /* Painel Lateral Interativo */
+        .info-panel {
+            position: absolute; top: 80px; right: 20px; width: 300px;
+            background: rgba(255,255,255,0.95); padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000;
+        }
+        .kpi-group { margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+        .kpi-title { font-size: 0.7rem; color: #7f8c8d; text-transform: uppercase; }
+        .kpi-value { font-size: 1.2rem; font-weight: bold; color: var(--primary); }
+
+        /* Tabela do Popup */
+        .popup-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .popup-table th { background: #f4f4f4; text-align: left; padding: 5px; border-bottom: 1px solid #ccc; }
+        .popup-table td { padding: 5px; border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div><strong>SGC ARTESP</strong> | Consolidado Lotes 13, 21 e 26</div>
+    <div id="status-geral" style="font-size: 0.8rem;">Status: <span style="color: var(--success);">● Sistemas Online</span></div>
+</header>
+
+<div id="map"></div>
+
+<div class="info-panel">
+    <div class="kpi-group">
+        <div class="kpi-title">Lote Selecionado</div>
+        <div class="kpi-value" id="active-lote">Todos os Lotes</div>
+    </div>
+    <div class="kpi-group">
+        <div class="kpi-title">Produção Acumulada (KM)</div>
+        <div class="kpi-value" id="total-km">0.00</div>
+    </div>
+    <div class="kpi-group" style="border:none;">
+        <div class="kpi-title">Legenda de Status</div>
+        <div style="font-size: 0.8rem; margin-top:5px;">
+            <span style="color: var(--success);">■</span> Executado (Mês Ant.)<br>
+            <span style="color: var(--warning);">---</span> Programado (Mensal)<br>
+            <span style="color: #bdc3c7;">···</span> Malha Anual
+        </div>
+    </div>
+</div>
+
+<script>
+    // Inicialização do Mapa
+    var map = L.map('map').setView([-23.1, -47.2], 8);
+
+    var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+    var sat = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { attribution: '&copy; Google' });
+
+    // Configuração de Estilo: cores por status; vermelho pulsante para conformidade 'atraso'
+    function styleLine(feature) {
+        var p = feature.properties || {};
+        var cor = p.stroke || '#3498db';
+        var dash = '';
+        var peso = p['stroke-width'] || 4;
+        if ((p.conformidade || '').toLowerCase() === 'atraso') cor = '#e74c3c';
+
+        if (p.status === 'programado' || p.tipo === 'mensal' || cor === '#f1c40f') {
+            dash = '10, 10';
+        }
+        if (p.status === 'anual' && cor !== '#e74c3c') {
+            cor = '#bdc3c7';
+            peso = 2;
+            dash = '5, 5';
+        }
+
+        return { color: cor, weight: peso, opacity: 0.8, dashArray: dash, lineJoin: 'round' };
+    }
+
+    // Interatividade: Popups, conformidade e efeito pulsante para atraso
+    function onEachFeature(feature, layer) {
+        var p = feature.properties || {};
+        var table = '<table class="popup-table">' +
+            '<tr><th colspan="2">DETALHES DO TRECHO</th></tr>' +
+            '<tr><td><b>Rodovia</b></td><td>' + (p.rodovia || '—') + '</td></tr>' +
+            '<tr><td><b>KM</b></td><td>' + (p.km_inicial != null ? p.km_inicial : '—') + ' - ' + (p.km_final != null ? p.km_final : '—') + '</td></tr>' +
+            '<tr><td><b>Serviço</b></td><td>' + (p.detalhamento_servico || p.servico || '—') + '</td></tr>' +
+            '<tr><td><b>Status</b></td><td>' + (p.status || 'Não Informado') + '</td></tr>' +
+            '<tr><td><b>Conformidade</b></td><td>' + (p.conformidade || '—') + '</td></tr>' +
+            '</table>';
+
+        layer.bindPopup(table);
+
+        var atraso = (p.conformidade || '').toLowerCase() === 'atraso';
+        var pulse = true;
+        if (atraso) {
+            layer._pulseInterval = setInterval(function() {
+                if (!layer._map) { clearInterval(layer._pulseInterval); return; }
+                pulse = !pulse;
+                layer.setStyle({ color: '#e74c3c', weight: pulse ? 6 : 4, opacity: pulse ? 1 : 0.7, lineJoin: 'round' });
+            }, 600);
+        }
+
+        layer.on('mouseover', function() {
+            if (this._pulseInterval) { clearInterval(this._pulseInterval); this._pulseInterval = null; }
+            this.setStyle({ weight: 8, color: '#FFFFFF', opacity: 1 });
+            document.getElementById('active-lote').innerText = p.lote || 'Lote Identificado';
+        });
+
+        layer.on('mouseout', function() {
+            this.setStyle(styleLine(feature));
+            if (atraso) {
+                var ly = this;
+                if (ly._pulseInterval) clearInterval(ly._pulseInterval);
+                ly._pulseInterval = setInterval(function() {
+                    if (!ly._map) { clearInterval(ly._pulseInterval); ly._pulseInterval = null; return; }
+                    pulse = !pulse;
+                    ly.setStyle({ color: '#e74c3c', weight: pulse ? 6 : 4, opacity: pulse ? 1 : 0.7, lineJoin: 'round' });
+                }, 600);
+            }
+        });
+    }
+
+    // Carrega um lote a partir de /outputs/ (requer login)
+    function carregarLote(nomeArquivo) {
+        var url = '/outputs/' + encodeURIComponent(nomeArquivo);
+        fetch(url, { credentials: 'include' })
+            .then(function(res) {
+                if (res.status === 401) throw new Error('Faça login para visualizar.');
+                if (!res.ok) throw new Error(res.statusText);
+                return res.json();
+            })
+            .then(function(data) {
+                if (!data.features || !data.features.length) return;
+                L.geoJSON(data, {
+                    style: styleLine,
+                    onEachFeature: onEachFeature,
+                    pointToLayer: function(f, latlng) { return L.circleMarker(latlng, { radius: 6, fillColor: '#D32F2F', color: '#fff', weight: 2 }); }
+                }).addTo(map);
+
+                var soma = 0;
+                data.features.forEach(function(f) {
+                    var props = f.properties || {};
+                    var ki = props.km_inicial != null ? parseFloat(props.km_inicial) : 0;
+                    var kf = props.km_final != null ? parseFloat(props.km_final) : 0;
+                    soma += Math.abs(kf - ki);
+                });
+                var el = document.getElementById('total-km');
+                el.innerText = (parseFloat(el.innerText) + soma).toFixed(2);
+
+                // Ajusta vista para incluir as features (apenas na primeira carga com dados)
+                var layer = L.geoJSON(data);
+                if (layer.getBounds && layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [30, 30], maxZoom: 14 });
+            })
+            .catch(function(e) { console.warn('Lote ' + nomeArquivo + ':', e.message); });
+    }
+
+    // Carregamento dos três lotes (arquivos em /outputs/)
+    carregarLote('L13_conservacao_2026_r0.geojson');
+    carregarLote('L21_conservacao_2026_r0.geojson');
+    carregarLote('L26_conservacao_2026_r0.geojson');
+</script>
+</body>
+</html>

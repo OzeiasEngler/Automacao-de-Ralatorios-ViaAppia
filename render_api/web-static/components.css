@@ -1,0 +1,32 @@
+.card {
+  background: #0e2335;
+  border: 1px solid #1e3d57;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+button {
+  background: #1db954;
+  border: none;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  background: #17a44a;
+}
+
+.log {
+  background: #03090f;
+  border: 1px solid #152d42;
+  border-radius: 6px;
+  padding: 10px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  min-height: 120px;
+  overflow: auto;
+}

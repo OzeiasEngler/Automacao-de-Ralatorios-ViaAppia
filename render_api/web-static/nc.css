@@ -1,0 +1,9 @@
+.nc-layout {
+  display: flex;
+  min-height: calc(100vh - 60px);
+}
+
+.nc-main {
+  flex: 1;
+  padding: 20px;
+}

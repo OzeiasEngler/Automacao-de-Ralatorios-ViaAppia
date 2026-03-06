@@ -1,0 +1,16 @@
+.fotos-layout {
+  display: flex;
+  min-height: calc(100vh - 60px);
+}
+
+.fotos-sidebar {
+  width: 260px;
+  background: #081a2a;
+  border-right: 1px solid #1c3a52;
+  padding: 16px;
+}
+
+.fotos-main {
+  flex: 1;
+  padding: 20px;
+}

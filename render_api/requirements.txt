@@ -1,0 +1,23 @@
+# Servidor Web e Framework
+fastapi
+uvicorn
+gunicorn
+python-multipart
+
+# Processamento Geoespacial e Dados
+pandas
+geopandas
+shapely
+fiona
+pyproj
+
+# Valida��o e Utilit�rios
+pydantic
+jsonschema
+python-dotenv
+
+# Excel e PDF (NC / Meio Ambiente)
+openpyxl
+pymupdf
+pillow
+pdfplumber

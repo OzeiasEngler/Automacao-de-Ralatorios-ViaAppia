@@ -1,0 +1,27 @@
+# Git e VCS
+.git
+.gitignore
+
+# Python (cache e ambiente)
+__pycache__
+*.pyc
+.pytest_cache
+venv/
+.eggs/
+*.egg-info
+
+# Ambiente e segredos
+.env
+.env.*
+
+# Dados, logs e backup (não sobem no image)
+*.log
+Backup/
+_backup_pre_unificacao/
+data/
+outputs/
+temp/
+
+# Dev/exemplo (não necessários no deploy)
+exemplo_*.py
+nc_artesp/verificar_*.py

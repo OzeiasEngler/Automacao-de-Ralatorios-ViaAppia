@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoJSON ARTESP</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+  <style>
+    /* GeoJSON: opções do relatório e downloads */
+    .opcoes-relatorio { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+    .opcoes-title { font-size: .8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .opcoes-title i { color: var(--accent); }
+    .opcoes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .opcoes-item label { display: block; font-size: .7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 4px; }
+    .opcoes-item .form-input { width: 100%; padding: 8px 10px; font-size: .82rem; background: var(--bg-surface-2); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); cursor: pointer; }
+    .opcoes-item .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+    .opcoes-check { display: inline-flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--text-secondary); cursor: pointer; }
+    .opcoes-check input { cursor: pointer; }
+    .result-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .result-downloads .btn { margin-top: 0; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+    .pulse { animation: pulse 1.5s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+  <div id="upload-indicator" class="upload-indicator" role="status" aria-live="polite" aria-label="Enviando arquivos"></div>
+
+  <!-- ═══ LOGIN OVERLAY ═══ -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card animate-in">
+      <div class="logo">
+        <div class="icon">🛣️</div>
+        <h2>Plataforma de Conservação e Obras</h2>
+        <p>Geração de relatórios georreferenciados e automação de relatórios internos.</p>
+      </div>
+      <form id="formLogin">
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="loginEmail" class="form-input" placeholder="usuario@empresa.com" required>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Senha</label>
+          <input type="password" id="loginSenha" class="form-input" placeholder="Sua senha de acesso" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;" id="btnLogin">
+          <i class="fas fa-sign-in-alt"></i> Entrar
+        </button>
+        <div id="loginFeedback"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══ TOPBAR ═══ -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="icon">🛣️</span>
+      <span>PLATAFORMA DE CONSERVAÇÃO E OBRAS - Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</span>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-user">
+        <div class="avatar" id="userAvatar">U</div>
+        <span id="userEmailDisplay">usuario@email.com</span>
+      </div>
+      <button class="btn-logout" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Sair</button>
+    </div>
+  </header>
+
+  <!-- ═══ NAVIGATION ═══ -->
+  <nav class="topnav">
+    <a href="/web"><span class="nav-icon"><i class="fas fa-home"></i></span> Início</a>
+    <a href="/web/geojson" class="active"><span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> GeoJSON ARTESP</a>
+    <a href="/web/fotos"><span class="nav-icon"><i class="fas fa-camera"></i></span> Fotos de Campo</a>
+    <a href="/web/nc"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP</a>
+    <div class="topnav-spacer"></div>
+    <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
+  </nav>
+
+  <!-- ═══ PAGE CONTENT ═══ -->
+  <div class="page-content">
+
+    <div class="page-header animate-in">
+      <div class="icon-box"><i class="fas fa-map-marked-alt"></i></div>
+      <div>
+        <h1>Gerador GeoJSON</h1>
+        <p>Upload de planilha Excel para conversão automática em GeoJSON georreferenciado</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- LEFT: Upload -->
+      <div class="card animate-in" style="animation-delay:.1s">
+        <div class="card-header">
+          <i class="fas fa-upload"></i> Upload de Arquivo
+          <div style="margin-left:auto;">
+            <span class="status-badge idle" id="statusBadge"><i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="upload-zone" id="uploadZone">
+            <input type="file" id="arquivoExcel" accept=".xlsx,.xls,.csv" style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;cursor:pointer;">
+            <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
+            <h3>Arraste o arquivo Excel aqui</h3>
+            <p>ou clique para selecionar · .xlsx, .xls, .csv</p>
+            <p style="font-size:0.7rem;color:var(--text-muted);margin-top:10px;max-width:340px;margin-left:auto;margin-right:auto;">Se o Edge ou Chrome não listar arquivos na pasta, navegue até a pasta e selecione o arquivo manualmente.</p>
+          </div>
+
+          <div class="file-info" id="fileInfo">
+            <i class="fas fa-file-excel"></i>
+            <span id="fileName">arquivo.xlsx</span>
+            <span style="margin-left:auto;color:var(--text-muted)" id="fileSize">0 KB</span>
+          </div>
+
+          <div class="opcoes-relatorio" id="opcoesRelatorio">
+            <div class="opcoes-title"><i class="fas fa-sliders-h"></i> Opções do relatório</div>
+            <div class="opcoes-grid">
+              <div class="opcoes-item">
+                <label for="selLote">Lote</label>
+                <select id="selLote" class="form-input" title="Lote ARTESP (13, 21, 26)"></select>
+              </div>
+              <div class="opcoes-item">
+                <label for="selModalidade">Tipo de relatório</label>
+                <select id="selModalidade" class="form-input" title="Conservação ou Obras"></select>
+              </div>
+              <div class="opcoes-item">
+                <label for="selVersao">Versão</label>
+                <select id="selVersao" class="form-input" title="R0 Anual, R1-R3, M Mensal, E Executado"></select>
+              </div>
+              <div class="opcoes-item">
+                <label for="selAno">Ano</label>
+                <select id="selAno" class="form-input" title="Ano do relatório"></select>
+              </div>
+              <div class="opcoes-item">
+                <label for="selMes">Mês</label>
+                <select id="selMes" class="form-input" title="Mês (para versões mensais)"><option value="">—</option></select>
+              </div>
+            </div>
+            <div class="opcoes-extras" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
+              <label class="opcoes-check"><input type="checkbox" id="chkDashboard" checked> Gerar dashboard (HTML)</label>
+              <label class="opcoes-check"><input type="checkbox" id="chkAssinar" checked> Assinar digitalmente</label>
+            </div>
+          </div>
+
+          <div class="progress-bar-container" id="progressContainer">
+            <div class="progress-bar-fill" id="progressFill"></div>
+          </div>
+
+          <div style="margin-top:20px; display:flex; gap:10px;">
+            <button class="btn btn-primary" id="btnConverter" disabled>
+              <i class="fas fa-cogs"></i> Converter para GeoJSON
+            </button>
+            <button class="btn btn-outline" id="btnLimpar">
+              <i class="fas fa-redo"></i> Limpar
+            </button>
+          </div>
+
+          <div class="result-area" id="resultArea">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+              <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+              <strong>Conversão concluída com sucesso!</strong>
+            </div>
+            <div id="resultDownloads" class="result-downloads"></div>
+            <button class="btn btn-primary" id="btnDownload" style="margin-top:8px;">
+              <i class="fas fa-download"></i> Baixar GeoJSON
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Log -->
+      <div class="card animate-in" style="animation-delay:.2s">
+        <div class="card-header">
+          <i class="fas fa-terminal"></i> Log de Processamento
+          <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" id="btnLimparLog">
+            <i class="fas fa-eraser"></i> Limpar
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="log-container" id="logBox">
+            <div class="log-empty">
+              <i class="fas fa-terminal"></i>
+              <span>Nenhuma atividade registrada</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* ═══════ AUTH ═══════ */
+    const loginOverlay = document.getElementById('loginOverlay');
+    const token = localStorage.getItem('artesp_token');
+    const userEmail = localStorage.getItem('artesp_user_email');
+
+    function showApp() {
+      loginOverlay.style.display = 'none';
+      if (userEmail) {
+        document.getElementById('userEmailDisplay').textContent = userEmail;
+        document.getElementById('userAvatar').textContent = userEmail.charAt(0).toUpperCase();
+      }
+      loadOpcoesRelatorio();
+    }
+
+    async function loadOpcoesRelatorio() {
+      try {
+        const r = await fetch('/api/config', { credentials: 'include' });
+        if (!r.ok) return;
+        const cfg = await r.json();
+        const selLote = document.getElementById('selLote');
+        const selModalidade = document.getElementById('selModalidade');
+        const selVersao = document.getElementById('selVersao');
+        const selAno = document.getElementById('selAno');
+        const selMes = document.getElementById('selMes');
+        if (selLote && cfg.lotes) {
+          selLote.innerHTML = cfg.lotes.map(function(o) { return '<option value="' + (o.key || o.sigla || '') + '">' + (o.label || o.sigla || o.key) + '</option>'; }).join('');
+        }
+        if (selModalidade && cfg.modalidades) {
+          selModalidade.innerHTML = cfg.modalidades.map(function(o) { return '<option value="' + (o.key || '') + '">' + (o.label || o.chave || o.key) + '</option>'; }).join('');
+        }
+        if (selVersao && cfg.versoes) {
+          selVersao.innerHTML = cfg.versoes.map(function(o) { return '<option value="' + (o.key || '') + '">' + (o.label || o.key) + '</option>'; }).join('');
+        }
+        const anoAtual = new Date().getFullYear();
+        if (selAno) {
+          selAno.innerHTML = '';
+          for (let a = 2035; a >= 2020; a--) {
+            const opt = document.createElement('option');
+            opt.value = String(a);
+            opt.textContent = String(a);
+            if (a === anoAtual) opt.selected = true;
+            selAno.appendChild(opt);
+          }
+        }
+        if (selMes && cfg.meses) {
+          selMes.innerHTML = '<option value="">—</option>' + cfg.meses.map(function(o) {
+            const v = o.valor != null ? o.valor : o;
+            const rot = o.rotulo != null ? o.rotulo : (typeof v === 'number' ? (v < 10 ? '0' + v : v) + ' - Mês' : String(v));
+            return '<option value="' + String(v) + '">' + rot + '</option>';
+          }).join('');
+        }
+      } catch (_) {}
+    }
+
+    function showLogin(msg) {
+      if (loginOverlay) { loginOverlay.style.display = 'flex'; }
+      var fb = document.getElementById('loginFeedback');
+      if (fb) fb.innerHTML = msg ? '<div class="alert alert-warning">' + msg + '</div>' : '';
+    }
+    if (token && userEmail) { showApp(); }
+    else if (loginOverlay) { loginOverlay.style.display = 'flex'; }
+    loadOpcoesRelatorio();
+
+    document.getElementById('formLogin').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const senha = (document.getElementById('loginSenha').value || '').trim();
+      const fb = document.getElementById('loginFeedback');
+      fb.innerHTML = '';
+      if (!email || !senha) {
+        fb.innerHTML = '<div class="alert alert-danger">Preencha e-mail e senha.</div>';
+        return;
+      }
+      try {
+        const r = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, senha: senha }),
+          credentials: 'include'
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          const msg = typeof data.detail === 'string' ? data.detail : (Array.isArray(data.detail) ? (data.detail[0] && data.detail[0].msg) || 'Erro de validação' : null) || 'Credenciais inválidas.';
+          fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
+          return;
+        }
+        const tok = data.access_token || data.token;
+        if (!tok) {
+          fb.innerHTML = '<div class="alert alert-danger">Servidor não retornou token.</div>';
+          return;
+        }
+        localStorage.setItem('artesp_token', tok);
+        localStorage.setItem('artesp_user_email', data.email || email);
+        if (typeof showApp === 'function') showApp();
+        else if (loginOverlay) loginOverlay.style.display = 'none';
+      } catch (err) {
+        fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-wifi"></i> Falha na conexão. Verifique se o servidor está rodando.</div>';
+      }
+    });
+
+    document.getElementById('btnLogout').addEventListener('click', () => {
+      localStorage.removeItem('artesp_token');
+      localStorage.removeItem('artesp_user_email');
+      location.reload();
+    });
+
+    /* ═══════ UPLOAD ═══════ */
+    const uploadZone = document.getElementById('uploadZone');
+    const inputFile = document.getElementById('arquivoExcel');
+    const fileInfo = document.getElementById('fileInfo');
+    const btnConverter = document.getElementById('btnConverter');
+    const logBox = document.getElementById('logBox');
+    let selectedFile = null;
+    let logStarted = false;
+
+    function logMsg(text, type = '') {
+      if (!logStarted) { logBox.innerHTML = ''; logStarted = true; }
+      const now = new Date().toLocaleTimeString('pt-BR');
+      const div = document.createElement('div');
+      div.className = 'log-line ' + type;
+      div.innerHTML = '<span class="time">[' + now + ']</span> ' + text;
+      logBox.appendChild(div);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    uploadZone.addEventListener('click', (e) => {
+      if (!e.target.closest('a') && !e.target.closest('button')) inputFile.click();
+    });
+    uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', () => { uploadZone.classList.remove('dragover'); });
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault(); uploadZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+
+    inputFile.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
+
+    function handleFile(file) {
+      selectedFile = file;
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+      fileInfo.classList.add('show');
+      btnConverter.disabled = false;
+      updateStatus('idle', 'Pronto');
+      logMsg('Arquivo selecionado: <strong>' + file.name + '</strong>', 'info');
+    }
+
+    function updateStatus(type, text) {
+      const badge = document.getElementById('statusBadge');
+      badge.className = 'status-badge ' + type;
+      const icons = { idle: 'circle', processing: 'spinner fa-spin', done: 'check-circle', error: 'times-circle' };
+      badge.innerHTML = '<i class="fas fa-' + (icons[type] || 'circle') + '" style="font-size:.5rem"></i> ' + text;
+    }
+
+    document.getElementById('btnLimpar').addEventListener('click', () => {
+      selectedFile = null;
+      inputFile.value = '';
+      fileInfo.classList.remove('show');
+      btnConverter.disabled = true;
+      document.getElementById('resultArea').classList.remove('show');
+      document.getElementById('progressContainer').classList.remove('show');
+      updateStatus('idle', 'Aguardando');
+    });
+
+    document.getElementById('btnLimparLog').addEventListener('click', () => {
+      logBox.innerHTML = '<div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>';
+      logStarted = false;
+    });
+
+    btnConverter.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      const tk = localStorage.getItem('artesp_token');
+      if (!tk) { logMsg('Faça login primeiro.', 'error'); return; }
+
+      updateStatus('processing', 'Processando...');
+      logMsg('Iniciando upload e conversão...', 'info');
+      const prog = document.getElementById('progressContainer');
+      const fill = document.getElementById('progressFill');
+      prog.classList.add('show');
+      prog.classList.add('indeterminate');
+      fill.style.width = '20%';
+      var uploadEl = document.getElementById('upload-indicator');
+      if (uploadEl) uploadEl.classList.add('show');
+
+      const fd = new FormData();
+      fd.append('arquivo_excel', selectedFile);
+      fd.append('lote', (document.getElementById('selLote') && document.getElementById('selLote').value) || '13');
+      fd.append('modalidade', (document.getElementById('selModalidade') && document.getElementById('selModalidade').value) || '1');
+      fd.append('versao', (document.getElementById('selVersao') && document.getElementById('selVersao').value) || 'r0');
+      fd.append('ano', (document.getElementById('selAno') && document.getElementById('selAno').value) || String(new Date().getFullYear()));
+      fd.append('mes', (document.getElementById('selMes') && document.getElementById('selMes').value) || '');
+      fd.append('correcao_eixo', 'false');
+      fd.append('dashboard', document.getElementById('chkDashboard') && document.getElementById('chkDashboard').checked ? 'true' : 'false');
+      fd.append('assinar', document.getElementById('chkAssinar') && document.getElementById('chkAssinar').checked ? 'true' : 'false');
+      fd.append('dry_run', 'false');
+
+      try {
+        const r = await fetch('/gerar-relatorio-progresso', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + tk },
+          body: fd,
+          credentials: 'include'
+        });
+        if (r.status === 401) {
+          localStorage.removeItem('artesp_token');
+          localStorage.removeItem('artesp_user_email');
+          showLogin('Sessão expirada. Faça login novamente.');
+          updateStatus('error', 'Não autenticado');
+          logMsg('Faça login novamente.', 'error');
+          return;
+        }
+        if (!r.ok || !r.body) {
+          const data = await r.json().catch(function() { return {}; });
+          updateStatus('error', 'Erro');
+          var msg = data.detail && (data.detail.message || (typeof data.detail === 'string' ? data.detail : ''));
+          logMsg('❌ Erro: ' + (msg || r.statusText), 'error');
+          return;
+        }
+        var reader = r.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var data = {};
+        while (true) {
+          var chunk = await reader.read();
+          if (chunk.done) break;
+          buffer += decoder.decode(chunk.value, { stream: true });
+          var parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (var i = 0; i < parts.length; i++) {
+            var line = parts[i];
+            if (line.indexOf('data: ') !== 0) continue;
+            try {
+              var ev = JSON.parse(line.slice(6));
+              if (ev.type === 'progress' && ev.status) {
+                logMsg(ev.status, 'info');
+                if (typeof ev.progresso === 'number') {
+                  prog.classList.remove('indeterminate');
+                  fill.style.width = Math.min(100, ev.progresso) + '%';
+                }
+              }
+              if (ev.type === 'ping' && ev.status) logMsg(ev.status, 'info');
+              if (ev.type === 'result') {
+                if (ev.status === 'sucesso') {
+                  data = { arquivos: ev.arquivos || {}, arquivos_gerados: ev.arquivos_gerados || [], artesp_meta: ev.artesp_meta, download_url: ev.arquivos && ev.arquivos.geojson ? '/outputs/' + (ev.arquivo_nome || '').split('/').pop() : '' };
+                  fill.style.width = '100%';
+                  updateStatus('done', 'Concluído');
+                  logMsg('✅ Conversão realizada com sucesso!', 'success');
+                  logMsg('────────────────────────────────────────', 'info');
+                  logMsg('<strong>EXECUÇÃO CONCLUÍDA</strong>', 'success');
+                  logMsg('Arquivo principal: ' + (ev.arquivo_nome || '—'), 'info');
+                  logMsg('Linhas processadas: ' + (ev.n_linhas_df != null ? ev.n_linhas_df : '—'), 'info');
+                  logMsg('Features geradas: ' + (ev.n_features != null ? ev.n_features : '—'), 'info');
+                  logMsg('Pendências: ' + (ev.n_pendencias != null ? ev.n_pendencias : 0), ev.n_pendencias > 0 ? 'warning' : 'info');
+                  if (ev.arquivos_gerados && ev.arquivos_gerados.length) {
+                    logMsg('Arquivos gerados: ' + ev.arquivos_gerados.join(', '), 'info');
+                  }
+                  var loteDetectado = (ev.lote_detectado != null && ev.lote_detectado !== '') ? String(ev.lote_detectado).trim() : (ev.artesp_meta && ev.artesp_meta.lote ? String(ev.artesp_meta.lote).trim() : '');
+                  if (ev.artesp_meta) {
+                    if (ev.artesp_meta.lote) {
+                      logMsg('Lote: ' + ev.artesp_meta.lote + (ev.artesp_meta.modalidade ? ' · Modalidade: ' + ev.artesp_meta.modalidade : '') + (ev.artesp_meta.versao ? ' · Versão: ' + ev.artesp_meta.versao : ''), 'info');
+                    }
+                    if (ev.artesp_meta.ano != null) logMsg('Ano: ' + ev.artesp_meta.ano + (ev.artesp_meta.mes ? ' · Mês: ' + ev.artesp_meta.mes : ''), 'info');
+                  }
+                  if (loteDetectado) {
+                    var selLote = document.getElementById('selLote');
+                    if (selLote) {
+                      var valorAtual = selLote.value;
+                      var opt = Array.prototype.find.call(selLote.options, function(o) { return o.value === loteDetectado || o.value === 'L' + loteDetectado; });
+                      if (opt) {
+                        selLote.value = opt.value;
+                        selLote.dispatchEvent(new Event('change', { bubbles: true }));
+                        if (valorAtual !== opt.value) console.log('Lote sincronizado automaticamente para: ' + opt.value);
+                      }
+                    }
+                  }
+                  logMsg('ZIP disponível com todos os relatórios na estrutura de pastas (como no Render).', 'info');
+                  logMsg('────────────────────────────────────────', 'info');
+                  document.getElementById('resultArea').classList.add('show');
+                  var dl = document.getElementById('resultDownloads');
+                  dl.innerHTML = '';
+                  var arquivos = data.arquivos || {};
+                  if (data.arquivos_gerados && data.arquivos_gerados.length && data.artesp_meta) {
+                    var btnZip = document.createElement('button');
+                    btnZip.className = 'btn btn-primary';
+                    btnZip.innerHTML = '<i class="fas fa-file-archive"></i> Baixar todos os relatórios (ZIP com pasta)';
+                    btnZip.onclick = async function() {
+                      try {
+                        var headers = { 'Content-Type': 'application/json' };
+                        var token = localStorage.getItem('artesp_token');
+                        if (token) headers['Authorization'] = 'Bearer ' + token;
+                        var z = await fetch('/outputs/zip', {
+                          method: 'POST',
+                          headers: headers,
+                          body: JSON.stringify({ files: data.arquivos_gerados, artesp_meta: data.artesp_meta }),
+                          credentials: 'include'
+                        });
+                        if (!z.ok) {
+                          var err = await z.text();
+                          logMsg('Falha no download do ZIP: ' + (z.status === 401 ? 'Faça login novamente.' : (err || 'Erro ' + z.status)), 'error');
+                          return;
+                        }
+                        var blob = await z.blob();
+                        var nome = (data.artesp_meta && data.artesp_meta.nome_zip) ? data.artesp_meta.nome_zip : 'artesp_relatorio_auditoria.zip';
+                        var u = URL.createObjectURL(blob);
+                        var a = document.createElement('a');
+                        a.href = u;
+                        a.download = nome;
+                        a.click();
+                        URL.revokeObjectURL(u);
+                        logMsg('Download do ZIP iniciado: ' + nome, 'success');
+                      } catch (e) {
+                        logMsg('Erro ao baixar ZIP: ' + (e.message || e), 'error');
+                      }
+                    };
+                    dl.appendChild(btnZip);
+                  }
+                  if (arquivos.geojson) {
+                    var b = document.createElement('a');
+                    b.className = 'btn btn-outline';
+                    b.href = arquivos.geojson;
+                    b.target = '_blank';
+                    b.innerHTML = '<i class="fas fa-download"></i> GeoJSON';
+                    dl.appendChild(b);
+                  }
+                  if (arquivos.excel) {
+                    var b = document.createElement('a');
+                    b.className = 'btn btn-outline';
+                    b.href = arquivos.excel;
+                    b.target = '_blank';
+                    b.innerHTML = '<i class="fas fa-file-excel"></i> Excel';
+                    dl.appendChild(b);
+                  }
+                  if (arquivos.pdf) {
+                    var b = document.createElement('a');
+                    b.className = 'btn btn-outline';
+                    b.href = arquivos.pdf;
+                    b.target = '_blank';
+                    b.innerHTML = '<i class="fas fa-file-pdf"></i> PDF';
+                    dl.appendChild(b);
+                  }
+                  if (arquivos.dashboard) {
+                    var b = document.createElement('a');
+                    b.className = 'btn btn-outline';
+                    b.href = arquivos.dashboard;
+                    b.target = '_blank';
+                    b.innerHTML = '<i class="fas fa-chart-line"></i> Dashboard';
+                    dl.appendChild(b);
+                  }
+                  if (arquivos.pendencias) {
+                    var b = document.createElement('a');
+                    b.className = 'btn btn-outline';
+                    b.href = arquivos.pendencias;
+                    b.target = '_blank';
+                    b.innerHTML = '<i class="fas fa-list"></i> Pendencias';
+                    dl.appendChild(b);
+                  }
+                  document.getElementById('btnDownload').onclick = function() { window.open(arquivos.geojson || data.download_url, '_blank'); };
+                } else if (ev.status === 'error') {
+                  updateStatus('error', 'Erro');
+                  logMsg('❌ ' + (ev.detail || 'Falha na conversão.'), 'error');
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (err) {
+        updateStatus('error', 'Erro');
+        logMsg('❌ Falha de conexão com o servidor.', 'error');
+      } finally {
+        if (prog) prog.classList.remove('indeterminate');
+        uploadEl = document.getElementById('upload-indicator');
+        if (uploadEl) uploadEl.classList.remove('show');
+      }
+    });
+  </script>
+
+  <footer class="app-footer">
+    <div class="app-footer-inner">
+      <span class="app-footer-brand">Plataforma de Conservação e Obras</span>
+      <span class="app-footer-sep">·</span>
+      <span class="app-footer-dev">Desenvolvido por Ozeias Engler</span>
+      <span class="app-footer-tagline">Geração de relatórios georreferenciados e automação de relatórios internos</span>
+    </div>
+  </footer>
+</body>
+</html>

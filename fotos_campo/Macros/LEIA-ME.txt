@@ -1,0 +1,30 @@
+Macros e equivalências — Módulo Fotos de Campo
+══════════════════════════════════════════════
+
+O módulo fotos_campo (Python) replica o fluxo das "Macros Panelas (Coord Renomear)"
+de forma independente de Excel/VBA, para uso em servidor web e CLI.
+
+Equivalência fluxo (fotos_campo/core.py):
+  1. Listar          → listar_de_zip / listar_arquivos_subpastas  (Módulo 1)
+  2. Coordenadas     → processar_coordenadas_km / coordenadas_km_bytes (Módulo 2)
+  3. Renomear        → copiar_renomear_xlsx (Módulo 3)
+  4. Relatório 2 Lados → gerar_relatorio_foto2lados / relatorio_foto2lados_bytes (Módulo 4)
+  5. Exportar KCor   → exportar_kcor / exportar_kcor_bytes (Módulo 5)
+
+Pastas de macros VBA (projeto):
+  • nc_artesp/Macros/  — macros EAF/NC; as que envolvem modelo/foto e Kria:
+    - 02 - Art_022_EAF_Gerar_Mod_Ft_Exc_NC.bas  (Gerar Modelo Foto Excel NC)
+    - 03 - Art_031_EAF_Rotina_Gerar_Kria.bas
+    - 08 - Salvar_IMG_NC_Artesp_Pasta_Sep.bas
+
+Template usado pelo relatório Foto 2 Lados (Módulo 4):
+  nc_artesp/assets/Planilha Modelo Conservação - Foto 2 Lados.xlsx
+
+Dimensões das fotos no relatório (conforme macro Art_022):
+  AddPicture Width:=275, Height:=210 (pontos) → em pixels (96 DPI): 367 x 280
+  O core usa esse mínimo para a foto preencher o quadro e não ficar miniatura.
+
+Relação Total (coordenadas por lote) fica em:
+  fotos_campo/assets/  — Relação Total - Lote 13.xlsx, Lote 21.xlsx, Lote 26.xlsx (ou .csv)
+
+Desenvolvedor: Ozeias Engler

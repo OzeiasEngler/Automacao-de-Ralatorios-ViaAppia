@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.eggs/
+venv/
+.mypy_cache/
+
+# Ambiente e credenciais (Segurança!)
+.env
+.env.local
+.env.*
+client_secret*.json
+*.pfx
+*.pfx.password
+ARTESP_PFX
+ARTESP_PFX_PASSWORD
+
+# Build e Executáveis
+dist/
+build/
+*.spec
+GeradorARTESP.exe
+.pyarmor/
+
+# IDE e editor
+.cursor/
+
+# Dados, Logs e Saídas
+*.log
+temp/
+outputs/
+data/
+users.json
+Backup/
+_backup_pre_unificacao/
+acumulado.xlsx
+Imagens/
+PHOTO-*.jpg
+_test_*.geojson
+
+# Módulos duplicados (evitar no repo)
+nc_artesp/modulos/gerar_modelo_foto *.py
