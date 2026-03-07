@@ -11,11 +11,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    /* Layout Fotos (igual NC Preview: duas colunas, glass cards) */
+    /* Layout Fotos: duas colunas na mesma proporção (50/50) */
     .fotos-page .page-content { padding: 24px 20px; max-width: none; }
     .fotos-page .dashboard-grid {
       display: grid;
-      grid-template-columns: 400px 1fr;
+      grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
       gap: 25px;
       align-items: start;
     }
@@ -54,7 +54,8 @@
       background: #0a0e17;
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.08);
-      min-height: 400px;
+      min-height: 280px;
+      max-height: 55vh;
     }
     .fotos-page .btn-action {
       width: 100%;
@@ -73,10 +74,10 @@
     .fotos-page .btn-action:active { transform: scale(0.98); }
     .fotos-page .btn-action:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     .fotos-page .result-area { margin-top: 20px; }
-    .fotos-page .log-container .log-empty { min-height: 360px; }
-    @media (max-width: 1024px) {
+    .fotos-page .log-container .log-empty { min-height: 260px; }
+    @media (max-width: 900px) {
       .fotos-page .dashboard-grid { grid-template-columns: 1fr; }
-      .fotos-page .log-container { min-height: 300px; }
+      .fotos-page .log-container { min-height: 280px; max-height: 400px; }
     }
   </style>
 </head>

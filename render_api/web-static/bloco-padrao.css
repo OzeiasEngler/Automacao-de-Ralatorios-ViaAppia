@@ -232,11 +232,19 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   .topbar-right { width: 100%; order: 10; margin-left: 0; margin-top: 4px; justify-content: flex-end; }
   .card-header, .card { font-size: .9rem; }
   .log-container { min-height: 220px; }
-  .app-footer { padding: 10px 14px 10px 20px; }
+  /* Rodapé visível no mobile: body pode rolar para não cortar o footer */
+  body { overflow-y: auto; min-height: 100vh; }
+  .app-footer {
+    padding: 12px 14px 14px;
+    flex-shrink: 0;
+    display: block;
+    visibility: visible;
+  }
   .app-footer-tagline { display: none; }
-  .app-footer-inner { flex-direction: column; gap: 2px; }
+  .app-footer-inner { flex-direction: column; gap: 4px; text-align: center; }
   .app-footer-sep { display: none; }
-  .app-footer-dev { font-size: .68rem; }
+  .app-footer-dev { font-size: .75rem; }
+  .app-footer-brand { font-size: .8rem; }
 }
 @media (max-width: 480px) {
   html { font-size: 13px; }
