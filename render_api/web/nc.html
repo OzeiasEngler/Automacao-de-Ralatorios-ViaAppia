@@ -12,9 +12,9 @@
   <style>
     /* NC: ícone da página (destaque vermelho) */
     #nc-page .page-header .icon-box { background: linear-gradient(135deg, var(--danger), #dc2626); }
-    /* Padrão igual a Separar NC e Modelo Foto: formulário à esquerda, log à direita */
+    /* Formulário e log na mesma proporção (50% cada) */
     .step-panel-form-log .grid-2 {
-      grid-template-columns: minmax(280px, 1fr) minmax(340px, 400px);
+      grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
       gap: 24px;
       align-items: start;
     }
@@ -38,8 +38,8 @@
     }
     .step-panel-form-log .grid-2 .card:last-child .log-container {
       flex: 1;
-      min-height: 200px;
-      max-height: 50vh;
+      min-height: 240px;
+      max-height: 55vh;
     }
     /* Mobile: formulário acima do log, mesma disposição horizontal dos outros módulos */
     @media (max-width: 900px) {
@@ -66,34 +66,68 @@
 
     /* ── Step tabs ──────────────────────────────────────────────────────── */
     .step-tabs {
-      display: flex; gap: 4px; flex-wrap: wrap;
+      display: flex; gap: 6px; flex-wrap: wrap;
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
       border-radius: var(--radius);
       padding: 8px;
     }
     .step-tab {
-      display: flex; align-items: center; gap: 6px;
-      padding: 7px 14px; border-radius: var(--radius-sm);
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 14px; border-radius: var(--radius-sm);
       font-size: .8rem; font-weight: 600;
       color: var(--text-secondary); cursor: pointer;
-      border: none; background: transparent;
-      transition: var(--transition); white-space: nowrap;
+      border: 1px solid rgba(0,0,0,.15);
+      background: var(--bg-surface-2);
+      transition: transform .15s ease, box-shadow .15s ease;
+      white-space: nowrap;
       font-family: inherit;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 2px 4px rgba(0,0,0,.25), 0 3px 6px rgba(0,0,0,.15);
     }
-    .step-tab:hover { background: var(--bg-surface-3); color: var(--text-primary); }
+    .step-tab:hover {
+      background: var(--bg-surface-3);
+      color: var(--text-primary);
+      transform: translateY(-1px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 8px rgba(0,0,0,.3), 0 6px 12px rgba(0,0,0,.2);
+    }
+    .step-tab:active {
+      transform: translateY(1px);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.2);
+    }
     .step-tab.active {
-      background: rgba(239,68,68,.15);
+      background: rgba(239,68,68,.2);
       color: var(--danger);
-      border: 1px solid rgba(239,68,68,.25);
+      border: 1px solid rgba(239,68,68,.4);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.1), 0 2px 6px rgba(239,68,68,.25), 0 3px 8px rgba(0,0,0,.2);
+    }
+    .step-tab.active:hover {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 4px 10px rgba(239,68,68,.3), 0 6px 12px rgba(0,0,0,.25);
     }
     .step-tab .step-num {
       width: 18px; height: 18px; border-radius: 50%;
       background: var(--bg-surface-3);
-      display: flex; align-items: center; justify-content: center;
+      display: inline-flex; align-items: center; justify-content: center;
       font-size: .65rem; font-weight: 700;
+      flex-shrink: 0;
     }
     .step-tab.active .step-num { background: var(--danger); color: #fff; }
+    /* Mobile: rolagem horizontal para manter um bloco por botão e alinhamento correto */
+    @media (max-width: 900px) {
+      .step-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 6px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+      }
+      .step-tabs::-webkit-scrollbar { height: 6px; }
+      .step-tabs::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+      .step-tab {
+        flex-shrink: 0;
+        min-width: max-content;
+      }
+    }
 
     /* ── Step panels ────────────────────────────────────────────────────── */
     .step-panel { display: none; }
@@ -133,6 +167,40 @@
       display: none; align-items: center; gap: 8px; margin-top: 10px;
     }
     .sessao-aviso.show { display: flex; }
+
+    /* ── Botões 3D (NC) ─────────────────────────────────────────────────── */
+    #nc-page .btn {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 2px 4px rgba(0,0,0,.2), 0 3px 6px rgba(0,0,0,.12);
+      border: 1px solid rgba(0,0,0,.1);
+      transition: transform .15s ease, box-shadow .15s ease;
+      white-space: nowrap;
+    }
+    #nc-page .btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 4px 8px rgba(0,0,0,.25), 0 6px 12px rgba(0,0,0,.15);
+    }
+    #nc-page .btn:active:not(:disabled) {
+      transform: translateY(1px);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.15);
+    }
+    #nc-page .btn-primary {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 3px 6px rgba(59,130,246,.35), 0 4px 10px rgba(0,0,0,.2);
+    }
+    #nc-page .btn-primary:hover:not(:disabled) {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 5px 12px rgba(59,130,246,.4), 0 6px 14px rgba(0,0,0,.25);
+    }
+    #nc-page .btn-primary:active:not(:disabled) {
+      box-shadow: inset 0 2px 6px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.2);
+    }
+    #nc-page .btn-success {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 3px 6px rgba(16,185,129,.3), 0 4px 8px rgba(0,0,0,.15);
+    }
+    #nc-page .btn-success:hover:not(:disabled) {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 5px 10px rgba(16,185,129,.35), 0 6px 12px rgba(0,0,0,.2);
+    }
+    #nc-page .btn-success:active:not(:disabled) {
+      box-shadow: inset 0 2px 5px rgba(0,0,0,.25), 0 1px 3px rgba(0,0,0,.15);
+    }
 
   </style>
 </head>
