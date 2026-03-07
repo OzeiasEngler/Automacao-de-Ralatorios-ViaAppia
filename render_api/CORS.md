@@ -52,6 +52,14 @@ ARTESP_CORS_ORIGINS=*
 
 A API reflete o header `Origin` da requisição, permitindo que qualquer domínio chame a API. Não use em produção se houver dados sensíveis.
 
+## Backup da configuração (Render)
+
+Valor em uso no Render para o site em produção. Use esta string exata ao criar um novo serviço ou restaurar a config:
+
+```
+ARTESP_CORS_ORIGINS=https://www.gestao-rodovias.com.br,https://gestao-rodovias.com.br
+```
+
 ## Onde definir
 
 - **Render:** Dashboard do serviço → Environment → Add Variable → `ARTESP_CORS_ORIGINS` → valor acima → Save e redeploy.
