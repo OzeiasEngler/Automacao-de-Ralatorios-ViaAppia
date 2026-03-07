@@ -231,6 +231,10 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   .topbar-brand > span:last-child { font-size: .68rem; }
   .topbar-right { width: 100%; order: 10; margin-left: 0; margin-top: 4px; justify-content: flex-end; }
   .card-header, .card { font-size: .9rem; }
+  .card { min-width: 0; overflow: visible; width: 100%; }
+  .card-body { min-width: 0; overflow: visible; }
+  .card-body .btn { flex-shrink: 0; }
+  .btn-row { flex-wrap: wrap !important; }
   .log-container { min-height: 220px; }
   /* Rodapé visível no mobile: body pode rolar para não cortar o footer */
   body { overflow-y: auto; min-height: 100vh; }
@@ -381,6 +385,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .bg-accent-glow { background: rgba(59, 130, 246, 0.2); color: var(--accent); }
 .text-accent { color: var(--accent); }
 .fw-600 { font-weight: 600; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
 /* ── Linha de NC (card por item) ── */
 .nc-row.card {

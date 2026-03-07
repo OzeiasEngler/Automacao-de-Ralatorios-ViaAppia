@@ -17,7 +17,7 @@
       display: grid;
       grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
       gap: 25px;
-      align-items: start;
+      align-items: stretch;
     }
     .fotos-page .glass-card {
       background: rgba(17, 24, 39, 0.8);
@@ -27,10 +27,14 @@
       border-radius: 16px;
       padding: 18px;
     }
-    .fotos-page .dashboard-grid .glass-card:first-child {
-      max-height: calc(55vh + 80px);
+    .fotos-page .dashboard-grid .glass-card {
       display: flex;
       flex-direction: column;
+      min-height: 0;
+    }
+    .fotos-page .dashboard-grid .glass-card:first-child,
+    .fotos-page .dashboard-grid .glass-card:last-child {
+      max-height: calc(55vh + 80px);
     }
     .fotos-page .dashboard-grid .glass-card:first-child .card-title {
       flex-shrink: 0;
@@ -56,6 +60,8 @@
       border-color: var(--accent);
       background: rgba(59, 130, 246, 0.08);
     }
+    .fotos-page .dashboard-grid .glass-card:last-child .card-title { flex-shrink: 0; }
+    .fotos-page .dashboard-grid .glass-card:last-child .log-container { flex: 1; min-height: 0; }
     .fotos-page .log-container {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.85rem;
@@ -63,7 +69,6 @@
       border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.08);
       min-height: 220px;
-      max-height: 55vh;
     }
     .fotos-page .btn-action {
       width: 100%;
@@ -85,6 +90,9 @@
     .fotos-page .log-container .log-empty { min-height: 200px; }
     @media (max-width: 900px) {
       .fotos-page .dashboard-grid { grid-template-columns: 1fr; }
+      .fotos-page .dashboard-grid .glass-card:first-child,
+      .fotos-page .dashboard-grid .glass-card:last-child { max-height: none; }
+      .fotos-page .dashboard-grid .glass-card:last-child .log-container { flex: none; }
       .fotos-page .log-container { min-height: 280px; max-height: 400px; }
     }
   </style>
