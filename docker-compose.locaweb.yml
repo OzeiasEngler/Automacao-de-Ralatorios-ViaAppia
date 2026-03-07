@@ -1,0 +1,20 @@
+# Deploy da API na Locaweb (VPS). Use: docker compose -f docker-compose.locaweb.yml up -d
+# Crie .env no mesmo diretório com ARTESP_DATA_DIR, ARTESP_OUTPUT_DIR e JWT_SECRET.
+
+services:
+  api:
+    build: .
+    image: api-artesp:locaweb
+    container_name: api-artesp
+    restart: unless-stopped
+    ports:
+      - "10000:10000"
+    env_file: .env
+    environment:
+      - ARTESP_DATA_DIR=/data
+      - ARTESP_OUTPUT_DIR=/data/outputs
+    volumes:
+      - locaweb_data:/data
+
+volumes:
+  locaweb_data:

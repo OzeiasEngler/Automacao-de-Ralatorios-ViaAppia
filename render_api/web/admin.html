@@ -6,7 +6,243 @@
   <title>Admin — ARTESP WEB</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
   <style>
-    :root{--bg-body:#0b0f19;--bg-surface:#111827;--bg-surface-2:#1a2236;--bg-surface-3:#1f2b3e;--border-color:#2a3a52;--text-primary:#e8edf5;--text-secondary:#8899b0;--text-muted:#5a6f8a;--accent:#3b82f6;--accent-hover:#2563eb;--accent-glow:rgba(59,130,246,.25);--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--info:#06b6d4;--gold:#f59e0b;--radius:12px;--radius-sm:8px;--shadow:0 4px 24px rgba(0,0,0,.35);--shadow-lg:0 8px 40px rgba(0,0,0,.5);--transition:.25s cubic-bezier(.4,0,.2,1);--topbar-h:56px;--nav-h:46px}
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}html{font-size:14px}
-    body{font-family:'Inter',system-ui,sans-serif;background:var(--
+    .admin-wrap { flex: 1; padding: 24px; overflow-y: auto; }
+    .admin-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .admin-header .icon-box { width: 48px; height: 48px; border-radius: var(--radius); background: var(--accent-glow); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+    .admin-header h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 4px; }
+    .admin-header p { font-size: .85rem; color: var(--text-muted); margin: 0; }
+    .admin-card { max-width: 480px; }
+    .admin-card .card-header { margin-bottom: 16px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: .78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-group .form-input { width: 100%; padding: 10px 14px; background: var(--bg-surface-2); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary); font-size: .88rem; }
+    .form-group .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+    .form-group select.form-input { cursor: pointer; }
+    .btn-admin { margin-top: 8px; }
+    .admin-forbidden { text-align: center; padding: 48px 24px; }
+    .admin-forbidden .icon { font-size: 3rem; color: var(--warning); margin-bottom: 16px; }
+    .admin-forbidden h2 { font-size: 1.2rem; margin-bottom: 8px; }
+    .admin-forbidden p { color: var(--text-muted); margin-bottom: 20px; }
+    .admin-feedback { margin-top: 12px; padding: 10px 14px; border-radius: var(--radius-sm); font-size: .85rem; }
+    .admin-feedback.success { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .admin-feedback.error { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-card animate-in">
+      <div class="logo">
+        <div class="icon">🛣️</div>
+        <h2>Plataforma de Conservação e Obras</h2>
+        <p>Área administrativa. Faça login com uma conta de administrador.</p>
+      </div>
+      <form id="formLogin">
+        <div class="form-group">
+          <label><i class="fas fa-envelope"></i> E-mail</label>
+          <input type="email" id="loginEmail" class="form-input" placeholder="admin@empresa.com" required>
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-lock"></i> Senha</label>
+          <input type="password" id="loginSenha" class="form-input" placeholder="Senha" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;" id="btnLogin">
+          <i class="fas fa-sign-in-alt"></i> Entrar
+        </button>
+        <div id="loginFeedback"></div>
+      </form>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="icon">🛣️</span>
+      <span>PLATAFORMA DE CONSERVAÇÃO E OBRAS — Admin</span>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-user">
+        <div class="avatar" id="userAvatar">A</div>
+        <span id="userEmailDisplay">admin@email.com</span>
+      </div>
+      <a href="/web" class="btn btn-outline" style="margin-right:8px;padding:8px 14px;font-size:.8rem"><i class="fas fa-home"></i> Início</a>
+      <button class="btn-logout" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Sair</button>
+    </div>
+  </header>
+
+  <nav class="topnav">
+    <a href="/web"><span class="nav-icon"><i class="fas fa-home"></i></span> Início</a>
+    <a href="/web/geojson"><span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> GeoJSON</a>
+    <a href="/web/fotos"><span class="nav-icon"><i class="fas fa-camera"></i></span> Fotos</a>
+    <a href="/web/nc"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC</a>
+    <div class="topnav-spacer"></div>
+    <a href="/web/admin" class="active"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
+  </nav>
+
+  <main class="page-content">
+    <div class="admin-wrap">
+      <div id="adminForbidden" class="admin-forbidden" style="display:none">
+        <div class="icon"><i class="fas fa-lock"></i></div>
+        <h2>Acesso restrito</h2>
+        <p>Apenas administradores podem acessar esta página. Faça login com uma conta de administrador.</p>
+        <a href="/web" class="btn btn-primary"><i class="fas fa-home"></i> Voltar ao início</a>
+      </div>
+
+      <div id="adminPanel" style="display:none">
+        <div class="admin-header animate-in">
+          <div class="icon-box"><i class="fas fa-cog"></i></div>
+          <div>
+            <h1>Painel administrativo</h1>
+            <p>Cadastro de analistas e usuários da plataforma</p>
+          </div>
+        </div>
+        <div class="card animate-in admin-card">
+          <div class="card-header">
+            <i class="fas fa-user-plus"></i> Adicionar usuário
+          </div>
+          <div class="card-body">
+            <form id="formNovoUsuario">
+              <div class="form-group">
+                <label for="novoEmail">E-mail</label>
+                <input type="email" id="novoEmail" class="form-input" placeholder="usuario@empresa.com" required>
+              </div>
+              <div class="form-group">
+                <label for="novaSenha">Senha</label>
+                <input type="password" id="novaSenha" class="form-input" placeholder="Senha de acesso" required>
+              </div>
+              <div class="form-group">
+                <label for="novoRole">Perfil</label>
+                <select id="novoRole" class="form-input">
+                  <option value="user">Usuário</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary btn-admin">
+                <i class="fas fa-plus"></i> Cadastrar
+              </button>
+              <div id="formFeedback"></div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (function() {
+      const loginOverlay = document.getElementById('loginOverlay');
+      const adminForbidden = document.getElementById('adminForbidden');
+      const adminPanel = document.getElementById('adminPanel');
+
+      function getToken() { return localStorage.getItem('artesp_token'); }
+      function getAuthHeader() {
+        const tk = getToken();
+        return tk ? { 'Authorization': 'Bearer ' + tk } : {};
+      }
+
+      function showApp() {
+        if (loginOverlay) loginOverlay.style.display = 'none';
+        document.querySelector('.topbar').style.display = 'flex';
+        document.querySelector('.topnav').style.display = 'flex';
+        const email = localStorage.getItem('artesp_user_email') || '';
+        const span = document.getElementById('userEmailDisplay');
+        if (span) span.textContent = email;
+        const av = document.getElementById('userAvatar');
+        if (av) av.textContent = (email.charAt(0) || 'U').toUpperCase();
+        checkAdmin();
+      }
+
+      async function checkAdmin() {
+        const r = await fetch('/admin/check', { credentials: 'include', headers: getAuthHeader() });
+        if (r.status === 403 || !r.ok) {
+          adminForbidden.style.display = 'block';
+          adminPanel.style.display = 'none';
+          return;
+        }
+        adminForbidden.style.display = 'none';
+        adminPanel.style.display = 'block';
+      }
+
+      if (getToken() && localStorage.getItem('artesp_user_email')) {
+        showApp();
+      } else {
+        if (loginOverlay) loginOverlay.style.display = 'flex';
+      }
+
+      document.getElementById('formLogin').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value.trim();
+        const senha = (document.getElementById('loginSenha').value || '').trim();
+        const fb = document.getElementById('loginFeedback');
+        fb.innerHTML = '';
+        if (!email || !senha) {
+          fb.innerHTML = '<div class="alert alert-danger">Preencha e-mail e senha.</div>';
+          return;
+        }
+        try {
+          const r = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, senha: senha }),
+            credentials: 'include'
+          });
+          const data = await r.json().catch(function() { return {}; });
+          if (!r.ok) {
+            const msg = (typeof data.detail === 'string') ? data.detail : (Array.isArray(data.detail) && data.detail[0] && data.detail[0].msg) || 'Credenciais inválidas.';
+            fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
+            return;
+          }
+          const tok = data.access_token || data.token;
+          if (!tok) {
+            fb.innerHTML = '<div class="alert alert-danger">Servidor não retornou token.</div>';
+            return;
+          }
+          localStorage.setItem('artesp_token', tok);
+          localStorage.setItem('artesp_user_email', data.email || email);
+          showApp();
+        } catch (err) {
+          fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
+        }
+      });
+
+      document.getElementById('formNovoUsuario').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('novoEmail').value.trim();
+        const senha = document.getElementById('novaSenha').value;
+        const role = document.getElementById('novoRole').value || 'user';
+        const fb = document.getElementById('formFeedback');
+        fb.innerHTML = '';
+        if (!email || !senha) {
+          fb.innerHTML = '<div class="admin-feedback error">Preencha e-mail e senha.</div>';
+          return;
+        }
+        try {
+          const r = await fetch('/admin/adicionar-usuario', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+            credentials: 'include',
+            body: JSON.stringify({ email: email, senha: senha, role: role })
+          });
+          const data = await r.json().catch(function() { return {}; });
+          if (!r.ok) {
+            const msg = (typeof data.detail === 'string') ? data.detail : 'Erro ao cadastrar.';
+            fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
+            return;
+          }
+          fb.innerHTML = '<div class="admin-feedback success"><i class="fas fa-check"></i> ' + (data.message || 'Usuário cadastrado.') + '</div>';
+          document.getElementById('novoEmail').value = '';
+          document.getElementById('novaSenha').value = '';
+        } catch (err) {
+          fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
+        }
+      });
+
+      document.getElementById('btnLogout').addEventListener('click', function() {
+        localStorage.removeItem('artesp_token');
+        localStorage.removeItem('artesp_user_email');
+        location.reload();
+      });
+    })();
+  </script>
+</body>
+</html>

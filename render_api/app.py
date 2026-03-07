@@ -214,21 +214,53 @@ except ImportError:
     except ImportError as _e:
         logging.warning("Router /nc não carregado: %s", _e)
 
-# [P0] CORS — allow_credentials=True exige origens explícitas (não "*")
+# CORS: para carregar GeoJSON/API em mapa em site externo (ex.: Locaweb), inclua a origem
+# em ARTESP_CORS_ORIGINS. Com allow_credentials=True não dá para usar "*"; use lista explícita
+# ou ARTESP_CORS_ORIGINS=* para refletir qualquer Origin (menos seguro, útil para testes).
 _cors_raw = (os.getenv("ARTESP_CORS_ORIGINS") or "").strip()
-_CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else [
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:3000",
-]
+_CORS_REFLECT_ANY = _cors_raw.strip().lower() == "*"
+_CORS_ORIGINS: list[str] = []
+if _CORS_REFLECT_ANY:
+    _CORS_ORIGINS = []  # middleware customizado reflete o Origin
+else:
+    _CORS_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw else [
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+    ]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if _CORS_REFLECT_ANY:
+
+    @app.middleware("http")
+    async def cors_reflect_origin(request: Request, call_next):
+        origin = request.headers.get("origin")
+        if request.method == "OPTIONS":
+            r = Response(status_code=204)
+            if origin:
+                r.headers["Access-Control-Allow-Origin"] = origin
+                r.headers["Access-Control-Allow-Credentials"] = "true"
+                r.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                r.headers["Access-Control-Allow-Headers"] = "*"
+                r.headers["Access-Control-Max-Age"] = "86400"
+            return r
+        response = await call_next(request)
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Expose-Headers"] = "*"
+        return response
+
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["Content-Disposition"],
+    )
 
 if STATIC_DIR.is_dir():
     app.mount("/web-static", StaticFiles(directory=str(STATIC_DIR)), name="web_static")
