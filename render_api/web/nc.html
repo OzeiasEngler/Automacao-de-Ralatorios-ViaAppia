@@ -62,6 +62,10 @@
       .step-panel-form-log .grid-2 .card:last-child .log-container {
         max-height: 260px;
       }
+      /* Botões visíveis no mobile: card não corta conteúdo */
+      #nc-page .card { overflow: visible; width: 100%; min-width: 0; }
+      #nc-page .card-body { overflow: visible; min-width: 0; }
+      #nc-page .step-panel-form-log .card:last-child .card-body { overflow: auto; }
     }
 
     /* ── Step tabs ──────────────────────────────────────────────────────── */
@@ -111,21 +115,15 @@
       flex-shrink: 0;
     }
     .step-tab.active .step-num { background: var(--danger); color: #fff; }
-    /* Mobile: rolagem horizontal para manter um bloco por botão e alinhamento correto */
+    /* Mobile: abas em múltiplas linhas para todos os botões visíveis (sem scroll) */
     @media (max-width: 900px) {
       .step-tabs {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding-bottom: 6px;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: thin;
+        flex-wrap: wrap;
+        overflow: visible;
+        gap: 8px;
       }
-      .step-tabs::-webkit-scrollbar { height: 6px; }
-      .step-tabs::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
       .step-tab {
         flex-shrink: 0;
-        min-width: max-content;
       }
     }
 
