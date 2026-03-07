@@ -1,40 +1,42 @@
-# Render — Usar o repositório correto (GeradorARTESP)
+# Render — Usar o novo repositório (Automacao-de-Ralatorios-ViaAppia)
 
-Se a página inicial que abre no Render **não é deste projeto** (outra interface, outro título), o serviço está ligado ao **repositório errado** ou o Git local estava apontando para o projeto antigo.
+## Trocar repositório no serviço existente
 
-## 1. Git local — apontar para GeradorARTESP
+1. Acesse **[dashboard.render.com](https://dashboard.render.com)** e faça login.
+2. Abra o serviço **artesp-geojson-api** (ou o nome atual).
+3. Vá em **Settings** → **Build & Deploy** → **Repository**.
+4. Clique em **Change repository** e selecione:
+   - **OzeiasEngler / Automacao-de-Ralatorios-ViaAppia**
+5. Confirme. **Root Directory** deve ficar vazio (raiz do repositório).
+6. Vá em **Manual Deploy** → **Deploy latest commit**.
 
-**Já corrigido:** o `origin` foi alterado para o repositório **GeradorARTESP**.
+---
 
-Para conferir:
-```bash
-git remote -v
+## Ou criar um serviço novo (Blueprint)
+
+1. Em **Dashboard** → **New** → **Blueprint**.
+2. Conecte o GitHub e selecione **OzeiasEngler/Automacao-de-Ralatorios-ViaAppia**.
+3. O Render detecta o `render.yaml` (ou `render_api/render.yaml`).
+4. Se pedir **Root Directory**, deixe vazio ou use `.` (raiz).
+5. Ajuste as variáveis de ambiente e clique em **Apply**.
+6. Se houver serviço antigo, pode **pausar** ou **excluir** após o novo estar ok.
+
+---
+
+## Variáveis de ambiente (Settings → Environment)
+
+| Chave | Descrição |
+|-------|-----------|
+| `ARTESP_JWT_SECRET` | Segredo JWT (produção) |
+| `ARTESP_WEB_USERS` | Usuários: `user1:hash1,user2:hash2` |
+| `ARTESP_WEB_PBKDF2_ITERATIONS` | Iterações PBKDF2 (opcional) |
+| `ARTESP_PFX_PASSWORD` | Senha do certificado (opcional) |
+| `ARTESP_PFX_CONTENT` | Certificado em Base64 (opcional) |
+
+---
+
+## URL do repositório
+
 ```
-Deve mostrar: `origin  https://github.com/oseiasengler/GeradorARTESP.git`
-
-Se ainda aparecer `artesp-geojson-generator`, corrija com:
-```bash
-git remote set-url origin https://github.com/oseiasengler/GeradorARTESP.git
+https://github.com/OzeiasEngler/Automacao-de-Ralatorios-ViaAppia
 ```
-
-Assim, ao dar `git push`, o código sobe para o **GeradorARTESP**, e o Render (quando conectado a esse repo) fará o deploy correto.
-
-## 2. Como corrigir no Render (painel)
-
-1. Acesse **[dashboard.render.com](https://dashboard.render.com)** e entre no seu usuário.
-2. Abra o serviço **artesp-geojson-api** (ou o nome que você deu).
-3. Vá em **Settings** (Configurações).
-4. Na seção **Build & Deploy** (ou **Repository**), localize **Repository** / **Connected Repository**.
-5. Clique em **Change repository** (ou equivalente) e selecione:
-   - **GeradorARTESP** (repositório que contém este projeto: GeoJSON, NC, Fotos, malhas L13/L21/L26).
-6. Confirme. O **Root Directory** deve ficar **vazio** (raiz do repositório).
-7. Faça um **Manual Deploy** (Deploy → Deploy latest commit) para subir o código do GeradorARTESP.
-
-**Importante:** No Render, em **Settings** → **Repository**, o repositório conectado deve ser **GeradorARTESP** (não artesp-geojson-generator). Se estiver o antigo, use **Change repository** e selecione **GeradorARTESP**.
-
-Depois do deploy, ao abrir a URL do serviço você deve ver:
-- Título **"Gerador ARTESP — GeoJSON / Relatórios"**
-- Texto **"Projeto: Conservação e Obras — GeoJSON e relatórios"**
-- Redirecionamento para a página do **Gerador GeoJSON**.
-
-Se ainda aparecer outra página, o serviço continua usando o repositório antigo — repita os passos e confirme que o repositório selecionado é **GeradorARTESP**.
