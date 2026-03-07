@@ -40,12 +40,21 @@
       min-height: 200px;
       max-height: 50vh;
     }
+    /* Mobile: formulário acima do log, mesma disposição horizontal dos outros módulos */
     @media (max-width: 900px) {
       .step-panel-form-log .grid-2 {
         grid-template-columns: 1fr;
         align-items: stretch;
       }
+      .step-panel-form-log .grid-2 .card:first-child,
       .step-panel-form-log .grid-2 .card:last-child {
+        grid-column: 1;
+      }
+      .step-panel-form-log .grid-2 .card:first-child {
+        order: 1;
+      }
+      .step-panel-form-log .grid-2 .card:last-child {
+        order: 2;
         position: static;
         max-height: none;
       }
