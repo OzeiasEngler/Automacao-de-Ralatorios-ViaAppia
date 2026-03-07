@@ -189,6 +189,7 @@
 
   </div>
 
+  <script src="/web-static/auth-primeiro-acesso.js"></script>
   <script>
     /* ═══════ AUTH ═══════ */
     const loginOverlay = document.getElementById('loginOverlay');
@@ -249,7 +250,7 @@
       var fb = document.getElementById('loginFeedback');
       if (fb) fb.innerHTML = msg ? '<div class="alert alert-warning">' + msg + '</div>' : '';
     }
-    if (token && userEmail) { showApp(); }
+    if (token && userEmail) { showApp(); if (window.ArtespTrocarSenha) ArtespTrocarSenha.check(); }
     else if (loginOverlay) { loginOverlay.style.display = 'flex'; }
     loadOpcoesRelatorio();
 
@@ -284,7 +285,8 @@
         localStorage.setItem('artesp_token', tok);
         localStorage.setItem('artesp_user_email', data.email || email);
         if (typeof showApp === 'function') showApp();
-        else if (loginOverlay) loginOverlay.style.display = 'none';
+        if (loginOverlay) loginOverlay.style.display = 'none';
+        if (data.must_change_password && window.ArtespTrocarSenha) ArtespTrocarSenha.show();
       } catch (err) {
         fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-wifi"></i> Falha na conexão. Verifique se o servidor está rodando.</div>';
       }

@@ -1215,6 +1215,7 @@
 
   </div><!-- /page-content -->
 
+  <script src="/web-static/auth-primeiro-acesso.js"></script>
   <script>
   /* ════════════════════════════════════════════════════════════════
      AUTH
@@ -1237,7 +1238,7 @@
     const fb = document.getElementById('loginFeedback');
     if (fb) fb.innerHTML = msg ? '<div class="alert alert-warning">' + msg + '</div>' : '';
   }
-  if (token && userEmail) showApp();
+  if (token && userEmail) { showApp(); if (window.ArtespTrocarSenha) ArtespTrocarSenha.check(); }
   else showLogin('');
 
   document.getElementById('formLogin').addEventListener('submit', async (e) => {
@@ -1266,6 +1267,7 @@
       localStorage.setItem('artesp_token', tok);
       localStorage.setItem('artesp_user_email', data.email || email);
       showApp();
+      if (data.must_change_password && window.ArtespTrocarSenha) ArtespTrocarSenha.show();
     } catch {
       fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
     }

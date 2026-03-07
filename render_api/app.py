@@ -526,6 +526,18 @@ class NovoUsuarioPayload(BaseModel):
     role: str = "user"  # Pode ser 'user' ou 'admin'
 
 
+class TrocarSenhaPayload(BaseModel):
+    """Troca de senha (primeiro acesso ou alteração)."""
+    senha_atual: str = Field(..., min_length=1)
+    nova_senha: str = Field(..., min_length=6, description="Mínimo 6 caracteres")
+
+
+class RedefinirSenhaAdminPayload(BaseModel):
+    """Admin redefine senha de um usuário (senha temporária; usuário deve trocar no próximo login)."""
+    email: str = Field(..., min_length=5)
+    nova_senha_temporaria: str = Field(..., min_length=6)
+
+
 # Caminho do banco de usuários (usa DATA_DIR: /data no Render, ./data no Windows)
 USERS_JSON_PATH = USER_DB_PATH
 
@@ -1719,12 +1731,13 @@ def _is_production() -> bool:
     )
 
 
-def _criar_resposta_login(email: str, token: str, role: str) -> JSONResponse:
+def _criar_resposta_login(email: str, token: str, role: str, must_change_password: bool = False) -> JSONResponse:
     """Cria JSONResponse com cookie httpOnly e access_token no body (compatibilidade frontend/testes)."""
     response = JSONResponse(content={
         "ok": True,
         "email": email,
         "role": role,
+        "must_change_password": must_change_password,
         "expires_in": TOKEN_TTL_SECONDS,
         "access_token": token,
         "token_type": "bearer",
@@ -1762,19 +1775,20 @@ def auth_login(payload: LoginPayload, request: Request):
             if hashed and verificar_senha(senha, str(hashed)):
                 role = _get_user_role(email)
                 token = _gerar_token(email)
-                return _criar_resposta_login(email, token, role)
+                must_change = bool(user_data.get("must_change_password"))
+                return _criar_resposta_login(email, token, role, must_change_password=must_change)
             # Se hash falhou, tenta senha do env (admin local)
             senha_env = USUARIOS_WEB.get(email)
             if senha_env and verificar_senha(senha, str(senha_env)):
                 role = _get_user_role(email)
                 token = _gerar_token(email)
-                return _criar_resposta_login(email, token, role)
+                return _criar_resposta_login(email, token, role, must_change_password=False)
         # Fallback: usuários de env (USUARIOS_WEB)
         senha_cadastrada = _obter_senha_usuario(email)
         if senha_cadastrada and verificar_senha(senha, str(senha_cadastrada)):
             role = _get_user_role(email)
             token = _gerar_token(email)
-            return _criar_resposta_login(email, token, role)
+            return _criar_resposta_login(email, token, role, must_change_password=False)
     except HTTPException:
         raise
     except Exception as e:
@@ -1842,7 +1856,54 @@ def auth_logout(
 @app.get("/auth/me")
 def auth_me(email: str = Depends(_get_usuario_autenticado)):
     """[P0] Verifica sessão e retorna dados do usuário autenticado."""
-    return {"ok": True, "email": email, "role": _get_user_role(email)}
+    email_norm = (email or "").strip().lower()
+    banco = carregar_banco_usuarios()
+    obj = banco.get(email_norm) if isinstance(banco, dict) else None
+    must_change = bool(isinstance(obj, dict) and obj.get("must_change_password"))
+    can_change_password = isinstance(obj, dict)
+    return {
+        "ok": True,
+        "email": email,
+        "role": _get_user_role(email),
+        "must_change_password": must_change,
+        "can_change_password": can_change_password,
+    }
+
+
+@app.post("/auth/trocar-senha")
+def auth_trocar_senha(
+    payload: TrocarSenhaPayload,
+    usuario_email: str = Depends(_get_usuario_autenticado),
+):
+    """
+    Troca a senha do usuário autenticado. Exigido no primeiro acesso (must_change_password).
+    """
+    email = (usuario_email or "").strip().lower()
+    senha_atual = (payload.senha_atual or "").strip()
+    nova_senha = (payload.nova_senha or "").strip()
+    if not senha_atual or not nova_senha:
+        raise HTTPException(status_code=400, detail="Preencha senha atual e nova senha.")
+    if len(nova_senha) < 6:
+        raise HTTPException(status_code=400, detail="Nova senha deve ter no mínimo 6 caracteres.")
+    if nova_senha == senha_atual:
+        raise HTTPException(status_code=400, detail="A nova senha deve ser diferente da senha atual.")
+
+    def _atualizar(usuarios):
+        user_data = usuarios.get(email)
+        if not isinstance(user_data, dict):
+            raise HTTPException(status_code=400, detail="Usuário não encontrado no banco.")
+        hashed = user_data.get("hashed_password")
+        if not hashed or not verificar_senha(senha_atual, str(hashed)):
+            raise HTTPException(status_code=401, detail="Senha atual incorreta.")
+        usuarios[email] = {
+            **user_data,
+            "hashed_password": gerar_hash_senha(nova_senha),
+            "must_change_password": False,
+        }
+        return usuarios
+
+    _modificar_banco_usuarios(_atualizar)
+    return {"message": "Senha alterada com sucesso. Use a nova senha no próximo login."}
 
 
 @app.post("/geojson/upload")
@@ -3255,11 +3316,46 @@ async def adicionar_usuario(
             "hashed_password": hashed_password,
             "disabled": False,
             "role": role,
+            "must_change_password": True,
         }
         return usuarios
 
     _modificar_banco_usuarios(_adicionar)
     return {"message": f"Acesso para {email} criado com sucesso!"}
+
+
+@app.post("/admin/redefinir-senha-usuario")
+async def admin_redefinir_senha(
+    payload: RedefinirSenhaAdminPayload,
+    current_user: str = Depends(_get_usuario_admin),
+):
+    """
+    Admin redefine a senha de um usuário (senha temporária). O usuário deve trocar no próximo login.
+    """
+    _ = current_user
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail inválido.")
+    nova = (payload.nova_senha_temporaria or "").strip()
+    if len(nova) < 6:
+        raise HTTPException(status_code=400, detail="Senha temporária deve ter no mínimo 6 caracteres.")
+    try:
+        hashed = gerar_hash_senha(nova)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    def _redefinir(usuarios):
+        if email not in usuarios:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        usuarios[email] = {
+            **usuarios[email],
+            "hashed_password": hashed,
+            "must_change_password": True,
+        }
+        return usuarios
+
+    _modificar_banco_usuarios(_redefinir)
+    return {"message": f"Senha de {email} redefinida. O usuário deve trocar no próximo acesso."}
 
 
 def _media_type_output(nome: str) -> str:

@@ -124,10 +124,33 @@
             </form>
           </div>
         </div>
+        <div class="card animate-in admin-card" style="margin-top:20px">
+          <div class="card-header">
+            <i class="fas fa-key"></i> Redefinir senha de usuário
+          </div>
+          <div class="card-body">
+            <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:14px">Define uma senha temporária. O usuário deverá trocá-la no próximo acesso.</p>
+            <form id="formRedefinirSenha">
+              <div class="form-group">
+                <label for="redefinirEmail">E-mail do usuário</label>
+                <input type="email" id="redefinirEmail" class="form-input" placeholder="usuario@empresa.com" required>
+              </div>
+              <div class="form-group">
+                <label for="redefinirSenhaTemp">Nova senha temporária (mín. 6 caracteres)</label>
+                <input type="password" id="redefinirSenhaTemp" class="form-input" placeholder="Senha temporária" required minlength="6">
+              </div>
+              <button type="submit" class="btn btn-primary btn-admin">
+                <i class="fas fa-sync-alt"></i> Redefinir senha
+              </button>
+              <div id="redefinirFeedback"></div>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   </main>
 
+  <script src="/web-static/auth-primeiro-acesso.js"></script>
   <script>
     (function() {
       const loginOverlay = document.getElementById('loginOverlay');
@@ -165,6 +188,7 @@
 
       if (getToken() && localStorage.getItem('artesp_user_email')) {
         showApp();
+        if (window.ArtespTrocarSenha) ArtespTrocarSenha.check();
       } else {
         if (loginOverlay) loginOverlay.style.display = 'flex';
       }
@@ -200,6 +224,7 @@
           localStorage.setItem('artesp_token', tok);
           localStorage.setItem('artesp_user_email', data.email || email);
           showApp();
+          if (data.must_change_password && window.ArtespTrocarSenha) ArtespTrocarSenha.show();
         } catch (err) {
           fb.innerHTML = '<div class="alert alert-danger"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
         }
@@ -232,6 +257,37 @@
           fb.innerHTML = '<div class="admin-feedback success"><i class="fas fa-check"></i> ' + (data.message || 'Usuário cadastrado.') + '</div>';
           document.getElementById('novoEmail').value = '';
           document.getElementById('novaSenha').value = '';
+        } catch (err) {
+          fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
+        }
+      });
+
+      document.getElementById('formRedefinirSenha').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const email = document.getElementById('redefinirEmail').value.trim();
+        const senhaTemp = document.getElementById('redefinirSenhaTemp').value;
+        const fb = document.getElementById('redefinirFeedback');
+        fb.innerHTML = '';
+        if (!email || !senhaTemp || senhaTemp.length < 6) {
+          fb.innerHTML = '<div class="admin-feedback error">E-mail e senha temporária (mín. 6 caracteres) são obrigatórios.</div>';
+          return;
+        }
+        try {
+          const r = await fetch('/admin/redefinir-senha-usuario', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+            credentials: 'include',
+            body: JSON.stringify({ email: email, nova_senha_temporaria: senhaTemp })
+          });
+          const data = await r.json().catch(function() { return {}; });
+          if (!r.ok) {
+            const msg = (typeof data.detail === 'string') ? data.detail : 'Erro ao redefinir.';
+            fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
+            return;
+          }
+          fb.innerHTML = '<div class="admin-feedback success"><i class="fas fa-check"></i> ' + (data.message || 'Senha redefinida.') + '</div>';
+          document.getElementById('redefinirEmail').value = '';
+          document.getElementById('redefinirSenhaTemp').value = '';
         } catch (err) {
           fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
         }

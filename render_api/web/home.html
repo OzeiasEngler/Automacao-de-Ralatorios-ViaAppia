@@ -162,6 +162,7 @@
     </div>
   </div>
 
+  <script src="/web-static/auth-primeiro-acesso.js"></script>
   <script>
     (function() {
       var token = localStorage.getItem('artesp_token');
@@ -187,6 +188,7 @@
 
       if (token && userEmail) {
         showLoggedIn();
+        if (window.ArtespTrocarSenha) ArtespTrocarSenha.check();
       } else {
         showLoginForm();
       }
@@ -223,6 +225,7 @@
           localStorage.setItem('artesp_user_email', data.email || email);
           userEmail = data.email || email;
           showLoggedIn();
+          if (data.must_change_password && window.ArtespTrocarSenha) ArtespTrocarSenha.show();
         } catch (err) {
           fb.innerHTML = '<div class="alert alert-danger">Falha na conexão. Verifique se o servidor está rodando.</div>';
         }
