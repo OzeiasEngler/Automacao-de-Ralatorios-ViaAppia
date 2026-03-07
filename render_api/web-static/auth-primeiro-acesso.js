@@ -1,8 +1,25 @@
 /**
  * Primeiro acesso: exige troca de senha quando must_change_password.
  * Quando obrigatório, o modal não pode ser fechado (clique fora, Esc ou botão).
+ *
+ * Se o front for servido em outro domínio (ex.: www) e a API no Render, defina a base da API
+ * para que login e demais chamadas apontem ao Render: <meta name="artesp-api-base" content="https://SUA_API.onrender.com">
+ * ou antes deste script: <script>window.ARTESP_API_BASE = 'https://SUA_API.onrender.com';</script>
  */
 (function() {
+  var base = window.ARTESP_API_BASE || (function() {
+    var m = document.querySelector('meta[name="artesp-api-base"]');
+    return (m && m.getAttribute('content')) ? m.getAttribute('content').trim() : '';
+  })();
+  if (base) {
+    base = base.replace(/\/$/, '');
+    var origFetch = window.fetch;
+    window.fetch = function(url, opts) {
+      if (typeof url === 'string' && url.charAt(0) === '/') url = base + url;
+      return origFetch.call(this, url, opts);
+    };
+  }
+
   var modal = null;
   var obrigatorio = true;
   var getToken = function() { return window.localStorage && window.localStorage.getItem('artesp_token'); };

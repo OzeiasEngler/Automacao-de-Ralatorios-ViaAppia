@@ -52,6 +52,28 @@ ARTESP_CORS_ORIGINS=*
 
 A API reflete o header `Origin` da requisição, permitindo que qualquer domínio chame a API. Não use em produção se houver dados sensíveis.
 
+## Front no www (ou outro domínio) e API no Render
+
+Se a **página de login** (e o restante do front) é servida em outro domínio (ex.: **www.gestao-rodovias.com.br**) e a **API** está no **Render**, as chamadas relativas (`/auth/login`, `/api/config`, etc.) vão para o domínio do www, não para o Render. Por isso o login “E-mail ou senha incorretos” no www, enquanto no Render funciona.
+
+**Solução:** informar a URL base da API para que todas as requisições apontem para o Render.
+
+No **HTML** das páginas servidas pelo www, adicione no `<head>` (antes do script que carrega `auth-primeiro-acesso.js`):
+
+```html
+<meta name="artesp-api-base" content="https://SUA_API.onrender.com">
+```
+
+Substitua `SUA_API.onrender.com` pela URL real do serviço no Render (ex.: `https://artesp-geojson-api.onrender.com`), **sem** barra no final.
+
+**Alternativa:** antes de qualquer script, defina:
+
+```html
+<script>window.ARTESP_API_BASE = 'https://SUA_API.onrender.com';</script>
+```
+
+Assim, login e demais `fetch('/...')` passam a ir para o Render e o login no www passa a funcionar (desde que `ARTESP_CORS_ORIGINS` no Render inclua o domínio do www).
+
 ## Backup da configuração (Render)
 
 Valor em uso no Render para o site em produção. Use esta string exata ao criar um novo serviço ou restaurar a config:
