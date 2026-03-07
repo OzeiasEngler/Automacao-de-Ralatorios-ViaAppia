@@ -10,6 +10,15 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="/web-static/bloco-padrao.css">
   <style>
+    /* GeoJSON: blocos mais baixos para evitar barra de rolagem */
+    #geojson-page .card-body { padding: 14px; }
+    #geojson-page .log-container { height: 240px; min-height: 200px; max-height: 38vh; }
+    #geojson-page .upload-zone { padding: 24px 18px; }
+    #geojson-page .upload-zone .icon { font-size: 2rem; margin-bottom: 10px; }
+    #geojson-page .upload-zone h3 { font-size: .95rem; }
+    #geojson-page .upload-zone p { font-size: .78rem; }
+    #geojson-page .opcoes-relatorio { margin-top: 14px; padding-top: 12px; }
+    #geojson-page .opcoes-grid { gap: 10px; }
     /* GeoJSON: opções do relatório e downloads */
     .opcoes-relatorio { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color); }
     .opcoes-title { font-size: .8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
@@ -80,7 +89,7 @@
   </nav>
 
   <!-- ═══ PAGE CONTENT ═══ -->
-  <div class="page-content">
+  <div class="page-content" id="geojson-page">
 
     <div class="page-header animate-in">
       <div class="icon-box"><i class="fas fa-map-marked-alt"></i></div>
