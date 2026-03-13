@@ -1276,10 +1276,11 @@ def _gerar_pdf_relatorio(
 
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
-    from reportlab.lib.colors import HexColor
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib import colors as _rlab_colors
+    _hex = _rlab_colors.HexColor
 
     pdf_nome = nome_arquivo.replace(".geojson", "") + "_RELATORIO.pdf"
     pdf_path = os.path.join(output_path, pdf_nome)
@@ -1301,7 +1302,7 @@ def _gerar_pdf_relatorio(
             "Titulo",
             parent=styles["Heading1"],
             fontSize=16,
-            textColor=HexColor("#0a2540"),
+            textColor=_hex("#0a2540"),
             spaceAfter=6 * mm,
             alignment=TA_CENTER,
         )
@@ -1309,7 +1310,7 @@ def _gerar_pdf_relatorio(
             "Subtitulo",
             parent=styles["Heading2"],
             fontSize=12,
-            textColor=HexColor("#1a3a5c"),
+            textColor=_hex("#1a3a5c"),
             spaceBefore=4 * mm,
             spaceAfter=2 * mm,
         )
@@ -1323,19 +1324,19 @@ def _gerar_pdf_relatorio(
             "SmallCustom",
             parent=styles["Normal"],
             fontSize=8,
-            textColor=HexColor("#666666"),
+            textColor=_hex("#666666"),
         )
         style_alerta = ParagraphStyle(
             "Alerta",
             parent=styles["Normal"],
             fontSize=9,
-            textColor=HexColor("#cc6600"),
+            textColor=_hex("#cc6600"),
         )
         style_erro = ParagraphStyle(
             "Erro",
             parent=styles["Normal"],
             fontSize=9,
-            textColor=HexColor("#cc0000"),
+            textColor=_hex("#cc0000"),
         )
 
         elements = []
@@ -1362,14 +1363,14 @@ def _gerar_pdf_relatorio(
 
         t = Table(dados_tabela, colWidths=[45 * mm, 120 * mm])
         t.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#0a2540")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
+            ("BACKGROUND", (0, 0), (-1, 0), _hex("#0a2540")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), _hex("#ffffff")),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             ("ALIGN", (0, 0), (0, -1), "RIGHT"),
             ("ALIGN", (1, 0), (1, -1), "LEFT"),
-            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#cccccc")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#f8f9fa"), HexColor("#ffffff")]),
+            ("GRID", (0, 0), (-1, -1), 0.5, _hex("#cccccc")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [_hex("#f8f9fa"), _hex("#ffffff")]),
             ("TOPPADDING", (0, 0), (-1, -1), 3),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
@@ -1388,12 +1389,12 @@ def _gerar_pdf_relatorio(
         if len(integ_data) > 1:
             t2 = Table(integ_data, colWidths=[35 * mm, 130 * mm])
             t2.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), HexColor("#1a3a5c")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
+                ("BACKGROUND", (0, 0), (-1, 0), _hex("#1a3a5c")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), _hex("#ffffff")),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTNAME", (1, 1), (1, -1), "Courier"),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#cccccc")),
+                ("GRID", (0, 0), (-1, -1), 0.5, _hex("#cccccc")),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
             ]))
@@ -1428,7 +1429,7 @@ def _gerar_pdf_relatorio(
                 elements.append(Paragraph(f"✖ {err}", style_erro))
             elements.append(Spacer(1, 4 * mm))
 
-        elements.append(_hr_line(width="100%", thickness=0.5, color=HexColor("#cccccc")))
+        elements.append(_hr_line(width="100%", thickness=0.5, color=_hex("#cccccc")))
         elements.append(Spacer(1, 2 * mm))
 
         dev_nome = os.getenv("ARTESP_DEV_NOME", "").strip()
