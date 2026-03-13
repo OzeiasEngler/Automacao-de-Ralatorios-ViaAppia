@@ -231,7 +231,13 @@ def _merged_range_px_extent(ws, cell_addr: str) -> tuple:
     return max(_col_px_display(ws, col_letter), 1), max(int(_row_px(ws, row)), 1)
 
 def _redimensionar_imagem_bytes(img_path: Path, largura: int, altura: int) -> bytes:
+    """Redimensiona para miniatura. draft() é sugestão (JPEG); resize() garante o tamanho exato; se draft falhar, segue com resize."""
     with PILImage.open(str(img_path)) as im:
+        if getattr(im, "format", None) == "JPEG" and (im.width > largura or im.height > altura):
+            try:
+                im.draft("RGB", (int(largura), int(altura)))
+            except (AttributeError, TypeError, ValueError):
+                pass
         im = im.convert("RGB")
         im = im.resize((int(largura), int(altura)), PILImage.LANCZOS)
         buf = BytesIO()

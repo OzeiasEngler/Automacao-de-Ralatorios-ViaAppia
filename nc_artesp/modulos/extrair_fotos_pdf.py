@@ -68,11 +68,16 @@ def _normalizar_texto(s: str) -> str:
 
 
 def _redimensionar_e_salvar(img_bytes: bytes, dest: Path, largura: int, altura: int) -> bool:
-    """Redimensiona a imagem para o tamanho do modelo (VBA: AddPicture Width/Height) e salva como JPG."""
+    """Redimensiona para o tamanho do modelo. draft() é sugestão (JPEG); se falhar, resize() garante o tamanho exato."""
     try:
         from PIL import Image
         import io
         img = Image.open(io.BytesIO(img_bytes))
+        if getattr(img, "format", None) == "JPEG" and (img.width > largura or img.height > altura):
+            try:
+                img.draft("RGB", (largura, altura))
+            except (AttributeError, TypeError, ValueError):
+                pass
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         img_resized = img.resize((largura, altura), Image.LANCZOS)

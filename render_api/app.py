@@ -266,6 +266,16 @@ if STATIC_DIR.is_dir():
     app.mount("/web-static", StaticFiles(directory=str(STATIC_DIR)), name="web_static")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """Ícone na raiz para o navegador parar de pedir e receber 404."""
+    for name, media in (("favicon.ico", "image/x-icon"), ("favicon.png", "image/png"), ("favicon.svg", "image/svg+xml")):
+        path = STATIC_DIR / name
+        if path.is_file():
+            return FileResponse(str(path), media_type=media)
+    return Response(status_code=204)
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc: Exception):
     """Garante que qualquer exceção não tratada retorne JSON, nunca HTML."""

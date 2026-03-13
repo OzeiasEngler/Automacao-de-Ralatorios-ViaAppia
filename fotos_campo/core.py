@@ -654,9 +654,17 @@ def _merged_range_px(ws, cell_addr: str) -> Tuple[int, int]:
 
 
 def _redimensionar_imagem_bytes(path_foto: str, largura: int, altura: int) -> bytes:
-    """Redimensiona a imagem para as dimensões dadas e retorna bytes JPEG."""
+    """Redimensiona a imagem para as dimensões dadas e retorna bytes JPEG.
+    draft() em JPEG é só sugestão ao decodificador (pode devolver potência de 2); o resize() garante o tamanho exato.
+    Se draft() falhar, o resize() tradicional ainda é executado.
+    """
     buf = io.BytesIO()
     with PILImage.open(path_foto) as img:
+        if getattr(img, "format", None) == "JPEG" and (img.width > largura or img.height > altura):
+            try:
+                img.draft("RGB", (largura, altura))
+            except (AttributeError, TypeError, ValueError):
+                pass
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
         img_resized = img.resize((largura, altura), PILImage.Resampling.LANCZOS)
@@ -976,14 +984,20 @@ def preparar_fotos_para_relatorio(planilha_dados: str, pasta_destino: str,
             dest   = str(pasta_fotos / nome)
             try:
                 img = PILImage.open(orig)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
                 w, h = img.size
                 if max(w, h) > max_lado:
                     if w >= h:
                         nw, nh = max_lado, int(h * max_lado / w)
                     else:
                         nw, nh = int(w * max_lado / h), max_lado
+                    if getattr(img, "format", None) == "JPEG":
+                        try:
+                            img.draft("RGB", (nw, nh))
+                        except (AttributeError, TypeError, ValueError):
+                            pass
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                if max(w, h) > max_lado:
                     img = img.resize((nw, nh), PILImage.Resampling.LANCZOS)
                 img.save(dest, "JPEG", quality=min(95, max(50, qualidade)), optimize=True)
                 caminho_por_chave[chave] = dest

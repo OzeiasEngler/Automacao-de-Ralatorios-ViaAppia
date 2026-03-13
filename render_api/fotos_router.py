@@ -61,9 +61,10 @@ def _em_producao() -> bool:
     )
 
 
-# Em produção (web): sem limite. Local: usa ARTESP_FOTOS_MAX_UPLOAD_MB ou 1024 MB.
-MAX_UPLOAD_MB = 0 if _em_producao() else _ler_int_env("ARTESP_FOTOS_MAX_UPLOAD_MB", 1024)
-MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024 if MAX_UPLOAD_MB else 0  # 0 = sem limite
+# Em produção: ARTESP_FOTOS_MAX_UPLOAD_MB (default 512) para evitar OOM. Local: default 1024, 0 = sem limite.
+_DEFAULT_UPLOAD_MB = 512 if _em_producao() else 1024
+MAX_UPLOAD_MB = _ler_int_env("ARTESP_FOTOS_MAX_UPLOAD_MB", _DEFAULT_UPLOAD_MB)
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024 if MAX_UPLOAD_MB else 0
 
 
 # ─── Autenticação (reutiliza o middleware do app principal) ───────────────────
@@ -91,7 +92,7 @@ def _ler_upload(arquivo: UploadFile) -> bytes:
     if MAX_UPLOAD_BYTES > 0 and len(conteudo) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"Arquivo '{arquivo.filename}' excede o limite local de {MAX_UPLOAD_MB} MB.",
+            detail=f"Arquivo '{arquivo.filename}' excede o limite de {MAX_UPLOAD_MB} MB.",
         )
     return conteudo
 
@@ -178,7 +179,24 @@ def _limpar_downloads_antigos() -> None:
 MAX_ZIP_INLINE_B64 = 100 * 1024 * 1024  # 100 MB — ZIP vem no SSE; evita GET que pode estourar timeout
 
 # Cache em memória (fallback quando o ZIP acaba de ser gerado no mesmo processo)
+# Limitado para evitar OOM no Render: no máximo N entradas e B bytes totais
 _FOTOS_DOWNLOAD_CACHE: dict[str, tuple[bytes, str]] = {}
+_FOTOS_CACHE_MAX_ENTRIES = 8
+_FOTOS_CACHE_MAX_BYTES = 400 * 1024 * 1024  # 400 MB total em memória
+
+
+def _evictar_cache_fotos_ate_caber(zip_size: int) -> None:
+    """Remove entradas mais antigas do cache até caber zip_size (e respeitar limites)."""
+    global _FOTOS_DOWNLOAD_CACHE
+    total = sum(len(b) for b, _ in _FOTOS_DOWNLOAD_CACHE.values())
+    keys_ordem = list(_FOTOS_DOWNLOAD_CACHE.keys())
+    for kid in keys_ordem:
+        if len(_FOTOS_DOWNLOAD_CACHE) <= _FOTOS_CACHE_MAX_ENTRIES and (total + zip_size) <= _FOTOS_CACHE_MAX_BYTES:
+            break
+        if kid not in _FOTOS_DOWNLOAD_CACHE:
+            continue
+        b, _ = _FOTOS_DOWNLOAD_CACHE.pop(kid, (b"", ""))
+        total -= len(b)
 
 
 def _sanitizar_rodovia(s: str) -> str:
@@ -525,7 +543,7 @@ async def processar_completo_progresso(
 
             nome_zip = f"Fotos_Processamento_Lote{lote_ok}_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
             download_id = str(uuid.uuid4())
-            # Sempre colocar no cache em memória (fallback para mesma requisição/processo)
+            _evictar_cache_fotos_ate_caber(len(zip_final))
             _FOTOS_DOWNLOAD_CACHE[download_id] = (zip_final, nome_zip)
             # Salvar também em disco para o download funcionar em qualquer worker/requisição
             try:
