@@ -68,7 +68,7 @@ def _normalizar_texto(s: str) -> str:
 
 
 def _redimensionar_e_salvar(img_bytes: bytes, dest: Path, largura: int, altura: int) -> bool:
-    """Redimensiona para o tamanho do modelo. draft() é sugestão (JPEG); se falhar, resize() garante o tamanho exato."""
+    """Redimensiona para (largura, altura) e salva JPG. draft() em JPEG reduz RAM; resize() garante tamanho exato."""
     try:
         from PIL import Image
         import io

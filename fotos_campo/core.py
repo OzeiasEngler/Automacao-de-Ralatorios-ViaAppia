@@ -654,10 +654,7 @@ def _merged_range_px(ws, cell_addr: str) -> Tuple[int, int]:
 
 
 def _redimensionar_imagem_bytes(path_foto: str, largura: int, altura: int) -> bytes:
-    """Redimensiona a imagem para as dimensões dadas e retorna bytes JPEG.
-    draft() em JPEG é só sugestão ao decodificador (pode devolver potência de 2); o resize() garante o tamanho exato.
-    Se draft() falhar, o resize() tradicional ainda é executado.
-    """
+    """Redimensiona para (largura, altura) e retorna JPEG. Usa draft() em JPEG para menos RAM; resize() garante tamanho exato."""
     buf = io.BytesIO()
     with PILImage.open(path_foto) as img:
         if getattr(img, "format", None) == "JPEG" and (img.width > largura or img.height > altura):

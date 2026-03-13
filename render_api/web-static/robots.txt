@@ -1,0 +1,6 @@
+# Bloqueia varredura da API por crawlers.
+User-agent: *
+Disallow: /api/
+Disallow: /auth/
+Disallow: /fotos/
+Disallow: /nc/

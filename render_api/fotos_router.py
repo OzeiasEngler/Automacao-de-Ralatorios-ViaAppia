@@ -43,7 +43,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 logger = logging.getLogger(__name__)
 
-# ─── Limite de tamanho de upload (somente local; na versão web não há limite) ──
+# Limite de upload (MB); 0 = sem limite
 def _ler_int_env(name: str, default: int) -> int:
     try:
         v = os.environ.get(name, "").strip()
@@ -53,7 +53,7 @@ def _ler_int_env(name: str, default: int) -> int:
 
 
 def _em_producao() -> bool:
-    """True se estiver na versão web (Render/produção). Na web não há limite de upload."""
+    """True se em produção (Render)."""
     return bool(
         os.environ.get("RENDER") or
         os.environ.get("PRODUCTION") or
@@ -61,7 +61,7 @@ def _em_producao() -> bool:
     )
 
 
-# Em produção: ARTESP_FOTOS_MAX_UPLOAD_MB (default 512) para evitar OOM. Local: default 1024, 0 = sem limite.
+# Produção: default 512 MB (evita OOM). Local: 1024. 0 = sem limite.
 _DEFAULT_UPLOAD_MB = 512 if _em_producao() else 1024
 MAX_UPLOAD_MB = _ler_int_env("ARTESP_FOTOS_MAX_UPLOAD_MB", _DEFAULT_UPLOAD_MB)
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024 if MAX_UPLOAD_MB else 0
@@ -87,7 +87,7 @@ def _get_auth(request: Request):
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 def _ler_upload(arquivo: UploadFile) -> bytes:
-    """Lê UploadFile em bytes. Verificação de tamanho apenas em ambiente local (na web não há limite)."""
+    """Lê UploadFile em bytes; aplica limite se MAX_UPLOAD_BYTES > 0."""
     conteudo = arquivo.file.read()
     if MAX_UPLOAD_BYTES > 0 and len(conteudo) > MAX_UPLOAD_BYTES:
         raise HTTPException(
@@ -178,15 +178,14 @@ def _limpar_downloads_antigos() -> None:
 # Tamanho máximo (bytes) para enviar o ZIP em base64 no SSE; acima disso usa GET /download
 MAX_ZIP_INLINE_B64 = 100 * 1024 * 1024  # 100 MB — ZIP vem no SSE; evita GET que pode estourar timeout
 
-# Cache em memória (fallback quando o ZIP acaba de ser gerado no mesmo processo)
-# Limitado para evitar OOM no Render: no máximo N entradas e B bytes totais
+# Cache em memória; limitado para evitar OOM (N entradas, B bytes)
 _FOTOS_DOWNLOAD_CACHE: dict[str, tuple[bytes, str]] = {}
 _FOTOS_CACHE_MAX_ENTRIES = 8
-_FOTOS_CACHE_MAX_BYTES = 400 * 1024 * 1024  # 400 MB total em memória
+_FOTOS_CACHE_MAX_BYTES = 400 * 1024 * 1024
 
 
 def _evictar_cache_fotos_ate_caber(zip_size: int) -> None:
-    """Remove entradas mais antigas do cache até caber zip_size (e respeitar limites)."""
+    """Remove entradas antigas do cache até caber zip_size nos limites."""
     global _FOTOS_DOWNLOAD_CACHE
     total = sum(len(b) for b, _ in _FOTOS_DOWNLOAD_CACHE.values())
     keys_ordem = list(_FOTOS_DOWNLOAD_CACHE.keys())

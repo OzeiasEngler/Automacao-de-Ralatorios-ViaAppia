@@ -31,7 +31,7 @@ from fastapi import (
     Header, Cookie, Depends, Body, Form, Query,
 )
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, StreamingResponse, RedirectResponse
-from starlette.responses import Response
+from starlette.responses import PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -266,9 +266,22 @@ if STATIC_DIR.is_dir():
     app.mount("/web-static", StaticFiles(directory=str(STATIC_DIR)), name="web_static")
 
 
+_ROBOTS_TXT = """# Bloqueia varredura da API por crawlers.
+User-agent: *
+Disallow: /api/
+Disallow: /auth/
+Disallow: /fotos/
+Disallow: /nc/
+"""
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    """robots.txt na raiz para crawlers."""
+    return PlainTextResponse(_ROBOTS_TXT)
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
-    """Ícone na raiz para o navegador parar de pedir e receber 404."""
+    """Favicon na raiz (evita 404 nos logs)."""
     for name, media in (("favicon.ico", "image/x-icon"), ("favicon.png", "image/png"), ("favicon.svg", "image/svg+xml")):
         path = STATIC_DIR / name
         if path.is_file():
@@ -1219,16 +1232,16 @@ except ImportError:
 
 def _hr_line(width="100%", thickness=1, color=None):
     """Linha horizontal: HRFlowable se disponível, senão tabela fina."""
+    from reportlab.lib.colors import HexColor as _HexColor
     if color is None:
-        color = HexColor("#0a2540") if _REPORTLAB_OK else None
+        color = _HexColor("#0a2540") if _REPORTLAB_OK else None
     if _HRFlowable is not None:
         return _HRFlowable(width=width, thickness=thickness, color=color)
     # Fallback: tabela 1px
     from reportlab.lib.units import mm
-    from reportlab.lib.colors import HexColor
     t = Table([[""]], colWidths=[165 * mm], rowHeights=[thickness])
     t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), color or HexColor("#0a2540")),
+        ("BACKGROUND", (0, 0), (-1, -1), color or _HexColor("#0a2540")),
         ("TOPPADDING", (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
