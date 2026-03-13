@@ -22,6 +22,7 @@ Desenvolvedor: Ozeias Engler
 from __future__ import annotations
 
 import io
+import logging
 import math
 import os
 import shutil
@@ -56,6 +57,18 @@ except ImportError:
     PIL_OK = False
 
 _LogCb = Optional[Callable[[str], None]]
+_log_draft = logging.getLogger("fotos_campo.draft")
+
+def _log_draft_ram(ident: str, size_before: Tuple[int, int], size_after: Tuple[int, int], channels: int = 3) -> None:
+    """Log estimativa de RAM economizada por draft() (só em nível DEBUG)."""
+    if not _log_draft.isEnabledFor(logging.DEBUG):
+        return
+    w0, h0 = size_before
+    w1, h1 = size_after
+    full_mb = (w0 * h0 * channels) / (1024 * 1024)
+    after_mb = (w1 * h1 * channels) / (1024 * 1024)
+    saved = max(0.0, full_mb - after_mb)
+    _log_draft.debug("[draft] %s: %dx%d → %dx%d | ~%.2f MB RAM economizados", ident, w0, h0, w1, h1, saved)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UTILITÁRIOS INTERNOS
@@ -658,8 +671,10 @@ def _redimensionar_imagem_bytes(path_foto: str, largura: int, altura: int) -> by
     buf = io.BytesIO()
     with PILImage.open(path_foto) as img:
         if getattr(img, "format", None) == "JPEG" and (img.width > largura or img.height > altura):
+            before = (img.width, img.height)
             try:
                 img.draft("RGB", (largura, altura))
+                _log_draft_ram(Path(path_foto).name, before, (img.width, img.height))
             except (AttributeError, TypeError, ValueError):
                 pass
         if img.mode in ("RGBA", "P"):
@@ -988,8 +1003,10 @@ def preparar_fotos_para_relatorio(planilha_dados: str, pasta_destino: str,
                     else:
                         nw, nh = int(w * max_lado / h), max_lado
                     if getattr(img, "format", None) == "JPEG":
+                        before = (img.width, img.height)
                         try:
                             img.draft("RGB", (nw, nh))
+                            _log_draft_ram(Path(orig).name, before, (img.width, img.height))
                         except (AttributeError, TypeError, ValueError):
                             pass
                 if img.mode in ("RGBA", "P"):

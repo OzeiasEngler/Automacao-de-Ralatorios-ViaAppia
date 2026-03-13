@@ -37,6 +37,17 @@ from utils.helpers import garantir_pasta
 
 logger = logging.getLogger(__name__)
 
+def _log_draft_ram(ident: str, size_before: tuple, size_after: tuple, channels: int = 3) -> None:
+    """Log estimativa de RAM economizada por draft() (só em DEBUG)."""
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    w0, h0 = size_before
+    w1, h1 = size_after
+    full_mb = (w0 * h0 * channels) / (1024 * 1024)
+    after_mb = (w1 * h1 * channels) / (1024 * 1024)
+    saved = max(0.0, full_mb - after_mb)
+    logger.debug("[draft] %s: %dx%d → %dx%d | ~%.2f MB RAM economizados", ident, w0, h0, w1, h1, saved)
+
 # Coluna Q = tipo/serviço NC na planilha EAF
 COL_TIPO_NC = 17
 
@@ -74,8 +85,10 @@ def _redimensionar_e_salvar(img_bytes: bytes, dest: Path, largura: int, altura: 
         import io
         img = Image.open(io.BytesIO(img_bytes))
         if getattr(img, "format", None) == "JPEG" and (img.width > largura or img.height > altura):
+            before = (img.width, img.height)
             try:
                 img.draft("RGB", (largura, altura))
+                _log_draft_ram(dest.name, before, (img.width, img.height))
             except (AttributeError, TypeError, ValueError):
                 pass
         if img.mode in ("RGBA", "P"):

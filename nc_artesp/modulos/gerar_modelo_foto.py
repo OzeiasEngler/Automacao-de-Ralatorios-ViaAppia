@@ -230,12 +230,25 @@ def _merged_range_px_extent(ws, cell_addr: str) -> tuple:
     col_letter = get_column_letter(col)
     return max(_col_px_display(ws, col_letter), 1), max(int(_row_px(ws, row)), 1)
 
+def _log_draft_ram(ident: str, size_before: tuple, size_after: tuple, channels: int = 3) -> None:
+    """Log estimativa de RAM economizada por draft() (só em DEBUG)."""
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+    w0, h0 = size_before
+    w1, h1 = size_after
+    full_mb = (w0 * h0 * channels) / (1024 * 1024)
+    after_mb = (w1 * h1 * channels) / (1024 * 1024)
+    saved = max(0.0, full_mb - after_mb)
+    logger.debug("[draft] %s: %dx%d → %dx%d | ~%.2f MB RAM economizados", ident, w0, h0, w1, h1, saved)
+
 def _redimensionar_imagem_bytes(img_path: Path, largura: int, altura: int) -> bytes:
     """Redimensiona para miniatura. draft() em JPEG reduz RAM; resize() garante tamanho exato."""
     with PILImage.open(str(img_path)) as im:
         if getattr(im, "format", None) == "JPEG" and (im.width > largura or im.height > altura):
+            before = (im.width, im.height)
             try:
                 im.draft("RGB", (int(largura), int(altura)))
+                _log_draft_ram(img_path.name, before, (im.width, im.height))
             except (AttributeError, TypeError, ValueError):
                 pass
         im = im.convert("RGB")
