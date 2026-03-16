@@ -65,15 +65,13 @@ M02_PENDENTES    = _BASE / "_Respostas" / "_Relatório EAF - NC" / "Pendentes"
 M02_PDF_ARQUIVO  = _env_str("ARTESP_M02_PDF_ARQUIVO", "")   # caminho fixo de PDF (single mode)
 M02_PDF_ORIGEM   = _env_str("ARTESP_M02_PDF_ORIGEM",  "")
 
-# Dimensões de referência das fotos (pixels). O tamanho efetivo é o do merged range no template:
-# a imagem é redimensionada para preencher exatamente o merge (nem mais nem menos).
-# nc (N).jpg: 800×500 px, resolução 222 DPI horizontal e 319 DPI vertical.
-M02_FOTO_W     = _env_int("ARTESP_M02_FOTO_W",     800)   # nc (N).jpg   largura
-M02_FOTO_H     = _env_int("ARTESP_M02_FOTO_H",     500)   # nc (N).jpg   altura
-M02_FOTO_DPI_X = _env_int("ARTESP_M02_FOTO_DPI_X", 222)   # nc (N).jpg   resolução horizontal (DPI)
-M02_FOTO_DPI_Y = _env_int("ARTESP_M02_FOTO_DPI_Y", 319)   # nc (N).jpg   resolução vertical (DPI)
-M02_FOTO_PDF_W = _env_int("ARTESP_M02_FOTO_PDF_W", 480)   # PDF (N).jpg referência
-M02_FOTO_PDF_H = _env_int("ARTESP_M02_FOTO_PDF_H", 202)   # PDF (N).jpg referência
+# nc (N).jpg: 800×500 px, 222×319 DPI. Tamanho efetivo no Excel é o do merge do template.
+M02_FOTO_W     = _env_int("ARTESP_M02_FOTO_W",     800)
+M02_FOTO_H     = _env_int("ARTESP_M02_FOTO_H",     500)
+M02_FOTO_DPI_X = _env_int("ARTESP_M02_FOTO_DPI_X", 222)
+M02_FOTO_DPI_Y = _env_int("ARTESP_M02_FOTO_DPI_Y", 319)
+M02_FOTO_PDF_W = _env_int("ARTESP_M02_FOTO_PDF_W", 480)
+M02_FOTO_PDF_H = _env_int("ARTESP_M02_FOTO_PDF_H", 202)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MÓDULO 03 — INSERIR NC CONSERVAÇÃO (macro Art_03)

@@ -1,22 +1,6 @@
 """
-modulos/extrair_fotos_pdf.py
-────────────────────────────────────────────────────────────────────────────
-Extrai imagens dos PDFs das NCs, trata, redimensiona e renomeia conforme
-as macros VBA (Art_022, Art_03).
-
-VBA Art_022 (Macro 02):
-  - nc (N).jpg em Imagens Provisórias  → AddPicture(..., Width:=275, Height:=210)
-  - PDF (N).jpg em Imagens Provisórias - PDF → AddPicture(..., Width:=480, Height:=202)
-  - N = número sequencial da foto (coluna V da EAF)
-
-Fluxo:
-  1. Extrai imagens do PDF (uma por página)
-  2. Associa cada imagem à NC correta pelo texto da página (quando há Excel pareado)
-  3. Redimensiona: nc = 800×500 px (222×319 DPI) | PDF = 480×202 px (modelo Kria / Resposta)
-  4. Renomeia e salva: nc (1).jpg, nc (2).jpg em Imagens Provisórias | PDF (1).jpg, PDF (2).jpg em Imagens Provisórias - PDF
-
-Entrada: PDF pareado (mesmo nome do Excel) ou pasta com vários PDFs.
-Execução: antes do Módulo 02, ou manualmente para preparar as fotos.
+Extrai imagens dos PDFs das NCs, redimensiona (nc 800×500 px, 222×319 DPI; PDF 480×202) e salva
+nc (N).jpg / PDF (N).jpg. Entrada: PDF pareado com Excel ou pasta de PDFs. Execução: antes do M02.
 """
 
 import logging
@@ -40,7 +24,7 @@ from utils.helpers import garantir_pasta
 logger = logging.getLogger(__name__)
 
 def _log_draft_ram(ident: str, size_before: tuple, size_after: tuple, channels: int = 3) -> None:
-    """Log estimativa de RAM economizada por draft() (só em DEBUG)."""
+    """Log em DEBUG: RAM economizada por draft()."""
     if not logger.isEnabledFor(logging.DEBUG):
         return
     w0, h0 = size_before
@@ -50,8 +34,7 @@ def _log_draft_ram(ident: str, size_before: tuple, size_after: tuple, channels: 
     saved = max(0.0, full_mb - after_mb)
     logger.debug("[draft] %s: %dx%d → %dx%d | ~%.2f MB RAM economizados", ident, w0, h0, w1, h1, saved)
 
-# Coluna Q = tipo/serviço NC na planilha EAF
-COL_TIPO_NC = 17
+COL_TIPO_NC = 17  # tipo/serviço NC (EAF)
 
 try:
     import fitz  # PyMuPDF
@@ -83,7 +66,7 @@ def _normalizar_texto(s: str) -> str:
 def _redimensionar_e_salvar(
     img_bytes: bytes, dest: Path, largura: int, altura: int, dpi: tuple[int, int] | None = None
 ) -> bool:
-    """Redimensiona para (largura, altura) e salva JPG. dpi=(x,y) grava resolução no JPEG quando informado."""
+    """Redimensiona para (largura, altura), salva JPG. Opcional dpi=(x,y) no JPEG."""
     try:
         from PIL import Image
         import io

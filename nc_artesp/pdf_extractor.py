@@ -1,20 +1,6 @@
 """
-fotos_campo/pdf_extractor.py
-────────────────────────────────────────────────────────────
-Extração de imagens do PDF de NC Constatação Artesp.
-Desenvolvedor: Ozeias Engler
-
-Para cada NC detectada na página gera dois arquivos:
-  • PDF (N).jpg  — texto + foto (bloco completo)
-  • nc (N).jpg   — só a foto
-
-N = identificador das fotos. No MA é sempre o Código da Fiscalização (ex.: 902531):
-o mesmo código que renomeia a foto aqui é o que vai para a coluna C da EAF e para a
-observação do gestor no outro relatório; nunca se usa "Lote" para nomear fotos.
-Conservação: "Código Fiscalização: Lote: 896643" → usa 896643.
-
-Compatível com Python 3.9+. Usa PyMuPDF (fitz) + Pillow.
-Requer: pip install pymupdf pillow
+Extração de imagens do PDF de NC Constatação Artesp: PDF (CODIGO).jpg (texto+foto) e nc (CODIGO).jpg (só foto).
+CODIGO = Código da Fiscalização (nunca Lote). Requer: pymupdf, pillow.
 """
 
 from __future__ import annotations
@@ -37,20 +23,19 @@ try:
 except ImportError:
     PIL_OK = False
 
-# ── Constantes de ajuste ──────────────────────────────────────────────────────
-ALTURA_CABECALHO_NC   = 120   # Altura estimada do bloco de texto acima da foto (pt)
-ALTURA_BUSCA_TEXTO    = 280   # Até onde buscar texto acima da foto (pt)
-ALTURA_TEXTO_ABAIXO   = 350   # Até onde buscar texto abaixo da foto (bloco PDF = acima + foto + abaixo)
-ALTURA_FAIXA_ESCURA   = 45    # Faixa escura no topo da página — ignorada no bloco 1
-Y0_MINIMO_BLOCO       = 66    # Topo mínimo do bloco (corta margem + faixa azul)
-MARGEM_SUPERIOR       = 4     # Margem acima do texto do bloco (pt)
-FOLGA_APOS_FOTO_ANT   = 18    # Espaço mínimo após foto anterior ao buscar próxima NC
+ALTURA_CABECALHO_NC   = 120
+ALTURA_BUSCA_TEXTO    = 280
+ALTURA_TEXTO_ABAIXO   = 350
+ALTURA_FAIXA_ESCURA   = 45
+Y0_MINIMO_BLOCO       = 66
+MARGEM_SUPERIOR       = 4
+FOLGA_APOS_FOTO_ANT   = 18
 
-# Dimensões e resolução das imagens nc (N).jpg na extração
-NC_IMAGE_WIDTH  = 800   # largura em pixels
-NC_IMAGE_HEIGHT = 500   # altura em pixels
-NC_IMAGE_DPI_X  = 222   # resolução horizontal (DPI)
-NC_IMAGE_DPI_Y  = 319   # resolução vertical (DPI)
+# nc (N).jpg na extração: 800×500 px, 222×319 DPI
+NC_IMAGE_WIDTH  = 800
+NC_IMAGE_HEIGHT = 500
+NC_IMAGE_DPI_X  = 222
+NC_IMAGE_DPI_Y  = 319
 
 
 def _check_deps() -> None:
@@ -67,7 +52,7 @@ def _check_deps() -> None:
 
 
 def _obter_rects_fotos(page: "fitz.Page") -> list:
-    """Retorna lista de retângulos onde fotos estão na página (ordenado top→bottom)."""
+    """Retângulos das fotos na página (ordem top→bottom)."""
     rects = []
     try:
         for img in page.get_images():
@@ -85,10 +70,7 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
                          foto_rect: "fitz.Rect",
                          y0_minimo: Optional[float] = None,
                          y1_limite_abaixo: Optional[float] = None) -> "fitz.Rect":
-    """
-    Calcula o retângulo do bloco completo: texto acima + foto + texto abaixo.
-    PDF (N).jpg = esse bloco inteiro; nc (N).jpg = só a foto (foto_rect).
-    """
+    """Retângulo do bloco: texto acima + foto + texto abaixo. PDF (N).jpg = bloco; nc (N).jpg = foto_rect."""
     if y0_minimo is None:
         y0_minimo = Y0_MINIMO_BLOCO
     x0 = foto_rect.x0
@@ -96,7 +78,6 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
     y1 = foto_rect.y1
     y0_final = y0_busca
     try:
-        # 1) Texto acima da foto + foto (não incluir cabeçalho da próxima NC que apareça na área da foto)
         clip = fitz.Rect(0, y0_busca, page.rect.width, y1)
         for blk in page.get_text("dict", clip=clip).get("blocks", []):
             bbox = blk.get("bbox")
@@ -107,7 +88,7 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
                 continue
             if by0 < ALTURA_FAIXA_ESCURA:
                 continue
-            # Conservação: bloco com "Código Fiscalização: 901945" na altura da foto = próxima NC, não incluir
+            # Conservação: não incluir cabeçalho da próxima NC (Código Fiscalização: N)
             if by0 >= foto_rect.y0:
                 texto_blk = " ".join(
                     s.get("text", "") for line in blk.get("lines", []) for s in line.get("spans", [])
@@ -116,9 +97,7 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
                     continue
             x0 = min(x0, bx0)
             x1 = max(x1, bx1)
-            # Não puxar y0 para baixo com bloco que seja cabeçalho da próxima NC (evita incluir 901945 em 901944)
             y0_final = min(y0_final, by0 - MARGEM_SUPERIOR)
-        # 2) Texto abaixo da foto (datas, etc.). Não incluir bloco da próxima NC (conservação: várias NCs na página).
         y1_abaixo = min(
             foto_rect.y1 + ALTURA_TEXTO_ABAIXO,
             page.rect.height,
@@ -132,7 +111,7 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
             bx0, by0, bx1, by1 = bbox
             if by0 < foto_rect.y1 - 5:
                 continue
-            # Conservação: não estender para o bloco que é cabeçalho da próxima NC (Código Fiscalização: 901944)
+            # Não incluir cabeçalho da próxima NC
             texto_blk = " ".join(
                 s.get("text", "") for line in blk.get("lines", []) for s in line.get("spans", [])
             )
@@ -148,7 +127,7 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
 
 
 def _renderizar_jpg(page: "fitz.Page", rect: "fitz.Rect", dpi: int = 150) -> bytes:
-    """Renderiza um retângulo da página como bytes JPEG."""
+    """Renderiza retângulo da página como JPEG."""
     clip = rect.intersect(page.rect)
     if clip.is_empty:
         return b""
@@ -163,7 +142,7 @@ def _renderizar_jpg(page: "fitz.Page", rect: "fitz.Rect", dpi: int = 150) -> byt
 
 
 def _redimensionar_nc_jpg(img_bytes: bytes) -> bytes:
-    """Redimensiona imagem para nc (N).jpg: 800×500 px com DPI 222×319."""
+    """Saída nc (N).jpg: 800×500 px, DPI 222×319."""
     img = PILImage.open(io.BytesIO(img_bytes))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
@@ -174,34 +153,25 @@ def _redimensionar_nc_jpg(img_bytes: bytes) -> bytes:
 
 
 def _eh_codigo_fiscalizacao_valido(val: str) -> bool:
-    """
-    Aceita só valor que parece código da fiscalização: numérico (ex.: 902531, 896643).
-    Rejeita palavras soltas como Grau, Físico, Lote, ou texto de outro campo que o regex capturou.
-    """
+    """Aceita valor numérico (código fiscalização). Rejeita Lote, Grau, etc."""
     if not val or not isinstance(val, str):
         return False
     s = val.strip()
     if not s or s.upper().startswith("LOTE"):
         return False
-    # Código da fiscalização é numérico (MA e conservação)
     if s.isdigit():
         return True
-    # Opcional: número com hífen/sufixo (ex. 902531-1)
     if re.match(r"^\d+[\-]?\d*$", s):
         return True
     return False
 
 
 def _extrair_codigo_por_blocos(page: "fitz.Page", clip_rect: "fitz.Rect") -> str:
-    """
-    Fallback para PDF em tabela (rótulo à esquerda, valor à direita).
-    Busca 'Código da Fiscalização' nos blocos e pega o número na mesma linha (mesmo y).
-    Ex.: HE.13.0112.pdf — rótulo e 902132 estão na mesma linha y≈443.
-    """
+    """Fallback PDF em tabela: Código da Fiscalização e número na mesma linha (mesmo y)."""
     try:
         full = page.get_text("dict", clip=clip_rect)
         y_rotulo = None
-        candidatos = []  # (y, texto) de spans numéricos
+        candidatos = []
         for blk in full.get("blocks", []):
             for line in blk.get("lines", []):
                 for span in line.get("spans", []):
@@ -216,7 +186,6 @@ def _extrair_codigo_por_blocos(page: "fitz.Page", clip_rect: "fitz.Rect") -> str
                         candidatos.append((y, t))
         if y_rotulo is None or not candidatos:
             return ""
-        # Pegar o número na mesma linha (mesmo y, com tolerância ~15pt)
         for y, num in candidatos:
             if abs(y - y_rotulo) < 15 and _eh_codigo_fiscalizacao_valido(num):
                 return num
@@ -226,11 +195,7 @@ def _extrair_codigo_por_blocos(page: "fitz.Page", clip_rect: "fitz.Rect") -> str
 
 
 def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
-    """
-    Extrai o código da fiscalização para nomear as fotos (só numérico; ex.: 902531, 896643).
-    Em PDF tabela (MA): rótulo e valor em colunas — usa fallback por blocos na mesma linha.
-    Conservação: "Código Fiscalização: Lote: 896643" → retorna 896643.
-    """
+    """Extrai código da fiscalização para nomear fotos. Conservação: Lote: 896643 → 896643."""
     def _rejeitar_lote(texto: str, val: str) -> str:
         if not val:
             return val
@@ -247,7 +212,6 @@ def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
 
     try:
         texto = page.get_text("text", clip=bloco_rect)
-        # 1) Código da Fiscalização: 902531 (mesma linha no texto)
         m = re.search(
             r'C[oó]digo\s+da\s+Fiscaliza[cç][aã]o\s*:\s*(\S+)',
             texto, re.IGNORECASE
@@ -256,7 +220,6 @@ def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
             val = _nunca_lote(_rejeitar_lote(texto, m.group(1).strip()))
             if val and _eh_codigo_fiscalizacao_valido(val):
                 return val
-        # 2) Código Fiscalização: XXX
         m = re.search(
             r'C[oó]digo\s+Fiscaliza[cç][aã]o\s*:\s*(\S+)',
             texto, re.IGNORECASE
@@ -265,7 +228,6 @@ def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
             val = _nunca_lote(_rejeitar_lote(texto, m.group(1).strip()))
             if val and _eh_codigo_fiscalizacao_valido(val):
                 return val
-        # 3) Conservação: Lote: 896643
         m = re.search(
             r'C[oó]digo\s+Fiscaliza[cç][aã]o:\s*Lote:\s*(\S+)',
             texto, re.IGNORECASE
@@ -274,7 +236,6 @@ def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
             val = _nunca_lote(m.group(1).strip())
             if val and _eh_codigo_fiscalizacao_valido(val):
                 return val
-        # 4) PDF em tabela (ex.: HE.13.0112): "Código da Fiscalização:" e "902132" na mesma linha
         if "Fiscaliza" in texto or "fiscaliza" in texto:
             cod = _extrair_codigo_por_blocos(page, page.rect)
             if cod:
@@ -285,7 +246,7 @@ def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
 
 
 def _codigo_estilo_ma(codigo: str) -> bool:
-    """True se o código é no padrão MA (ex.: NC.13.1039, HE.13.0112) — ponto e letras."""
+    """Código no padrão MA (ponto e letras)."""
     if not codigo or not isinstance(codigo, str):
         return False
     s = str(codigo).strip()
@@ -293,11 +254,7 @@ def _codigo_estilo_ma(codigo: str) -> bool:
 
 
 def _formatar_codigo_arquivo(codigo: str, num_digitos: int = 5) -> str:
-    """
-    Formata o código da NC para o nome do arquivo: dentro do parênteses
-    deve ser o número da NC com zeros à esquerda (ex: 00001, 00002).
-    Ex.: nc (00001)_1.jpg, PDF (00002)_1.jpg
-    """
+    """Código para nome do arquivo (zeros à esquerda)."""
     s = (codigo or "").strip()
     try:
         n = int(s)
@@ -313,17 +270,7 @@ def extrair_imagens_pdf(pdf_path: str,
                          dpi: int = 150,
                          nc_global_start: int = 0,
                          nomear_por_indice_fiscalizacao: bool = False) -> list:
-    """
-    Extrai duas imagens por NC do PDF:
-      • PDF (CODIGO).jpg  → texto + foto  → pasta_saida_nc  (ou pasta_saida)
-      • nc (CODIGO).jpg   → só a foto (sempre)
-
-    PDF = imagem + texto. nc = só foto. MA: código buscado na página inteira quando necessário.
-    CODIGO: só Código da Fiscalização (nunca Num. da NC). Modelo Foto busca por col C.
-      - Se True (só quando API pedir): 00001, 00002... para fluxos que usam col V como índice.
-
-    Retorna lista de caminhos dos arquivos gerados.
-    """
+    """Extrai PDF (CODIGO).jpg (texto+foto) e nc (CODIGO).jpg (só foto). Retorna lista de caminhos."""
     _check_deps()
     pdf_path = Path(pdf_path).resolve()
     if not pdf_path.exists():
@@ -344,7 +291,6 @@ def extrair_imagens_pdf(pdf_path: str,
     nc_global = nc_global_start
     nomes_usados: set[str] = set()
     ultimo_codigo: Optional[str] = None
-    # False = nomear pelo código extraído do PDF (MA: NC.13.1039; conservação: 896643). True = 00001, 00002 (só se API pedir)
     usar_indice = nomear_por_indice_fiscalizacao
     doc = fitz.open(str(pdf_path))
 
@@ -361,7 +307,6 @@ def extrair_imagens_pdf(pdf_path: str,
     try:
         for page_num in range(len(doc)):
             page = doc[page_num]
-            # Nova página: não propagar código para primeira foto (pode ser outra NC)
             ultimo_codigo = None
             r_fotos = _obter_rects_fotos(page)
 
@@ -385,11 +330,10 @@ def extrair_imagens_pdf(pdf_path: str,
                     if eh_ma:
                         y1_limite = r_fotos[i + 1].y0 - 1 if i + 1 < len(r_fotos) else None
                     else:
-                        y1_limite = r.y1  # Conservação: parte inferior no limite da foto (sem rodapé)
+                        y1_limite = r.y1
                     bloco = _bloco_texto_e_foto(page, y0_busca, r, y0_minimo=y0_min, y1_limite_abaixo=y1_limite)
                     blocos.append((bloco, r))
 
-            # Agrupar por código: mesma NC (ex. MA 2 fotos) → 1 PDF + várias nc; NCs diferentes (901943, 901944, 901945) → 1 PDF + 1 nc cada
             def flush_grupo(bloco_uniao: "fitz.Rect", fotos: list, cod: str):
                 if bloco_uniao is None or not cod:
                     return
@@ -456,13 +400,7 @@ def extrair_imagens_pdf(pdf_path: str,
 
 def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: int = 150,
                          nomear_por_indice_fiscalizacao: bool = False) -> tuple[bytes, int]:
-    """
-    Versão web: recebe PDF em bytes, extrai todas as imagens, retorna ZIP em bytes.
-    ZIP contém: PDF (CODIGO).jpg e nc (CODIGO).jpg.
-    Se nomear_por_indice_fiscalizacao=True: CODIGO = 00001, 00002, ... (índice = col V da EAF).
-    Caso contrário: CODIGO = Código de Fiscalização extraído do PDF (ex: 896643, HE.13.0111).
-    Retorna (zip_bytes, n_ncs).
-    """
+    """PDF em bytes → ZIP com PDF (CODIGO).jpg e nc (CODIGO).jpg. Retorna (zip_bytes, n_ncs)."""
     _check_deps()
     import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:

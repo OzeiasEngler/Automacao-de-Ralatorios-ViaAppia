@@ -357,7 +357,16 @@ JWT_ALGORITHM = "HS256"
 TOKENS_REVOGADOS: set = set()
 
 
-TOKEN_TTL_SECONDS = max(60, _ler_int_env("ARTESP_WEB_TOKEN_TTL_SECONDS", 28800))  # 8 horas
+# TTL da sessão (segundos). Env: ARTESP_WEB_TOKEN_TTL_SECONDS. Default 24h.
+TOKEN_TTL_SECONDS = max(60, _ler_int_env("ARTESP_WEB_TOKEN_TTL_SECONDS", 86400))
+
+# Proprietário (admin master): não pode ser removido, rebaixado nem bloqueado. Env: ARTESP_OWNER_EMAIL.
+OWNER_EMAIL = (os.getenv("ARTESP_OWNER_EMAIL") or "").strip().lower()
+
+
+def _eh_proprietario(email: str) -> bool:
+    """Indica se o e-mail é o do proprietário (imutável nas ações admin)."""
+    return bool(OWNER_EMAIL and (email or "").strip().lower() == OWNER_EMAIL)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -619,20 +628,34 @@ class RedefinirSenhaAdminPayload(BaseModel):
     nova_senha_temporaria: str = Field(..., min_length=6)
 
 
-# Caminho do banco de usuários (usa DATA_DIR: /data no Render, ./data no Windows)
-USERS_JSON_PATH = USER_DB_PATH
+class AlterarRolePayload(BaseModel):
+    """Admin altera perfil do usuário (user ↔ admin)."""
+    email: str = Field(..., min_length=5)
+    role: str = Field(..., description="admin ou user")
 
-# Fuso horário para nomes de arquivo e data_geracao (evita horário do servidor, ex. Ohio)
+
+class BloquearUsuarioPayload(BaseModel):
+    """Admin bloqueia ou desbloqueia usuário (disabled)."""
+    email: str = Field(..., min_length=5)
+    bloquear: bool = True
+
+
+class RemoverUsuarioPayload(BaseModel):
+    """Admin remove usuário do banco (apenas users.json)."""
+    email: str = Field(..., min_length=5)
+
+
+USERS_JSON_PATH = USER_DB_PATH
 TZ_BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 
 def _agora_brasilia() -> datetime.datetime:
-    """Data/hora atual em Brasília (para arquivos e relatórios)."""
+    """Data/hora atual em Brasília (arquivos e relatórios)."""
     return datetime.datetime.now(TZ_BRASILIA)
 
 
 def _normalizar_banco_usuarios(usuarios: dict) -> dict:
-    """Normaliza chaves do banco para lowercase; evita duplicata por diferença de caixa (ex.: já cadastrado)."""
+    """Chaves em lowercase para evitar duplicata por caixa no cadastro."""
     if not isinstance(usuarios, dict):
         return {}
     return {(str(k).strip().lower()): v for k, v in usuarios.items() if (k or "").strip()}
@@ -642,10 +665,7 @@ def _normalizar_banco_usuarios(usuarios: dict) -> dict:
 #  [P2] FILE LOCK — proteção contra race condition no users.json
 # ═══════════════════════════════════════════════════════════════
 class FileLock:
-    """
-    Lock por arquivo usando threading.Lock().
-    Protege leitura+escrita atômica do users.json.
-    """
+    """Lock por arquivo para leitura+escrita atômica do users.json."""
 
     def __init__(self):
         self._locks: Dict[str, threading.Lock] = {}
@@ -865,7 +885,7 @@ def _limpar_tokens_expirados():
 
 
 def _criar_access_token(data: dict) -> str:
-    """Cria token JWT com sub (email) e exp."""
+    """JWT com sub (email) e exp."""
     payload = dict(data)
     now = datetime.datetime.now(datetime.timezone.utc).timestamp()
     payload.setdefault("exp", now + TOKEN_TTL_SECONDS)
@@ -874,13 +894,13 @@ def _criar_access_token(data: dict) -> str:
 
 
 def _gerar_token(email: str):
-    """Gera token JWT com sub=email para exibição do usuário no frontend."""
+    """JWT com sub=email."""
     token_data = {"sub": email}
     return _criar_access_token(token_data)
 
 
 def _validar_token(token: str):
-    """Valida JWT e retorna email (sub) ou None."""
+    """Valida JWT; retorna email (sub) ou None."""
     if token in TOKENS_REVOGADOS:
         return None
     try:
@@ -896,18 +916,10 @@ def _get_usuario_autenticado(
     authorization: Optional[str] = Header(None),
     artesp_session: Optional[str] = Cookie(None),
 ) -> str:
-    """
-    [P0] Autentica por cookie httpOnly (prioridade) ou Bearer header (fallback).
-    Cookie: navegadores web.
-    Bearer: Postman, curl, scripts.
-    """
+    """Autentica por cookie httpOnly (navegador) ou Bearer (API/scripts)."""
     token = None
-
-    # Prioridade 1: cookie httpOnly (navegador)
     if artesp_session:
         token = artesp_session
-
-    # Prioridade 2: header Authorization: Bearer <token>
     if not token and authorization:
         scheme, _, credentials = (authorization or "").partition(" ")
         if scheme.lower() == "bearer" and credentials.strip():
@@ -932,7 +944,7 @@ def _get_usuario_autenticado(
 
 
 def _get_admin_emails() -> set:
-    """Retorna conjunto de emails com permissão de admin (env + users.json com role admin)."""
+    """Emails com role admin (env + users.json, excl. disabled)."""
     admins = set()
     raw = (os.getenv("ARTESP_ADMIN_EMAILS") or "").strip()
     if raw:
@@ -946,12 +958,27 @@ def _get_admin_emails() -> set:
     banco = carregar_banco_usuarios()
     for email, obj in (banco.items() if isinstance(banco, dict) else []):
         if isinstance(obj, dict) and (obj.get("role") or "").strip().lower() == "admin":
-            admins.add((email or "").strip().lower())
+            if not obj.get("disabled"):
+                admins.add((email or "").strip().lower())
     return admins
 
 
+def _numero_admins(usuarios: dict) -> int:
+    """Conta admins (env + dict) para garantir ao menos um ao rebaixar/bloquear/remover."""
+    n = 0
+    raw = (os.getenv("ARTESP_ADMIN_EMAILS") or "").strip()
+    if raw:
+        n += sum(1 for e in raw.split(",") if (e or "").strip().lower())
+    if (os.getenv("ARTESP_WEB_ADMIN_EMAIL") or "").strip().lower():
+        n += 1
+    for _email, obj in (usuarios.items() if isinstance(usuarios, dict) else []):
+        if isinstance(obj, dict) and (obj.get("role") or "").strip().lower() == "admin" and not obj.get("disabled"):
+            n += 1
+    return n
+
+
 def _get_user_role(email: str) -> str:
-    """Retorna 'admin' ou 'user' conforme users.json ou lista de admins (proteção dupla)."""
+    """'admin' ou 'user' conforme users.json / admins."""
     email = (email or "").strip().lower()
     banco = carregar_banco_usuarios()
     obj = banco.get(email)
@@ -963,7 +990,7 @@ def _get_user_role(email: str) -> str:
 
 
 def _get_usuario_admin(usuario_email: str = Depends(_get_usuario_autenticado)):
-    """Dependency: exige que o usuário autenticado seja admin."""
+    """Dependency: exige admin."""
     admins = _get_admin_emails()
     if not admins:
         raise HTTPException(status_code=403, detail="Nenhum admin configurado. Defina ARTESP_ADMIN_EMAILS ou ARTESP_WEB_ADMIN_EMAIL.")
@@ -3454,6 +3481,122 @@ async def admin_redefinir_senha(
 
     _modificar_banco_usuarios(_redefinir)
     return {"message": f"Senha de {email} redefinida. O usuário deve trocar no próximo acesso."}
+
+
+@app.get("/admin/usuarios")
+async def listar_usuarios_admin(current_user: str = Depends(_get_usuario_admin)):
+    """Lista usuários do users.json (email, role, disabled). Não expõe senha."""
+    _ = current_user
+    banco = carregar_banco_usuarios()
+    lista = []
+    for email, obj in (banco.items() if isinstance(banco, dict) else []):
+        if not isinstance(obj, dict):
+            continue
+        role = (obj.get("role") or "user").strip().lower()
+        if role not in ("admin", "user"):
+            role = "user"
+        lista.append({
+            "email": email,
+            "role": role,
+            "disabled": bool(obj.get("disabled")),
+            "owner": _eh_proprietario(email),
+        })
+    lista.sort(key=lambda x: (x["email"],))
+    return {"usuarios": lista}
+
+
+@app.post("/admin/alterar-role-usuario")
+async def alterar_role_usuario(
+    payload: AlterarRolePayload,
+    current_user: str = Depends(_get_usuario_admin),
+):
+    """Altera perfil do usuário (user ↔ admin). Não permite rebaixar o último admin nem o proprietário."""
+    _ = current_user
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail inválido.")
+    if _eh_proprietario(email):
+        raise HTTPException(status_code=403, detail="Não é possível alterar o perfil do proprietário (admin master).")
+    role = (payload.role or "user").strip().lower()
+    if role not in ("admin", "user"):
+        role = "user"
+
+    def _alterar(usuarios):
+        if email not in usuarios:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        prev = usuarios[email]
+        if not isinstance(prev, dict):
+            raise HTTPException(status_code=400, detail="Dados do usuário inválidos.")
+        if role == "user" and (prev.get("role") or "").strip().lower() == "admin":
+            copia = {k: dict(v) if isinstance(v, dict) else v for k, v in usuarios.items()}
+            copia[email] = {**prev, "role": "user"}
+            if _numero_admins(copia) < 1:
+                raise HTTPException(status_code=400, detail="Não é possível rebaixar o último administrador.")
+        usuarios[email] = {**prev, "role": role}
+        return usuarios
+
+    _modificar_banco_usuarios(_alterar)
+    return {"message": f"Perfil de {email} alterado para {role}."}
+
+
+@app.post("/admin/bloquear-usuario")
+async def bloquear_usuario(
+    payload: BloquearUsuarioPayload,
+    current_user: str = Depends(_get_usuario_admin),
+):
+    """Bloqueia ou desbloqueia usuário (campo disabled). Não permite bloquear o último admin nem o proprietário."""
+    _ = current_user
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail inválido.")
+    if _eh_proprietario(email) and payload.bloquear:
+        raise HTTPException(status_code=403, detail="Não é possível bloquear o proprietário (admin master).")
+
+    def _bloquear(usuarios):
+        if email not in usuarios:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        prev = usuarios[email]
+        if not isinstance(prev, dict):
+            raise HTTPException(status_code=400, detail="Dados do usuário inválidos.")
+        if payload.bloquear and (prev.get("role") or "").strip().lower() == "admin":
+            copia = {k: dict(v) if isinstance(v, dict) else v for k, v in usuarios.items()}
+            copia[email] = {**prev, "disabled": True}
+            if _numero_admins(copia) < 1:
+                raise HTTPException(status_code=400, detail="Não é possível bloquear o último administrador.")
+        usuarios[email] = {**prev, "disabled": payload.bloquear}
+        return usuarios
+
+    _modificar_banco_usuarios(_bloquear)
+    msg = "bloqueado" if payload.bloquear else "desbloqueado"
+    return {"message": f"Usuário {email} {msg}."}
+
+
+@app.post("/admin/remover-usuario")
+async def remover_usuario(
+    payload: RemoverUsuarioPayload,
+    current_user: str = Depends(_get_usuario_admin),
+):
+    """Remove usuário do users.json. Não permite remover o último admin nem o proprietário."""
+    _ = current_user
+    email = (payload.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="E-mail inválido.")
+    if _eh_proprietario(email):
+        raise HTTPException(status_code=403, detail="Não é possível remover o proprietário (admin master).")
+
+    def _remover(usuarios):
+        if email not in usuarios:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
+        prev = usuarios[email]
+        if isinstance(prev, dict) and (prev.get("role") or "").strip().lower() == "admin":
+            copia = {k: v for k, v in usuarios.items() if k != email}
+            if _numero_admins(copia) < 1:
+                raise HTTPException(status_code=400, detail="Não é possível remover o último administrador.")
+        del usuarios[email]
+        return usuarios
+
+    _modificar_banco_usuarios(_remover)
+    return {"message": f"Usuário {email} removido."}
 
 
 def _media_type_output(nome: str) -> str:

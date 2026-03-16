@@ -29,6 +29,21 @@
     .admin-feedback { margin-top: 12px; padding: 10px 14px; border-radius: var(--radius-sm); font-size: .85rem; }
     .admin-feedback.success { background: rgba(16, 185, 129, 0.15); color: var(--success); }
     .admin-feedback.error { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+    .usuarios-card { max-width: 720px; margin-top: 20px; }
+    .usuarios-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .usuarios-table th, .usuarios-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-color); }
+    .usuarios-table th { background: var(--bg-surface-2); font-weight: 600; color: var(--text-secondary); }
+    .usuarios-table tr.disabled-user { opacity: 0.7; }
+    .usuarios-table .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .75rem; font-weight: 500; }
+    .badge-admin { background: var(--accent-glow); color: var(--accent); }
+    .badge-user { background: var(--bg-surface-2); color: var(--text-secondary); }
+    .badge-bloqueado { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .badge-ativo { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+    .badge-proprietario { background: rgba(139, 92, 246, 0.2); color: #7c3aed; }
+    .usuarios-acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+    .usuarios-acoes.proprietario { color: var(--text-muted); font-size: .8rem; }
+    .usuarios-acoes .btn { padding: 6px 10px; font-size: .78rem; }
+    .usuarios-loading { padding: 20px; text-align: center; color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -147,6 +162,28 @@
             </form>
           </div>
         </div>
+        <div class="card animate-in admin-card usuarios-card">
+          <div class="card-header">
+            <i class="fas fa-users"></i> Usuários cadastrados
+          </div>
+          <div class="card-body">
+            <div id="usuariosLoading" class="usuarios-loading">Carregando…</div>
+            <div id="usuariosListWrap" style="display:none">
+              <table class="usuarios-table" id="usuariosTable">
+                <thead>
+                  <tr>
+                    <th>E-mail</th>
+                    <th>Perfil</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="usuariosTbody"></tbody>
+              </table>
+              <div id="usuariosFeedback" class="admin-feedback" style="margin-top:12px"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -163,6 +200,15 @@
         const tk = getToken();
         return tk ? { 'Authorization': 'Bearer ' + tk } : {};
       }
+      function deslogarSeSessaoExpirada(status) {
+        if (status === 401) {
+          localStorage.removeItem('artesp_token');
+          localStorage.removeItem('artesp_user_email');
+          location.reload();
+          return true;
+        }
+        return false;
+      }
 
       function showApp() {
         if (loginOverlay) loginOverlay.style.display = 'none';
@@ -178,6 +224,7 @@
 
       async function checkAdmin() {
         const r = await fetch('/admin/check', { credentials: 'include', headers: getAuthHeader() });
+        if (deslogarSeSessaoExpirada(r.status)) return;
         if (r.status === 403 || !r.ok) {
           adminForbidden.style.display = 'block';
           adminPanel.style.display = 'none';
@@ -185,6 +232,119 @@
         }
         adminForbidden.style.display = 'none';
         adminPanel.style.display = 'block';
+        carregarUsuarios();
+      }
+
+      async function carregarUsuarios() {
+        const loading = document.getElementById('usuariosLoading');
+        const wrap = document.getElementById('usuariosListWrap');
+        const tbody = document.getElementById('usuariosTbody');
+        const fb = document.getElementById('usuariosFeedback');
+        if (!loading || !wrap || !tbody) return;
+        fb.innerHTML = '';
+        loading.style.display = 'block';
+        wrap.style.display = 'none';
+        try {
+          const r = await fetch('/admin/usuarios', { credentials: 'include', headers: getAuthHeader() });
+          if (deslogarSeSessaoExpirada(r.status)) return;
+          if (!r.ok) throw new Error('Falha ao carregar');
+          const data = await r.json();
+          const usuarios = data.usuarios || [];
+          tbody.innerHTML = '';
+          usuarios.forEach(function(u) {
+            const tr = document.createElement('tr');
+            if (u.disabled) tr.classList.add('disabled-user');
+            const roleClass = u.role === 'admin' ? 'badge-admin' : 'badge-user';
+            const statusClass = u.disabled ? 'badge-bloqueado' : 'badge-ativo';
+            const statusText = u.disabled ? 'Bloqueado' : 'Ativo';
+            const isOwner = !!u.owner;
+            const perfilHtml = isOwner
+              ? '<span class="badge badge-proprietario">Proprietário</span>'
+              : '<span class="badge ' + roleClass + '">' + (u.role === 'admin' ? 'Admin' : 'Usuário') + '</span>';
+            const acoesHtml = isOwner
+              ? '<div class="usuarios-acoes proprietario">—</div>'
+              : '<div class="usuarios-acoes" data-email="' + (u.email || '').replace(/"/g, '&quot;') + '">' +
+                '<select class="form-input alterar-role" style="width:auto;padding:6px 8px;font-size:.78rem" data-email="' + (u.email || '').replace(/"/g, '&quot;') + '">' +
+                '<option value="user"' + (u.role === 'user' ? ' selected' : '') + '>Usuário</option>' +
+                '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') + '>Admin</option>' +
+                '</select>' +
+                '<button type="button" class="btn btn-outline btn-bloquear" data-email="' + (u.email || '').replace(/"/g, '&quot;') + '" data-bloquear="' + (!u.disabled) + '">' + (u.disabled ? 'Desbloquear' : 'Bloquear') + '</button>' +
+                '<button type="button" class="btn btn-outline btn-remover" data-email="' + (u.email || '').replace(/"/g, '&quot;') + '" style="color:var(--danger)">Remover</button>' +
+                '</div>';
+            tr.innerHTML =
+              '<td>' + (u.email || '').replace(/</g, '&lt;') + '</td>' +
+              '<td>' + perfilHtml + '</td>' +
+              '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>' +
+              '<td>' + acoesHtml + '</td>';
+            tbody.appendChild(tr);
+          });
+          loading.style.display = 'none';
+          wrap.style.display = 'block';
+          bindUsuariosAcoes();
+        } catch (err) {
+          loading.style.display = 'none';
+          wrap.style.display = 'block';
+          tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted)">Erro ao carregar usuários.</td></tr>';
+        }
+      }
+
+      function bindUsuariosAcoes() {
+        document.querySelectorAll('.alterar-role').forEach(function(sel) {
+          sel.onchange = function() {
+            const email = this.getAttribute('data-email');
+            const role = this.value;
+            if (!email || !role) return;
+            fetch('/admin/alterar-role-usuario', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              credentials: 'include',
+              body: JSON.stringify({ email: email, role: role })
+            }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
+              .then(function(x) {
+                if (deslogarSeSessaoExpirada(x.status)) return;
+                var fb = document.getElementById('usuariosFeedback');
+                if (x.ok) { fb.innerHTML = '<span class="success"><i class="fas fa-check"></i> ' + (x.data.message || 'Perfil alterado.') + '</span>'; fb.className = 'admin-feedback success'; carregarUsuarios(); }
+                else { fb.innerHTML = '<span class="error"><i class="fas fa-exclamation-circle"></i> ' + (x.data.detail || 'Erro.') + '</span>'; fb.className = 'admin-feedback error'; }
+              });
+          };
+        });
+        document.querySelectorAll('.btn-bloquear').forEach(function(btn) {
+          btn.onclick = function() {
+            const email = this.getAttribute('data-email');
+            const bloquear = this.getAttribute('data-bloquear') === 'true';
+            if (!email) return;
+            fetch('/admin/bloquear-usuario', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              credentials: 'include',
+              body: JSON.stringify({ email: email, bloquear: bloquear })
+            }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
+              .then(function(x) {
+                if (deslogarSeSessaoExpirada(x.status)) return;
+                var fb = document.getElementById('usuariosFeedback');
+                if (x.ok) { fb.innerHTML = '<span class="success"><i class="fas fa-check"></i> ' + (x.data.message || '') + '</span>'; fb.className = 'admin-feedback success'; carregarUsuarios(); }
+                else { fb.innerHTML = '<span class="error"><i class="fas fa-exclamation-circle"></i> ' + (x.data.detail || 'Erro.') + '</span>'; fb.className = 'admin-feedback error'; }
+              });
+          };
+        });
+        document.querySelectorAll('.btn-remover').forEach(function(btn) {
+          btn.onclick = function() {
+            const email = this.getAttribute('data-email');
+            if (!email || !confirm('Remover o usuário ' + email + '? Esta ação não pode ser desfeita.')) return;
+            fetch('/admin/remover-usuario', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              credentials: 'include',
+              body: JSON.stringify({ email: email })
+            }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, data: d }; }); })
+              .then(function(x) {
+                if (deslogarSeSessaoExpirada(x.status)) return;
+                var fb = document.getElementById('usuariosFeedback');
+                if (x.ok) { fb.innerHTML = '<span class="success"><i class="fas fa-check"></i> ' + (x.data.message || '') + '</span>'; fb.className = 'admin-feedback success'; carregarUsuarios(); }
+                else { fb.innerHTML = '<span class="error"><i class="fas fa-exclamation-circle"></i> ' + (x.data.detail || 'Erro.') + '</span>'; fb.className = 'admin-feedback error'; }
+              });
+          };
+        });
       }
 
       if (getToken() && localStorage.getItem('artesp_user_email')) {
@@ -250,6 +410,7 @@
             body: JSON.stringify({ email: email, senha: senha, role: role })
           });
           const data = await r.json().catch(function() { return {}; });
+          if (deslogarSeSessaoExpirada(r.status)) return;
           if (!r.ok) {
             const msg = (typeof data.detail === 'string') ? data.detail : 'Erro ao cadastrar.';
             fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
@@ -258,6 +419,7 @@
           fb.innerHTML = '<div class="admin-feedback success"><i class="fas fa-check"></i> ' + (data.message || 'Usuário cadastrado.') + '</div>';
           document.getElementById('novoEmail').value = '';
           document.getElementById('novaSenha').value = '';
+          carregarUsuarios();
         } catch (err) {
           fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-wifi"></i> Falha na conexão.</div>';
         }
@@ -281,6 +443,7 @@
             body: JSON.stringify({ email: email, nova_senha_temporaria: senhaTemp })
           });
           const data = await r.json().catch(function() { return {}; });
+          if (deslogarSeSessaoExpirada(r.status)) return;
           if (!r.ok) {
             const msg = (typeof data.detail === 'string') ? data.detail : 'Erro ao redefinir.';
             fb.innerHTML = '<div class="admin-feedback error"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>';
