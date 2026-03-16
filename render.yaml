@@ -1,4 +1,4 @@
-# Render Blueprint — Automacao-de-Ralatorios-ViaAppia
+# Exported from Render on 2026-03-16T17:46:19Z
 version: "1"
 services:
 - type: web
@@ -7,17 +7,38 @@ services:
   repo: https://github.com/OzeiasEngler/Automacao-de-Ralatorios-ViaAppia
   plan: standard
   envVars:
-  - key: ARTESP_JWT_SECRET
+  - key: ARTESP_OWNER_EMAIL
+    sync: false
+  - key: ARTESP_CORS_ORIGINS
+    sync: false
+  - key: ARTESP_WEB_ADMIN_EMAIL
+    sync: false
+  - key: ARTESP_DATA_DIR
     sync: false
   - key: ARTESP_WEB_USERS
+    sync: false
+  - key: ARTESP_WEB_ADMIN_PASSWORD
+    sync: false
+  - key: ADMIN_PASSWORD_MIGRATION
+    sync: false
+  - key: ARTESP_ADMIN_EMAILS
+    sync: false
+  - key: ARTESP_PFX_CONTENT
+    sync: false
+  - key: ARTESP_JWT_SECRET
     sync: false
   - key: ARTESP_WEB_PBKDF2_ITERATIONS
     sync: false
   - key: ARTESP_PFX_PASSWORD
     sync: false
-  - key: ARTESP_PFX_CONTENT
-    sync: false
   region: ohio
   dockerContext: .
   dockerfilePath: ./Dockerfile
-  autoDeployTrigger: commit
+  domains:
+  - gestao-rodovias.com.br
+  - www.gestao-rodovias.com.br
+  disk:
+    name: disk
+    mountPath: /data
+    sizeGB: 50
+  autoDeployTrigger: "off"
