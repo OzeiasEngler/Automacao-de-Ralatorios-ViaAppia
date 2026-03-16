@@ -46,6 +46,12 @@ Y0_MINIMO_BLOCO       = 66    # Topo mínimo do bloco (corta margem + faixa azul
 MARGEM_SUPERIOR       = 4     # Margem acima do texto do bloco (pt)
 FOLGA_APOS_FOTO_ANT   = 18    # Espaço mínimo após foto anterior ao buscar próxima NC
 
+# Dimensões e resolução das imagens nc (N).jpg na extração
+NC_IMAGE_WIDTH  = 800   # largura em pixels
+NC_IMAGE_HEIGHT = 500   # altura em pixels
+NC_IMAGE_DPI_X  = 222   # resolução horizontal (DPI)
+NC_IMAGE_DPI_Y  = 319   # resolução vertical (DPI)
+
 
 def _check_deps() -> None:
     if not FITZ_OK:
@@ -153,6 +159,17 @@ def _renderizar_jpg(page: "fitz.Page", rect: "fitz.Rect", dpi: int = 150) -> byt
         img = img.convert("RGB")
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=92)
+    return buf.getvalue()
+
+
+def _redimensionar_nc_jpg(img_bytes: bytes) -> bytes:
+    """Redimensiona imagem para nc (N).jpg: 800×500 px com DPI 222×319."""
+    img = PILImage.open(io.BytesIO(img_bytes))
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    img = img.resize((NC_IMAGE_WIDTH, NC_IMAGE_HEIGHT), PILImage.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=92, dpi=(NC_IMAGE_DPI_X, NC_IMAGE_DPI_Y))
     return buf.getvalue()
 
 
@@ -384,6 +401,7 @@ def extrair_imagens_pdf(pdf_path: str,
                 for fr in fotos:
                     jpg_foto = _renderizar_jpg(page, fr, dpi)
                     if jpg_foto:
+                        jpg_foto = _redimensionar_nc_jpg(jpg_foto)
                         nome = _nome_unico(f"nc ({cod}).jpg")
                         (p_pdf / nome).write_bytes(jpg_foto)
                         salvos.append(str(p_pdf / nome))

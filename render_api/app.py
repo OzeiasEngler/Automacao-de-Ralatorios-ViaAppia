@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 import datetime
 import platform
+from zoneinfo import ZoneInfo
 import time
 import subprocess
 import shutil
@@ -262,6 +263,27 @@ else:
         expose_headers=["Content-Disposition"],
     )
 
+# Rate limit global (slowapi): 50 req/10s por IP — protege contra scanners/curiosos
+_slowapi_limit = (os.getenv("ARTESP_RATE_GLOBAL") or "50/10seconds").strip()
+def _slowapi_key(request: Request) -> str:
+    fwd = (request.headers.get("x-forwarded-for") or "").split(",")
+    if fwd and fwd[0].strip():
+        return fwd[0].strip()
+    if request.headers.get("x-real-ip"):
+        return request.headers.get("x-real-ip").strip()
+    return request.client.host if request.client else "unknown"
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.middleware import SlowAPIMiddleware
+    from slowapi.errors import RateLimitExceeded
+    _slowapi_limiter = Limiter(key_func=_slowapi_key, default_limits=[_slowapi_limit])
+    app.state.limiter = _slowapi_limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
+    logging.info("slowapi: rate limit global %s por IP", _slowapi_limit)
+except ImportError:
+    logging.warning("slowapi não instalado — rate limit global desativado. pip install slowapi")
+
 if STATIC_DIR.is_dir():
     app.mount("/web-static", StaticFiles(directory=str(STATIC_DIR)), name="web_static")
 
@@ -287,6 +309,32 @@ async def favicon():
         if path.is_file():
             return FileResponse(str(path), media_type=media)
     return Response(status_code=204)
+
+
+# Rotas de probe (/.env, wp-login, etc.): 404 + log + rate limit
+@app.get("/.env", include_in_schema=False)
+async def probe_env(request: Request):
+    return await _probe_404(request, ".env")
+
+@app.get("/wp-login.php", include_in_schema=False)
+async def probe_wp_login(request: Request):
+    return await _probe_404(request, "wp-login.php")
+
+@app.get("/wp-admin", include_in_schema=False)
+async def probe_wp_admin(request: Request):
+    return await _probe_404(request, "wp-admin")
+
+@app.get("/wp-admin/", include_in_schema=False)
+async def probe_wp_admin_slash(request: Request):
+    return await _probe_404(request, "wp-admin/")
+
+@app.get("/.git/config", include_in_schema=False)
+async def probe_git_config(request: Request):
+    return await _probe_404(request, ".git/config")
+
+@app.get("/config.php", include_in_schema=False)
+async def probe_config_php(request: Request):
+    return await _probe_404(request, "config.php")
 
 
 @app.exception_handler(Exception)
@@ -361,6 +409,8 @@ RATE_LIMIT_SIMULAR_MAX = _ler_int_env("ARTESP_RATE_SIMULAR_MAX", 20)
 RATE_LIMIT_SIMULAR_JANELA = _ler_int_env("ARTESP_RATE_SIMULAR_JANELA", 300)
 RATE_LIMIT_DOWNLOAD_MAX = _ler_int_env("ARTESP_RATE_DOWNLOAD_MAX", 50)
 RATE_LIMIT_DOWNLOAD_JANELA = _ler_int_env("ARTESP_RATE_DOWNLOAD_JANELA", 300)
+RATE_LIMIT_PROBE_MAX = _ler_int_env("ARTESP_RATE_PROBE_MAX", 30)
+RATE_LIMIT_PROBE_JANELA = _ler_int_env("ARTESP_RATE_PROBE_JANELA", 60)
 
 
 def _get_client_ip(request: Request) -> str:
@@ -383,6 +433,14 @@ def _check_rate_limit(request: Request, chave_extra: str, limite: int, janela: f
             detail=f"Muitas requisições. Aguarde {int(tempo)} segundos.",
             headers={"Retry-After": str(int(tempo))},
         )
+
+
+async def _probe_404(request: Request, path: str):
+    """Rate limit + log para rotas de probe (/.env, wp-login, etc.); retorna 404."""
+    _check_rate_limit(request, "probe", RATE_LIMIT_PROBE_MAX, RATE_LIMIT_PROBE_JANELA)
+    ip = _get_client_ip(request)
+    logging.warning("Probe bloqueado: path=%s client_ip=%s", path, ip)
+    return Response(status_code=404)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -564,6 +622,21 @@ class RedefinirSenhaAdminPayload(BaseModel):
 # Caminho do banco de usuários (usa DATA_DIR: /data no Render, ./data no Windows)
 USERS_JSON_PATH = USER_DB_PATH
 
+# Fuso horário para nomes de arquivo e data_geracao (evita horário do servidor, ex. Ohio)
+TZ_BRASILIA = ZoneInfo("America/Sao_Paulo")
+
+
+def _agora_brasilia() -> datetime.datetime:
+    """Data/hora atual em Brasília (para arquivos e relatórios)."""
+    return datetime.datetime.now(TZ_BRASILIA)
+
+
+def _normalizar_banco_usuarios(usuarios: dict) -> dict:
+    """Normaliza chaves do banco para lowercase; evita duplicata por diferença de caixa (ex.: já cadastrado)."""
+    if not isinstance(usuarios, dict):
+        return {}
+    return {(str(k).strip().lower()): v for k, v in usuarios.items() if (k or "").strip()}
+
 
 # ═══════════════════════════════════════════════════════════════
 #  [P2] FILE LOCK — proteção contra race condition no users.json
@@ -599,7 +672,8 @@ def carregar_banco_usuarios() -> dict:
             if USERS_JSON_PATH.is_file():
                 with open(USERS_JSON_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    return data if isinstance(data, dict) else {}
+                    usuarios = data if isinstance(data, dict) else {}
+                    return _normalizar_banco_usuarios(usuarios)
         except (OSError, json.JSONDecodeError) as e:
             logging.warning("[P2] Falha ao carregar users.json (%s): %s", USERS_JSON_PATH, e)
     return {}
@@ -644,7 +718,7 @@ def _modificar_banco_usuarios(fn) -> dict:
             if USERS_JSON_PATH.is_file():
                 with open(USERS_JSON_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    usuarios = data if isinstance(data, dict) else {}
+                    usuarios = _normalizar_banco_usuarios(data if isinstance(data, dict) else {})
         except (OSError, json.JSONDecodeError) as e:
             logging.warning("[P2] Falha ao ler users.json para modificação: %s", e)
 
@@ -1171,7 +1245,7 @@ def verificar_consistencia_dados(content: bytes, modalidade: str) -> dict:
 
 def _normalizar_nome_arquivo(nome):
     if not nome:
-        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        stamp = _agora_brasilia().strftime("%Y%m%d_%H%M%S")
         return f"artesp_relatorio_{stamp}.geojson"
     limpo = re.sub(r"[^A-Za-z0-9_.-]+", "_", nome).strip("._")
     if not limpo:
@@ -1284,7 +1358,7 @@ def _gerar_pdf_relatorio(
 
     pdf_nome = nome_arquivo.replace(".geojson", "") + "_RELATORIO.pdf"
     pdf_path = os.path.join(output_path, pdf_nome)
-    agora = datetime.datetime.now()
+    agora = _agora_brasilia()
 
     try:
         doc = SimpleDocTemplate(
@@ -1494,7 +1568,7 @@ def _gerar_excel_resumo(
 
     xlsx_nome = nome_arquivo.replace(".geojson", "") + "_RESUMO.xlsx"
     xlsx_path = os.path.join(output_path, xlsx_nome)
-    agora = datetime.datetime.now()
+    agora = _agora_brasilia()
 
     try:
         wb = openpyxl.Workbook()
@@ -1943,7 +2017,7 @@ async def geojson_upload(
     """
     _check_rate_limit(request, f"geojson:{usuario_email}", RATE_LIMIT_GERAR_MAX, RATE_LIMIT_GERAR_JANELA)
     _validar_upload(file)
-    ano_int = datetime.datetime.now().year
+    ano_int = _agora_brasilia().year
     content = await _ler_upload_com_limite(file)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         tmp.write(content)
@@ -2016,7 +2090,7 @@ def processar_relatorio(payload: ProcessarRelatorioPayload, usuario_email: str =
     geojson_obj = dict(payload.geojson)
     metadata = geojson_obj.setdefault("metadata", {})
     metadata.setdefault("schema_version", "R0")
-    metadata.setdefault("data_geracao", datetime.datetime.now().isoformat(timespec="seconds"))
+    metadata.setdefault("data_geracao", _agora_brasilia().isoformat(timespec="seconds"))
     metadata.setdefault("gerador_api", "render_api")
     metadata.setdefault("usuario_email", usuario_email)
 
@@ -2520,7 +2594,7 @@ def _gerar_relatorio_do_excel(
         "type": "FeatureCollection",
         "metadata": {
             "schema_version": "R0",
-            "data_geracao": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S-03:00"),
+            "data_geracao": _agora_brasilia().strftime("%Y-%m-%dT%H:%M:%S-03:00"),
             "lote": lote["sigla"],
             "gerador_versao": getattr(core, "VERSAO", "3.8.3"),
             "geometria_por_sentido": not usar_geom_por_rodovia,
@@ -2694,7 +2768,7 @@ def _gerar_relatorio_do_excel(
             f.write("=" * 70 + "\n")
             f.write(f"RELATÓRIO DE GERAÇÃO — GEOJSON DO LOTE {lote['sigla']}\n")
             f.write("=" * 70 + "\n\n")
-            f.write(f"Data/Hora: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n")
+            f.write(f"Data/Hora: {_agora_brasilia().strftime('%d/%m/%Y %H:%M:%S')}\n")
             f.write(f"Lote: {lote['sigla']}\n")
             f.write(f"Modalidade: {mod.get('rotulo', mod['chave'])}\n")
             f.write(f"Versão: {versao_key}\n\n")
@@ -3168,7 +3242,7 @@ def _atualizar_metricas_globais(resultado: dict) -> None:
     """[P2] Atualiza metrics.json com lock para evitar race condition."""
     lock = _file_locks.get_lock(str(METRICS_PATH))
     with lock:
-        hoje = datetime.datetime.now().strftime("%Y-%m-%d")
+        hoje = _agora_brasilia().strftime("%Y-%m-%d")
         data: dict = {}
 
         if METRICS_PATH.is_file():
@@ -3221,7 +3295,7 @@ def _coletar_stats_admin() -> dict:
     total_gerado = 0
     lote_counts: Dict[str, int] = {}
     bytes_total = 0
-    hoje = datetime.datetime.now().date()
+    hoje = _agora_brasilia().date()
     bytes_liberados_hoje = 0
     try:
         if OUTPUT_PATH.is_dir():
@@ -3232,7 +3306,7 @@ def _coletar_stats_admin() -> dict:
                 try:
                     stat = f.stat()
                     bytes_total += stat.st_size
-                    mtime = datetime.datetime.fromtimestamp(stat.st_mtime).date()
+                    mtime = datetime.datetime.fromtimestamp(stat.st_mtime, tz=TZ_BRASILIA).date()
                     if mtime == hoje:
                         bytes_liberados_hoje += stat.st_size
                     # Contar por lote (ex: L13, L21 no nome)
@@ -3403,7 +3477,7 @@ def _gerar_readme_auditoria(
     """
     [P3] Gera texto README para incluir no ZIP de auditoria.
     """
-    agora = datetime.datetime.now()
+    agora = _agora_brasilia()
     lote = meta.get("lote", "?")
     modalidade = meta.get("modalidade", "?")
     versao = meta.get("versao", "?")
@@ -3527,7 +3601,7 @@ async def download_outputs_zip(
     nome_zip = meta.get("nome_zip", "")
 
     if not nome_zip:
-        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        stamp = _agora_brasilia().strftime("%Y%m%d_%H%M%S")
         nome_zip = f"artesp_relatorio_{stamp}.zip"
     if not nome_zip.lower().endswith(".zip"):
         nome_zip += ".zip"

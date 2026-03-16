@@ -12,7 +12,7 @@ VBA Art_022 (Macro 02):
 Fluxo:
   1. Extrai imagens do PDF (uma por página)
   2. Associa cada imagem à NC correta pelo texto da página (quando há Excel pareado)
-  3. Redimensiona: nc = 275×210 px | PDF = 480×202 px (modelo Kria / Resposta)
+  3. Redimensiona: nc = 800×500 px (222×319 DPI) | PDF = 480×202 px (modelo Kria / Resposta)
   4. Renomeia e salva: nc (1).jpg, nc (2).jpg em Imagens Provisórias | PDF (1).jpg, PDF (2).jpg em Imagens Provisórias - PDF
 
 Entrada: PDF pareado (mesmo nome do Excel) ou pasta com vários PDFs.
@@ -29,6 +29,8 @@ from config import (
     M02_FOTOS_PDF,
     M02_FOTO_W,
     M02_FOTO_H,
+    M02_FOTO_DPI_X,
+    M02_FOTO_DPI_Y,
     M02_FOTO_PDF_W,
     M02_FOTO_PDF_H,
     SERVICO_ABREV,
@@ -78,8 +80,10 @@ def _normalizar_texto(s: str) -> str:
     return sem_acento.upper().strip()
 
 
-def _redimensionar_e_salvar(img_bytes: bytes, dest: Path, largura: int, altura: int) -> bool:
-    """Redimensiona para (largura, altura) e salva JPG. draft() em JPEG reduz RAM; resize() garante tamanho exato."""
+def _redimensionar_e_salvar(
+    img_bytes: bytes, dest: Path, largura: int, altura: int, dpi: tuple[int, int] | None = None
+) -> bool:
+    """Redimensiona para (largura, altura) e salva JPG. dpi=(x,y) grava resolução no JPEG quando informado."""
     try:
         from PIL import Image
         import io
@@ -95,7 +99,10 @@ def _redimensionar_e_salvar(img_bytes: bytes, dest: Path, largura: int, altura: 
             img = img.convert("RGB")
         img_resized = img.resize((largura, altura), Image.LANCZOS)
         garantir_pasta(dest.parent)
-        img_resized.save(str(dest), "JPEG", quality=90)
+        save_kw = {"quality": 90}
+        if dpi:
+            save_kw["dpi"] = dpi
+        img_resized.save(str(dest), "JPEG", **save_kw)
         return True
     except Exception as e:
         logger.warning(f"  Erro ao processar imagem: {e}")
@@ -325,7 +332,9 @@ def executar(
             dest_pdf = pasta_saida_pdf / f"nc ({n}).jpg"
             dest_nc = pasta_saida_nc / f"PDF ({n}).jpg"
             ok_pdf = _redimensionar_e_salvar(img_bytes, dest_pdf, M02_FOTO_PDF_W, M02_FOTO_PDF_H)
-            ok_nc = _redimensionar_e_salvar(img_bytes, dest_nc, M02_FOTO_W, M02_FOTO_H)
+            ok_nc = _redimensionar_e_salvar(
+                img_bytes, dest_nc, M02_FOTO_W, M02_FOTO_H, dpi=(M02_FOTO_DPI_X, M02_FOTO_DPI_Y)
+            )
             if ok_pdf or ok_nc:
                 extraidas += 1
                 logger.info(f"  ✓ NC {n}: PDF ({n}).jpg (pasta NC), nc ({n}).jpg (pasta PDF)")
@@ -348,7 +357,9 @@ def executar(
                 dest_pdf = pasta_saida_pdf / f"nc ({n}).jpg"
                 dest_nc = pasta_saida_nc / f"PDF ({n}).jpg"
                 ok_pdf = _redimensionar_e_salvar(img_bytes, dest_pdf, M02_FOTO_PDF_W, M02_FOTO_PDF_H)
-                ok_nc = _redimensionar_e_salvar(img_bytes, dest_nc, M02_FOTO_W, M02_FOTO_H)
+                ok_nc = _redimensionar_e_salvar(
+                    img_bytes, dest_nc, M02_FOTO_W, M02_FOTO_H, dpi=(M02_FOTO_DPI_X, M02_FOTO_DPI_Y)
+                )
                 if ok_pdf or ok_nc:
                     extraidas += 1
                     logger.info(f"  ✓ {pdf_path.name} → PDF ({n}).jpg (pasta NC), nc ({n}).jpg (pasta PDF)")
