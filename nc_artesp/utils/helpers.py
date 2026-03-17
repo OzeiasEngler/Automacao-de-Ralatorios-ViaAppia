@@ -280,12 +280,12 @@ def renomear_arquivo(src, dst) -> Path:
 def normalizar_rodovia_para_busca(rodovia: str) -> str:
     """
     Normaliza o nome da rodovia para comparação com MAPA_EAF e RODOVIAS.
-    Aceita: "SP 075", "SP075", "SP-075", "SP 127", "SPI 102-300", etc.
-    Usado por: análise de PDF (atribuir grupo), e-mail, separar NC, helpers.
+    Aceita: "SP 075", "SP075", "SP-075", "SP 127", "SPI 102-300", "SPI102/300", etc.
+    SPI102/300 pertence à Autoroutes (trecho SPI 102-300 no MAPA_EAF).
     """
     s = str(rodovia or "").strip().upper()
     s = re.sub(r"\s+", " ", s)
-    s = s.replace("-", " ").replace("_", " ")
+    s = s.replace("-", " ").replace("_", " ").replace("/", " ")
     s = re.sub(r"\bSP(\d)", r"SP \1", s)
     s = re.sub(r"\bSPI(\d)", r"SPI \1", s)
     return s
@@ -302,17 +302,60 @@ def obter_grupo_empresa_por_trecho(rodovia: str, km: float, mapa_eaf: list) -> t
     rod_nc = normalizar_rodovia_para_busca(rodovia)
     if not rod_nc:
         return 0, ""
+    # Tolerancia mínima para contornar erros de arredondamento em floats
+    # (ex.: 43.000 pode chegar como 42.999999).
+    # Em PDFs, o km frequentemente vem com arredondamento/representação float.
+    # Usar eps maior para não "perder" a borda exata (ex.: 43.000 lido como 42.999).
+    eps = 1e-3
+
+    def _rodovias_equivalentes(rod_trecho: str, rod_nc: str) -> bool:
+        """
+        Considera equivalentes rodovias como:
+        - "SP 075" == "SP 75" (zeros à esquerda no número da SP)
+        - "SPI 102-300" / "SPI 102 300" / "SPI 102300" (mesma rodovia)
+        """
+        a = normalizar_rodovia_para_busca(rod_trecho or "")
+        b = normalizar_rodovia_para_busca(rod_nc or "")
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+        m1 = re.match(r"^(SP)\s*(\d+)$", a)
+        m2 = re.match(r"^(SP)\s*(\d+)$", b)
+        if m1 and m2 and m1.group(1) == m2.group(1):
+            try:
+                return int(m1.group(2)) == int(m2.group(2))
+            except Exception:
+                return False
+        # SPI: comparar por sequência de dígitos (ex.: "SPI 102 300" e "SPI 102300")
+        if a.startswith("SPI") and b.startswith("SPI"):
+            dig_a = "".join(re.findall(r"\d+", a))
+            dig_b = "".join(re.findall(r"\d+", b))
+            return dig_a == dig_b
+        return False
+    # Pode haver múltiplas EAFs na mesma rodovia (e até trechos próximos).
+    # Então, em vez de retornar a "primeira" correspondência, coletamos todas
+    # as que contêm o km e escolhemos a mais específica.
+    candidatos: list[tuple[int, str, float]] = []  # (grupo, empresa, km_ini do trecho)
+
     for entry in mapa_eaf:
         for trecho in entry.get("trechos", []):
             rod_t = normalizar_rodovia_para_busca(trecho.get("rodovia", ""))
             if not rod_t:
                 continue
-            if rod_t == rod_nc or rod_t in rod_nc or rod_nc in rod_t:
+            # Rodovia deve casar por equivalência (ex.: SP 075 vs SP 75).
+            if _rodovias_equivalentes(rod_t, rod_nc):
                 ki = trecho.get("km_ini", 0.0)
                 kf = trecho.get("km_fim", 9999.0)
-                if ki <= km <= kf:
-                    return entry.get("grupo", 0), entry.get("empresa", "")
-    return 0, ""
+                if (ki - eps) <= km <= (kf + eps):
+                    candidatos.append((entry.get("grupo", 0), entry.get("empresa", ""), float(ki)))
+
+    if not candidatos:
+        return 0, ""
+
+    # Mais específica = maior km_ini (trecho mais "tarde" na mesma rodovia).
+    candidatos.sort(key=lambda x: x[2], reverse=True)
+    return candidatos[0][0], candidatos[0][1]
 
 
 def normalizar_rodovia_eaf(rodovia_raw: str, rodovias: dict) -> dict:

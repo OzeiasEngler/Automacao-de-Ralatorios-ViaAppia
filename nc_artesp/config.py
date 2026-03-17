@@ -36,15 +36,47 @@ M01_EXPORTAR           = _BASE / "Exportar"
 M01_ARQUIVOS_ANTERIORES = _BASE / "Arquivos Anteriores"   # destino após processamento completo
 M01_LINHA_INICIO        = _env_int("ARTESP_M01_LINHA_INICIO", 5)   # 5 = igual à macro (cabeçalho nas linhas 1–4)
 M01_LOTE                = _env_str("ARTESP_LOTE", "LOTE 13")
-# Concessionária (col G da EAF): por lote ou ARTESP_CONCESSIONARIA_NOME; não confundir com "empresa" (nome EAF/grupo, col U)
-_LOTE_CONCESSIONARIA    = {"13": "Rodovias das Colinas", "21": "Rodovias do Tietê", "26": "SP Serra"}
+# Concessionária (col G da EAF / relatório): lote → nome; ex.: Lote 13 → "Lote 13 Rodovias das Colinas"
+_LOTE_CONCESSIONARIA = {
+    "13": "Rodovias das Colinas",
+    "21": "Rodovias do Tietê",
+    "26": "SP Serra",
+    "50": "Nascentes das Gerais",
+}
+# Menu de escolha no front (Análise PDF): apenas 13, 21, 26; Lote 50 fica fora do menu
+LOTES_MENU_ANALISE = [
+    ("13", "Lote 13 — Rodovias das Colinas"),
+    ("21", "Lote 21 — Rodovias do Tietê"),
+    ("26", "Lote 26 — SP Serra"),
+]
 _env_concessionaria    = (os.environ.get("ARTESP_CONCESSIONARIA_NOME") or "").strip()
 _lote_num              = re.search(r"\d+", M01_LOTE)
 CONCESSIONARIA_NOME     = _env_concessionaria or _LOTE_CONCESSIONARIA.get((_lote_num.group(0) if _lote_num else ""), "")
-# Template EAF: somente em nc_artesp/assets/templates/ (igual às demais macros)
+# Template EAF: env ou nc_artesp/assets/Template_EAF.xlsx (senão assets/templates/)
 _template_eaf_env = _env_str("ARTESP_TEMPLATE_EAF", "")
 _nc_root = Path(__file__).resolve().parent  # nc_artesp/
-M01_TEMPLATE_EAF        = Path(_template_eaf_env) if _template_eaf_env else _nc_root / "assets" / "templates" / "Template_EAF.xlsx"
+if _template_eaf_env:
+    M01_TEMPLATE_EAF = Path(_template_eaf_env)
+else:
+    _candidatos_eaf = [
+        _nc_root / "assets" / "Template_EAF.xlsx",
+        _nc_root / "assets" / "Template_EAF.xls",
+        _nc_root / "assets" / "templates" / "Template_EAF.xlsx",
+        _nc_root / "assets" / "templates" / "Template_EAF.xls",
+    ]
+    M01_TEMPLATE_EAF = next((p for p in _candidatos_eaf if p.is_file()), _candidatos_eaf[3])
+# Template do relatório XLSX (Análise PDF). Único: nc_artesp/assets/Template_EAF.xlsx (ou env).
+_template_relatorio_env = _env_str("ARTESP_TEMPLATE_RELATORIO", "").strip().strip('"').strip("'")
+TEMPLATE_RELATORIO_XLSX = (
+    Path(_template_relatorio_env)
+    if _template_relatorio_env
+    else _nc_root / "assets" / "Template_EAF.xlsx"
+)
+NOMES_TEMPLATE_RELATORIO = (
+    "Template_Relatório de Fiscalização de Conservação de Rotina - Não Conformidades.xls",
+    "Template_Relatório de Fiscalização de Conservação de Rotina - Não Conformidades.xlsx",
+    "Relatório de Fiscalização de Conservação de Rotina - Não Conformidades.xlsx",
+)
 # Data do reparo = data do envio + N dias quando não informada
 PRAZO_DIAS_APOS_ENVIO   = _env_int("ARTESP_PRAZO_DIAS_APOS_ENVIO", 10)
 
@@ -265,7 +297,26 @@ for _tipo, _abrev in SERVICO_ABREV.items():
 # email   : (opcional) e-mail do responsável pelo apontamento desse grupo — preencher conforme
 #           a imagem/planilha de contatos (e-mail de cada responsável e seu grupo EAF)
 #
-# Lote 13 — Colinas — Contatos EAFs (Grupo 1 NEP, 2 Autoroutes, 11 EBP 22)
+# Responsável Técnico por empresa (nome EAF). Chave = nome da empresa (igual a MAPA_EAF).
+# Valores = nomes dos fiscais que aparecem nos PDFs, separados por ";" ou ",".
+# Só zera grupo/empresa se o nome do fiscal estiver cadastrado em OUTRA EAF (conflito).
+# Nome desconhecido (não está em nenhuma lista) mantém a empresa definida pelo trecho.
+MAPA_RESPONSAVEL_TECNICO: dict[str, str] = {
+    # Valores podem conter múltiplos responsáveis separados por ';' ou ','.
+    # Isso permite validar o responsável técnico de forma correta mesmo quando
+    # o PDF/Excel traz nomes individuais diferentes para a mesma EAF/grupo.
+    "NEP": "Gabriel Miranda de Souza; Leticia Ferreira de Souza",
+    "Autoroutes": "Ricardo Antonio Pacheco Machado Jr; Ricardo Walter",
+    "EBP 22": "Rogerio Aguiar; Percival Gonçalves de Magalhães",
+}
+
+# EAF aceitas no relatório. Vazio = todas as empresas do MAPA_EAF aparecem.
+# Preenchido = só as listadas (ex.: ("Autoroutes",) ou ("NEP", "Autoroutes", "EBP 22")).
+# Se uma NC tiver empresa fora desta lista, grupo e empresa são zerados (trava lista branca).
+EAF_PERMITIDAS: tuple[str, ...] = ()
+
+# Lote 13 — Colinas (concessionária: Rodovias das Colinas). EAFs = fiscalizadoras por trecho.
+# Trechos por EAF; rodovia + km definem a empresa no relatório. Conferir KMs conforme os PDFs.
 # ═══════════════════════════════════════════════════════════════════════════
 
 MAPA_EAF: list[dict] = [
@@ -300,3 +351,32 @@ MAPA_EAF: list[dict] = [
         ],
     },
 ]
+
+# Por lote (13, 21, 26): EAFs e responsáveis podem ser outros. Lote 13 = mapa acima (já em uso).
+# Preencher "21" e "26" quando houver dados (planilhas Excel de cada trecho). Fallback = Lote 13.
+MAPA_EAF_POR_LOTE: dict[str, list] = {
+    "13": MAPA_EAF,
+    "21": [],  # preencher trechos/EAFs do Lote 21 quando houver
+    "26": [],  # preencher trechos/EAFs do Lote 26 quando houver
+}
+MAPA_RESPONSAVEL_TECNICO_POR_LOTE: dict[str, dict] = {
+    "13": MAPA_RESPONSAVEL_TECNICO,
+    "21": {},  # preencher quando houver (ex.: nomes dos fiscais nas planilhas do trecho)
+    "26": {},
+}
+
+
+def get_mapa_eaf(lote: str) -> list:
+    """Retorna MAPA_EAF do lote (13, 21, 26). Se vazio ou inexistente, usa Lote 13 (mantém comportamento atual)."""
+    num = (lote or "").strip()
+    if not num:
+        return MAPA_EAF
+    return MAPA_EAF_POR_LOTE.get(num) or MAPA_EAF
+
+
+def get_mapa_responsavel_tecnico(lote: str) -> dict:
+    """Retorna MAPA_RESPONSAVEL_TECNICO do lote. Se vazio ou inexistente, usa Lote 13."""
+    num = (lote or "").strip()
+    if not num:
+        return MAPA_RESPONSAVEL_TECNICO
+    return MAPA_RESPONSAVEL_TECNICO_POR_LOTE.get(num) or MAPA_RESPONSAVEL_TECNICO
