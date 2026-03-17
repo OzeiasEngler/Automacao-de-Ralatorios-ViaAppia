@@ -204,7 +204,7 @@ def gerar_eaf_desde_pdf_ma(
         except (TypeError, ValueError):
             _g = None
         ws.cell(row=row, column=COL_GRUPO_ATIV).value = _g if _g is not None else ""
-        ws.cell(row=row, column=COL_RESPONSAVEL).value = (reg.get("empresa") or "")[:100]
+        ws.cell(row=row, column=COL_RESPONSAVEL).value = (reg.get("nome_fiscal") or "")[:100]
 
     wb.save(str(destino))
     wb.close()
@@ -321,9 +321,9 @@ def gerar_eaf_desde_pdfs_ma(
         except (TypeError, ValueError):
             _g = None
         ws.cell(row=row, column=COL_GRUPO_ATIV).value = _g if _g is not None else ""
-        # G = Concessionária (config); U = Responsável (nome EAF/grupo fiscalização — NEP, Autoroutes)
+        # G = Concessionária (config); U = Responsável (só nome do fiscal, regra MAPA_RESPONSAVEL_TECNICO)
         ws.cell(row=row, column=COL_CONCESSIONARIA).value = (CONCESSIONARIA_NOME or "")[:100]
-        ws.cell(row=row, column=COL_RESPONSAVEL).value = (reg.get("empresa") or "")[:100]
+        ws.cell(row=row, column=COL_RESPONSAVEL).value = (reg.get("nome_fiscal") or "")[:100]
         # Observação do gestor (T): código da fiscalização (extrator insere aqui); Lote nunca é usado
         if col_obs_gestor:
             cod_fisc = (reg.get("codigo_fiscalizacao") or "").strip()

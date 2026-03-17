@@ -6,10 +6,14 @@ CODIGO = Código da Fiscalização (nunca Lote). Requer: pymupdf, pillow.
 from __future__ import annotations
 
 import io
+import logging
 import re
+import unicodedata
 import zipfile
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     import fitz          # PyMuPDF
@@ -37,6 +41,62 @@ NC_IMAGE_HEIGHT = 500
 NC_IMAGE_DPI_X  = 222
 NC_IMAGE_DPI_Y  = 319
 
+# Quadros em branco: fração mínima de pixels "não brancos" para considerar como foto real
+_UMBRAL_BRANCO = 250
+_FRACAO_PIXELS_NAO_BRANCOS_MIN = 0.05  # 5% — quadros com só borda passam a ser filtrados
+
+
+def _eh_jpg_quase_em_branco(jpg_bytes: bytes) -> bool:
+    """True se o conteúdo do JPEG for quase todo branco (página/quadro em branco)."""
+    if not PIL_OK or not jpg_bytes or len(jpg_bytes) < 100:
+        return False
+    try:
+        img = PILImage.open(io.BytesIO(jpg_bytes))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        w, h = img.size
+        if w * h == 0:
+            return True
+        try:
+            resample = PILImage.Resampling.LANCZOS
+        except AttributeError:
+            resample = getattr(PILImage, "LANCZOS", PILImage.BICUBIC)
+        img = img.resize((min(80, w), min(80, h)), resample)
+        pixels = list(img.getdata())
+        nao_brancos = sum(1 for (r, g, b) in pixels if r < _UMBRAL_BRANCO or g < _UMBRAL_BRANCO or b < _UMBRAL_BRANCO)
+        return (nao_brancos / len(pixels)) < _FRACAO_PIXELS_NAO_BRANCOS_MIN
+    except Exception:
+        return False
+
+
+def _eh_imagem_embutida_em_branco(doc: "fitz.Document", xref: int) -> bool:
+    """True se a imagem embutida for quase toda branca (quadro vazio/placeholder)."""
+    if not PIL_OK:
+        return False
+    try:
+        base = doc.extract_image(xref)
+        img_bytes = base.get("image")
+        if not img_bytes:
+            return True
+        img = PILImage.open(io.BytesIO(img_bytes))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        if img.mode != "RGB":
+            return False
+        w, h = img.size
+        if w * h == 0:
+            return True
+        try:
+            resample = PILImage.Resampling.LANCZOS
+        except AttributeError:
+            resample = getattr(PILImage, "LANCZOS", PILImage.BICUBIC)
+        img = img.resize((min(80, w), min(80, h)), resample)
+        pixels = list(img.getdata())
+        nao_brancos = sum(1 for (r, g, b) in pixels if r < _UMBRAL_BRANCO or g < _UMBRAL_BRANCO or b < _UMBRAL_BRANCO)
+        return (nao_brancos / len(pixels)) < _FRACAO_PIXELS_NAO_BRANCOS_MIN
+    except Exception:
+        return False
+
 
 def _check_deps() -> None:
     if not FITZ_OK:
@@ -52,11 +112,14 @@ def _check_deps() -> None:
 
 
 def _obter_rects_fotos(page: "fitz.Page") -> list:
-    """Retângulos das fotos na página (ordem top→bottom)."""
+    """Retângulos das fotos na página (ordem top→bottom). Exclui quadros em branco (placeholders)."""
     rects = []
     try:
+        doc = getattr(page, "parent", None)
         for img in page.get_images():
             xref = img[0]
+            if doc and _eh_imagem_embutida_em_branco(doc, xref):
+                continue
             for r in page.get_image_rects(xref):
                 if r.width > 50 and r.height > 50:
                     rects.append(r)
@@ -79,7 +142,9 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
     y0_final = y0_busca
     try:
         clip = fitz.Rect(0, y0_busca, page.rect.width, y1)
-        for blk in page.get_text("dict", clip=clip).get("blocks", []):
+        full = page.get_text("dict", clip=clip)
+        blocks = (full.get("blocks", []) if isinstance(full, dict) else []) or []
+        for blk in blocks:
             bbox = blk.get("bbox")
             if not bbox:
                 continue
@@ -104,7 +169,9 @@ def _bloco_texto_e_foto(page: "fitz.Page", y0_busca: float,
             (y1_limite_abaixo if y1_limite_abaixo is not None else page.rect.height)
         )
         clip_abaixo = fitz.Rect(0, foto_rect.y1, page.rect.width, y1_abaixo)
-        for blk in page.get_text("dict", clip=clip_abaixo).get("blocks", []):
+        full_abaixo = page.get_text("dict", clip=clip_abaixo)
+        blocks_abaixo = (full_abaixo.get("blocks", []) if isinstance(full_abaixo, dict) else []) or []
+        for blk in blocks_abaixo:
             bbox = blk.get("bbox")
             if not bbox:
                 continue
@@ -170,9 +237,10 @@ def _extrair_codigo_por_blocos(page: "fitz.Page", clip_rect: "fitz.Rect") -> str
     """Fallback PDF em tabela: Código da Fiscalização e número na mesma linha (mesmo y)."""
     try:
         full = page.get_text("dict", clip=clip_rect)
+        blocks = (full.get("blocks", []) if isinstance(full, dict) else []) or []
         y_rotulo = None
         candidatos = []
-        for blk in full.get("blocks", []):
+        for blk in blocks:
             for line in blk.get("lines", []):
                 for span in line.get("spans", []):
                     t = (span.get("text") or "").strip()
@@ -182,16 +250,34 @@ def _extrair_codigo_por_blocos(page: "fitz.Page", clip_rect: "fitz.Rect") -> str
                     y = bbox[1]
                     if re.search(r"C[oó]digo\s+da\s+Fiscaliza[cç][aã]o\s*:?", t, re.I):
                         y_rotulo = y
-                    if t.isdigit() and len(t) >= 5:
+                    elif re.search(r"^C[oó]digo\s*:?\s*$", t, re.I) or (t.lower().strip() in ("codigo", "código", "codigo:", "código:") and "fiscaliza" not in t.lower()):
+                        y_rotulo = y
+                    if t.isdigit() and len(t) >= 4:
                         candidatos.append((y, t))
         if y_rotulo is None or not candidatos:
             return ""
         for y, num in candidatos:
-            if abs(y - y_rotulo) < 15 and _eh_codigo_fiscalizacao_valido(num):
+            if abs(y - y_rotulo) < 20 and _eh_codigo_fiscalizacao_valido(num):
                 return num
+        if candidatos and y_rotulo is not None:
+            melhor = min(candidatos, key=lambda c: abs(c[0] - y_rotulo))
+            if _eh_codigo_fiscalizacao_valido(melhor[1]):
+                return melhor[1]
         return ""
     except Exception:
         return ""
+
+
+def _texto_pagina_em_ordem_leitura(page: "fitz.Page", clip_rect: "fitz.Rect") -> str:
+    """Texto da página em ordem de leitura (blocos por y, x), como no analisar_pdf."""
+    try:
+        blocos = page.get_text("blocks", clip=clip_rect)
+        if not blocos:
+            return page.get_text("text", clip=clip_rect) or ""
+        blocos.sort(key=lambda b: (round(b[1], 0), round(b[0], 0)))
+        return "\n".join((b[4] or "").strip() for b in blocos if (b[4] or "").strip())
+    except Exception:
+        return page.get_text("text", clip=clip_rect) or ""
 
 
 def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
@@ -212,6 +298,19 @@ def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
 
     try:
         texto = page.get_text("text", clip=bloco_rect)
+        # Para página inteira, usar ordem de leitura (blocos) como no analisar_pdf
+        if bloco_rect.get_area() >= 0.85 * (page.rect.get_area() or 1):
+            texto_ordenado = _texto_pagina_em_ordem_leitura(page, bloco_rect)
+            if texto_ordenado.strip():
+                texto = texto_ordenado
+        if len((texto or "").strip()) < 30:
+            try:
+                from nc_artesp.pdf_ocr import texto_de_pagina_ocr
+                ocr = texto_de_pagina_ocr(page, rect=bloco_rect, dpi=200)
+                if ocr:
+                    texto = ocr
+            except Exception:
+                pass
         m = re.search(
             r'C[oó]digo\s+da\s+Fiscaliza[cç][aã]o\s*:\s*(\S+)',
             texto, re.IGNORECASE
@@ -236,7 +335,60 @@ def _extrair_codigo_nc(page: "fitz.Page", bloco_rect: "fitz.Rect") -> str:
             val = _nunca_lote(m.group(1).strip())
             if val and _eh_codigo_fiscalizacao_valido(val):
                 return val
-        if "Fiscaliza" in texto or "fiscaliza" in texto:
+        # Legenda só "Código" (sem "da Fiscalização") — mesmo padrão numérico
+        m = re.search(
+            r'C[oó]digo(?!\s+da)(?!\s+Fiscaliza)\s*:\s*(\S+)',
+            texto, re.IGNORECASE
+        )
+        if m:
+            val = _nunca_lote(_rejeitar_lote(texto, m.group(1).strip()))
+            if val and _eh_codigo_fiscalizacao_valido(val):
+                return val
+        m = re.search(
+            r'C[oó]digo(?!\s+da)(?!\s+Fiscaliza)\s+(\d{4,})',
+            texto, re.IGNORECASE
+        )
+        if m:
+            val = m.group(1).strip()
+            if _eh_codigo_fiscalizacao_valido(val):
+                return val
+        # Número antes da legenda (ex.: "896643 Código")
+        m = re.search(
+            r'(\d{4,})\s+C[oó]digo(?!\s+da)(?!\s+Fiscaliza)',
+            texto, re.IGNORECASE
+        )
+        if m and _eh_codigo_fiscalizacao_valido(m.group(1).strip()):
+            return m.group(1).strip()
+        # Layout emergencial: mesma lógica do analisar_pdf — acha linha só "Código", depois primeira linha 5+ dígitos
+        if re.search(r"\bC[oó]digo\b", texto, re.IGNORECASE) and re.search(r"\d{5,}", texto):
+            linhas = [ln.strip() for ln in texto.splitlines()]
+            idx_codigo = next(
+                (i for i, ln in enumerate(linhas) if re.match(r"^\s*C[oó]digo\s*$", ln, re.IGNORECASE)),
+                -1,
+            )
+            if idx_codigo >= 0:
+                for ln in linhas[idx_codigo + 1 : min(idx_codigo + 15, len(linhas))]:
+                    if re.match(r"^Lote\s*:?\s*", ln, re.IGNORECASE) or re.match(r"^Data\s+da\s+Constata", ln, re.IGNORECASE):
+                        break
+                    if re.match(r"^\s*\d{5,}\s*$", ln) and _eh_codigo_fiscalizacao_valido(ln.strip()):
+                        return ln.strip()
+            # Fallback: primeira linha só 5+ dígitos antes de Lote/Data
+            for ln in linhas:
+                if re.match(r"^Lote\s*:?", ln, re.IGNORECASE) or re.match(r"^Data\s+da\s+Constata", ln, re.IGNORECASE):
+                    break
+                if re.match(r"^\s*\d{5,}\s*$", ln) and _eh_codigo_fiscalizacao_valido(ln.strip()):
+                    return ln.strip()
+        # Sem linha "Código" explícita: primeira linha com 5+ dígitos (layout alternativo)
+        if re.search(r"\d{5,}", texto):
+            for ln in [ln.strip() for ln in texto.splitlines()]:
+                if re.match(r"^Lote\s*:?", ln, re.IGNORECASE) or re.match(r"^Data\s+da\s+Constata", ln, re.IGNORECASE):
+                    break
+                if re.match(r"^\s*\d{5,}\s*$", ln) and _eh_codigo_fiscalizacao_valido(ln):
+                    return ln
+        if "Fiscaliza" in texto or "fiscaliza" in texto or "codigo" in texto.lower():
+            cod = _extrair_codigo_por_blocos(page, bloco_rect)
+            if cod:
+                return cod
             cod = _extrair_codigo_por_blocos(page, page.rect)
             if cod:
                 return cod
@@ -253,14 +405,26 @@ def _codigo_estilo_ma(codigo: str) -> bool:
     return "." in s and any(c.isalpha() for c in s)
 
 
+def _nome_arquivo_safe(s: str) -> str:
+    """Garante string encodável em Latin-1 para nomes no ZIP/Content-Disposition."""
+    if not s:
+        return s
+    nfd = unicodedata.normalize("NFD", s)
+    sem_comb = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    try:
+        return sem_comb.encode("latin-1").decode("latin-1")
+    except UnicodeEncodeError:
+        return sem_comb.encode("latin-1", "replace").decode("latin-1")
+
+
 def _formatar_codigo_arquivo(codigo: str, num_digitos: int = 5) -> str:
-    """Código para nome do arquivo (zeros à esquerda)."""
+    """Código para nome do arquivo (zeros à esquerda); sanitizado para Latin-1."""
     s = (codigo or "").strip()
     try:
         n = int(s)
         return str(n).zfill(num_digitos)
     except (ValueError, TypeError):
-        return s
+        return _nome_arquivo_safe(s)
 
 
 def extrair_imagens_pdf(pdf_path: str,
@@ -292,6 +456,14 @@ def extrair_imagens_pdf(pdf_path: str,
     nomes_usados: set[str] = set()
     ultimo_codigo: Optional[str] = None
     usar_indice = nomear_por_indice_fiscalizacao
+    codigos_doc: list[str] = []
+    try:
+        from nc_artesp.modulos.analisar_pdf_nc import parse_pdf_nc
+        ncs = parse_pdf_nc(pdf_path.read_bytes())
+        codigos_doc = [(nc.codigo or "").strip() for nc in ncs if (nc.codigo or "").strip()]
+    except Exception as e:
+        logger.debug("Fallback códigos do documento: %s", e)
+    codigo_idx = 0
     doc = fitz.open(str(pdf_path))
 
     def _nome_unico(base_nome: str) -> str:
@@ -307,91 +479,157 @@ def extrair_imagens_pdf(pdf_path: str,
     try:
         for page_num in range(len(doc)):
             page = doc[page_num]
-            ultimo_codigo = None
-            r_fotos = _obter_rects_fotos(page)
+            if usar_indice:
+                ultimo_codigo = None
+            # Uma imagem PDF (texto+foto) por página; página em branco já não gera bloco
+            pdf_imagem_ja_escrita_esta_pagina = False
+            try:
+                r_fotos = _obter_rects_fotos(page)
+            except Exception as e:
+                logger.debug("Página %s: obter rects fotos: %s", page_num + 1, e)
+                r_fotos = []
 
             texto_pagina = ""
             try:
-                texto_pagina = page.get_text("text", clip=page.rect)
+                texto_pagina = page.get_text("text", clip=page.rect) or ""
             except Exception:
                 pass
-            eh_ma = "Código da Fiscalização" in texto_pagina or "Meio Ambiente" in texto_pagina or "codigo da fiscalização" in texto_pagina.lower()
+            eh_ma = "Código da Fiscalização" in texto_pagina or "Meio Ambiente" in texto_pagina or "codigo da fiscalização" in (texto_pagina or "").lower()
+
+            # Cabeçalho: topo da página; se tiver "Código" ou "Código da Fiscalização" = início de NC; senão, página só com fotos = continuação da NC anterior
+            texto_cabecalho = ""
+            try:
+                rect_cabecalho = fitz.Rect(page.rect.x0, page.rect.y0, page.rect.x1, page.rect.y0 + ALTURA_CABECALHO_NC)
+                texto_cabecalho = (page.get_text("text", clip=rect_cabecalho) or "").strip()
+            except Exception:
+                pass
+            tem_cabecalho_nc = bool(
+                re.search(r"C[oó]digo\s+(da\s+)?Fiscaliza[cç][aã]o", texto_cabecalho, re.IGNORECASE)
+                or re.search(r"^\s*C[oó]digo\s*$", texto_cabecalho, re.MULTILINE | re.IGNORECASE)
+            )
+            pagina_continuacao = not tem_cabecalho_nc  # Página sem cabeçalho NC = fotos pertencem à NC anterior
 
             if not r_fotos:
-                r_fotos = [page.rect]
-                blocos = [(page.rect, page.rect)]
+                # Página sem imagens embutidas: só tratar como "uma foto" se o conteúdo não for em branco
+                jpg_teste = _renderizar_jpg(page, page.rect, dpi)
+                if jpg_teste and not _eh_jpg_quase_em_branco(jpg_teste):
+                    r_fotos = [page.rect]
+                    blocos = [(page.rect, page.rect)]
+                else:
+                    r_fotos = []
+                    blocos = []
             else:
                 blocos = []
                 for i, r in enumerate(r_fotos):
-                    y0_busca = max(0, r.y0 - ALTURA_BUSCA_TEXTO)
-                    if i > 0:
-                        y0_busca = max(y0_busca, r_fotos[i - 1].y1 + FOLGA_APOS_FOTO_ANT)
-                    y0_min = Y0_MINIMO_BLOCO if i == 0 else y0_busca
-                    if eh_ma:
-                        y1_limite = r_fotos[i + 1].y0 - 1 if i + 1 < len(r_fotos) else None
-                    else:
-                        y1_limite = r.y1
-                    bloco = _bloco_texto_e_foto(page, y0_busca, r, y0_minimo=y0_min, y1_limite_abaixo=y1_limite)
-                    blocos.append((bloco, r))
+                    try:
+                        y0_busca = max(0, r.y0 - ALTURA_BUSCA_TEXTO)
+                        if i > 0:
+                            y0_busca = max(y0_busca, r_fotos[i - 1].y1 + FOLGA_APOS_FOTO_ANT)
+                        y0_min = Y0_MINIMO_BLOCO if i == 0 else y0_busca
+                        if eh_ma:
+                            y1_limite = r_fotos[i + 1].y0 - 1 if i + 1 < len(r_fotos) else None
+                        else:
+                            y1_limite = r.y1
+                        bloco = _bloco_texto_e_foto(page, y0_busca, r, y0_minimo=y0_min, y1_limite_abaixo=y1_limite)
+                        blocos.append((bloco, r))
+                    except Exception as e:
+                        logger.debug("Página %s bloco %s: %s", page_num + 1, i, e)
+                        blocos.append((r, r))
 
             def flush_grupo(bloco_uniao: "fitz.Rect", fotos: list, cod: str):
+                nonlocal pdf_imagem_ja_escrita_esta_pagina
                 if bloco_uniao is None or not cod:
                     return
-                jpg_pdf = _renderizar_jpg(page, bloco_uniao, dpi)
-                if jpg_pdf:
-                    nome = _nome_unico(f"PDF ({cod}).jpg")
-                    (p_nc / nome).write_bytes(jpg_pdf)
-                    salvos.append(str(p_nc / nome))
-                for fr in fotos:
-                    jpg_foto = _renderizar_jpg(page, fr, dpi)
-                    if jpg_foto:
-                        jpg_foto = _redimensionar_nc_jpg(jpg_foto)
-                        nome = _nome_unico(f"nc ({cod}).jpg")
-                        (p_pdf / nome).write_bytes(jpg_foto)
-                        salvos.append(str(p_pdf / nome))
+                try:
+                    # Uma imagem PDF (texto+foto) por página; nc = todas as fotos. Página em branco não gera bloco.
+                    fotos_unicas = []
+                    vistos_rect = set()
+                    for fr in fotos:
+                        key = (round(fr.x0, 2), round(fr.y0, 2), round(fr.x1, 2), round(fr.y1, 2))
+                        if key not in vistos_rect:
+                            vistos_rect.add(key)
+                            fotos_unicas.append(fr)
+                    so_foto = (
+                        len(fotos_unicas) == 1
+                        and abs(bloco_uniao.x0 - fotos_unicas[0].x0) < 1
+                        and abs(bloco_uniao.y0 - fotos_unicas[0].y0) < 1
+                        and abs(bloco_uniao.x1 - fotos_unicas[0].x1) < 1
+                        and abs(bloco_uniao.y1 - fotos_unicas[0].y1) < 1
+                    )
+                    if not so_foto and not pdf_imagem_ja_escrita_esta_pagina and not pagina_continuacao:
+                        jpg_pdf = _renderizar_jpg(page, bloco_uniao, dpi)
+                        if jpg_pdf and not _eh_jpg_quase_em_branco(jpg_pdf):
+                            nome = _nome_unico(f"PDF ({cod}).jpg")
+                            (p_nc / nome).write_bytes(jpg_pdf)
+                            salvos.append(str(p_nc / nome))
+                            pdf_imagem_ja_escrita_esta_pagina = True
+                    for fr in fotos_unicas:
+                        jpg_foto = _renderizar_jpg(page, fr, dpi)
+                        if jpg_foto and not _eh_jpg_quase_em_branco(jpg_foto):
+                            jpg_foto = _redimensionar_nc_jpg(jpg_foto)
+                            nome = _nome_unico(f"nc ({cod}).jpg")
+                            (p_pdf / nome).write_bytes(jpg_foto)
+                            salvos.append(str(p_pdf / nome))
+                except Exception as e:
+                    logger.warning("Página %s flush_grupo (%s): %s", page_num + 1, cod, e)
 
             grupo_rect = None
             grupo_fotos = []
             grupo_codigo = None
 
-            for bloco_rect, foto_rect in blocos:
-                codigo_extraido = _extrair_codigo_nc(page, bloco_rect)
-                if not codigo_extraido and eh_ma:
-                    codigo_extraido = _extrair_codigo_nc(page, page.rect)
-                if usar_indice:
-                    if codigo_extraido or ultimo_codigo is None:
-                        nc_global += 1
-                        ultimo_codigo = str(nc_global).zfill(5)
-                    codigo_nome = ultimo_codigo
-                else:
-                    nc_global += 1
-                    if codigo_extraido:
-                        codigo = codigo_extraido
-                        ultimo_codigo = codigo
+            try:
+                for bloco_rect, foto_rect in blocos:
+                    codigo_extraido = _extrair_codigo_nc(page, bloco_rect)
+                    if not codigo_extraido:
+                        codigo_extraido = _extrair_codigo_nc(page, page.rect)
+                    if usar_indice:
+                        if codigo_extraido or ultimo_codigo is None:
+                            nc_global += 1
+                            ultimo_codigo = str(nc_global).zfill(5)
+                        codigo_nome = ultimo_codigo
                     else:
-                        codigo = ultimo_codigo if ultimo_codigo else str(nc_global)
-                    codigo_nome = _formatar_codigo_arquivo(codigo)
-                if not codigo_nome or codigo_nome.upper().startswith("LOTE"):
-                    codigo_nome = str(nc_global)
+                        nc_global += 1
+                        if codigo_extraido:
+                            codigo = codigo_extraido
+                            ultimo_codigo = codigo
+                            if codigo_idx < len(codigos_doc):
+                                codigo_idx += 1
+                        elif codigo_idx < len(codigos_doc) and _eh_codigo_fiscalizacao_valido(codigos_doc[codigo_idx]):
+                            codigo = codigos_doc[codigo_idx]
+                            codigo_idx += 1
+                            ultimo_codigo = codigo
+                        else:
+                            codigo = ultimo_codigo if ultimo_codigo else str(nc_global)
+                        codigo_nome = _formatar_codigo_arquivo(codigo)
+                    if not codigo_nome or codigo_nome.upper().startswith("LOTE"):
+                        codigo_nome = str(nc_global)
 
-                if grupo_codigo is not None and grupo_codigo != codigo_nome:
+                    if grupo_codigo is not None and grupo_codigo != codigo_nome:
+                        flush_grupo(grupo_rect, grupo_fotos, grupo_codigo)
+                        grupo_rect = None
+                        grupo_fotos = []
+                    grupo_codigo = codigo_nome
+                    if grupo_rect is None:
+                        grupo_rect = bloco_rect
+                    else:
+                        grupo_rect = fitz.Rect(
+                            min(grupo_rect.x0, bloco_rect.x0),
+                            min(grupo_rect.y0, bloco_rect.y0),
+                            max(grupo_rect.x1, bloco_rect.x1),
+                            max(grupo_rect.y1, bloco_rect.y1),
+                        )
+                    grupo_fotos.append(foto_rect)
+
+                if grupo_codigo is not None:
                     flush_grupo(grupo_rect, grupo_fotos, grupo_codigo)
-                    grupo_rect = None
-                    grupo_fotos = []
-                grupo_codigo = codigo_nome
-                if grupo_rect is None:
-                    grupo_rect = bloco_rect
-                else:
-                    grupo_rect = fitz.Rect(
-                        min(grupo_rect.x0, bloco_rect.x0),
-                        min(grupo_rect.y0, bloco_rect.y0),
-                        max(grupo_rect.x1, bloco_rect.x1),
-                        max(grupo_rect.y1, bloco_rect.y1),
-                    )
-                grupo_fotos.append(foto_rect)
-
-            if grupo_codigo is not None:
-                flush_grupo(grupo_rect, grupo_fotos, grupo_codigo)
+            except Exception as e:
+                logger.warning("Página %s estrutura diferente, usando página inteira: %s", page_num + 1, e)
+                jpg_teste = _renderizar_jpg(page, page.rect, dpi)
+                if jpg_teste and not _eh_jpg_quase_em_branco(jpg_teste):
+                    nc_global += 1
+                    cod_fallback = str(nc_global).zfill(5)
+                    flush_grupo(page.rect, [page.rect], cod_fallback)
+                    ultimo_codigo = cod_fallback
     finally:
         doc.close()
 

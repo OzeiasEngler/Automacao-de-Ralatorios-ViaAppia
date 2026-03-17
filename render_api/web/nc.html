@@ -472,6 +472,35 @@
               </ul>
             </div>
 
+            <div class="form-group" style="margin-top:12px">
+              <label style="display:block;margin-bottom:4px;font-size:.85rem">
+                <i class="fas fa-file-excel" style="color:var(--success)"></i> Excel(s) que acompanham os PDFs <span style="font-weight:400;color:var(--text-muted)">(opcional)</span>
+              </label>
+              <input type="file" id="file-excel-analise" accept=".xlsx,.xls" multiple
+                     style="max-width:100%">
+              <p style="font-size:.7rem;color:var(--text-muted);margin-top:4px">
+                Um ou mais arquivos. Mesmo layout do relatório (cabeçalho 1–4, dados a partir da linha 5). Preenchem Horário (E), Tipo de Atividade (O) e Grupo de Atividade (P) por código fiscalização.
+              </p>
+            </div>
+
+            <div class="form-group" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">
+              <div>
+                <label style="display:block;margin-bottom:4px;font-size:.85rem">
+                  <i class="fas fa-map-marked-alt"></i> Lote
+                </label>
+                <select id="sel-lote-analise" class="form-input" style="min-width:220px">
+                  <option value="13">Lote 13 — Rodovias das Colinas</option>
+                  <option value="21">Lote 21 — Rodovias do Tietê</option>
+                  <option value="26">Lote 26 — SP Serra</option>
+                </select>
+                <p style="font-size:.7rem;color:var(--text-muted);margin-top:2px">Lote 50 (Nascentes das Gerais) não aparece no menu; use outro fluxo se necessário.</p>
+              </div>
+              <div style="flex:1;min-width:200px">
+                <label style="display:block;margin-bottom:4px;font-size:.85rem">Concessionária</label>
+                <input type="text" id="campo-concessionaria-analise" class="form-input" readonly
+                       style="background:var(--bg-surface-3);cursor:default" value="Lote 13 Rodovias das Colinas">
+              </div>
+            </div>
             <div class="form-group" style="margin-top:14px">
               <label>
                 <i class="fas fa-ruler-horizontal"></i>
@@ -506,7 +535,7 @@
               </div>
               <div id="resumo-analisar-pdf" style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px"></div>
               <button class="btn btn-success" id="download-analisar-pdf">
-                <i class="fas fa-file-pdf"></i> Baixar PDF de Análise
+                <i class="fas fa-file-archive"></i> Baixar ZIP (PDF + XLSX)
               </button>
             </div>
           </div>
@@ -1905,6 +1934,17 @@
     });
   })();
 
+  (function () {
+    var LOTES_CONCESSIONARIA = { '13': 'Lote 13 Rodovias das Colinas', '21': 'Lote 21 Rodovias do Tietê', '26': 'Lote 26 SP Serra' };
+    var sel = document.getElementById('sel-lote-analise');
+    var campo = document.getElementById('campo-concessionaria-analise');
+    function atualizarConcessionaria() {
+      if (campo && sel) campo.value = LOTES_CONCESSIONARIA[sel.value] || '';
+    }
+    if (sel) sel.addEventListener('change', atualizarConcessionaria);
+    atualizarConcessionaria();
+  })();
+
   document.getElementById('clear-analisar-pdf').addEventListener('click', () => {
     _pdfsAnalise = [];
     _renderListaPdfs();
@@ -1912,6 +1952,8 @@
     showFeedback('analisar-pdf', '');
     const r = document.getElementById('resumo-analisar-pdf');
     if (r) r.innerHTML = '';
+    var fileExcel = document.getElementById('file-excel-analise');
+    if (fileExcel) fileExcel.value = '';
   });
 
   document.getElementById('reset-analisar-pdf').addEventListener('click', () => {
@@ -1924,6 +1966,8 @@
     limparLog('log-analisar-pdf');
     const r = document.getElementById('resumo-analisar-pdf');
     if (r) r.innerHTML = '';
+    var fileExcel = document.getElementById('file-excel-analise');
+    if (fileExcel) fileExcel.value = '';
   });
 
   document.getElementById('btn-analisar-pdf').addEventListener('click', async () => {
@@ -1946,6 +1990,11 @@
       const fd = new FormData();
       _pdfsAnalise.forEach(f => fd.append('pdfs', f));
       fd.append('limiar_km', limiar);
+      var selLote = document.getElementById('sel-lote-analise');
+      fd.append('lote', (selLote && selLote.value) ? String(selLote.value).trim() : '13');
+      var fileExcel = document.getElementById('file-excel-analise');
+      if (fileExcel && fileExcel.files && fileExcel.files.length > 0)
+        for (var i = 0; i < fileExcel.files.length; i++) fd.append('excel', fileExcel.files[i]);
 
       setProgress('analisar-pdf', 30, true);
       const r = await fetch('/nc/analisar-pdf', {
@@ -1982,19 +2031,16 @@
       const ocultos = r.headers.get('X-NC-Ocultos')      || '0';
       const narqs   = r.headers.get('X-NC-Arquivos')     || String(_pdfsAnalise.length);
 
-      const cd      = r.headers.get('Content-Disposition') || '';
-      const mNome   = cd.match(/filename="?([^";]+)"?/);
-      const nomePdf = mNome ? mNome[1] : 'analise_nc.pdf';
-
       const buffer  = await r.arrayBuffer();
       setProgress('analisar-pdf', 100, true);
-      storeBlobForDownload('analisar-pdf', buffer, nomePdf, 'application/pdf');
+      storeBlobForDownload('analisar-pdf', buffer, 'Relatorio_Analise_NCs.zip', 'application/zip');
 
       const resumoEl = document.getElementById('resumo-analisar-pdf');
       if (resumoEl) {
         resumoEl.innerHTML =
           '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">' +
-          '<span><i class="fas fa-file-pdf" style="color:var(--warning)"></i> <b>' + narqs + '</b> arquivo(s)</span>' +
+          '<span><i class="fas fa-file-archive" style="color:var(--accent)"></i> ZIP: PDF + XLSX</span>' +
+          '<span><i class="fas fa-file-pdf" style="color:var(--warning)"></i> <b>' + narqs + '</b> PDF(s) enviado(s)</span>' +
           '<span><i class="fas fa-clipboard-list" style="color:var(--accent)"></i> <b>' + total + '</b> NCs</span>' +
           '<span><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> <b>' + gaps + '</b> gap(s) de KM</span>' +
           (parseInt(ocultos) > 0
@@ -2013,7 +2059,7 @@
       if (parseInt(emerg) > 0)
         logMsg('log-analisar-pdf', '🚨 NC(s) com prazo emergencial (≤ 24 h)!', 'error');
       logMsg('log-analisar-pdf', '────────────────────────────────────', 'info');
-      logMsg('log-analisar-pdf', 'Relatório PDF pronto para download.', 'success');
+      logMsg('log-analisar-pdf', 'ZIP (PDF de análise + XLSX template) pronto para download.', 'success');
       setStatus('analisar-pdf', 'done', 'Concluído');
       showResult('analisar-pdf', true);
 

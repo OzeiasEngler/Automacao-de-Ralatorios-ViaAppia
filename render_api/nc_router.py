@@ -16,7 +16,7 @@ inserir-meio-ambiente) → juntar → inserir-numero. Alternativa em 2 chamadas:
 
 Endpoints:
   POST /nc/extrair-pdf            – PDF NC Constatação → ZIP com nc(N).jpg e PDF(N).jpg
-  POST /nc/analisar-pdf           – PDF NC Constatação → PDF de análise (gaps de KM, emergenciais, agrupado por tipo)
+  POST /nc/analisar-pdf           – PDF NC Constatação → ZIP (PDF de análise + XLSX template preenchido)
   POST /nc/separar                → M01: EAF Excel → ZIP com XLS individuais
   POST /nc/gerar-modelo-foto      → M02: XLS ZIP + modelos → ZIP Kria + Resposta
   POST /nc/inserir-conservacao    → M03: Kria ZIP → ZIP Kcor-Kria Conservação
@@ -42,6 +42,7 @@ import sys
 import tempfile
 import time
 import traceback
+import unicodedata
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -49,7 +50,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 try:
@@ -442,9 +443,21 @@ def _ler(f: UploadFile) -> bytes:
     return data
 
 
+def _safe_filename_header(nome: str) -> str:
+    """Nome seguro para Content-Disposition (evita erro latin-1 em headers HTTP)."""
+    if not nome:
+        return nome
+    nfd = unicodedata.normalize("NFD", nome)
+    sem_comb = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    try:
+        return sem_comb.encode("latin-1").decode("latin-1")
+    except UnicodeEncodeError:
+        return sem_comb.encode("latin-1", "replace").decode("latin-1")
+
+
 def _stream_zip(data: bytes, nome: str, job_id: Optional[str] = None) -> StreamingResponse:
     """Stream ZIP; se job_id informado, adiciona header X-NC-Job-Id para o front encadear."""
-    headers = {"Content-Disposition": f'attachment; filename="{nome}"'}
+    headers = {"Content-Disposition": f'attachment; filename="{_safe_filename_header(nome)}"'}
     if job_id:
         headers["X-NC-Job-Id"] = job_id
     return StreamingResponse(
@@ -455,7 +468,7 @@ def _stream_zip(data: bytes, nome: str, job_id: Optional[str] = None) -> Streami
 
 def _stream_xlsx(data: bytes, nome: str, job_id: Optional[str] = None) -> StreamingResponse:
     """Stream XLSX; se job_id informado, adiciona header X-NC-Job-Id para o front encadear."""
-    headers = {"Content-Disposition": f'attachment; filename="{nome}"'}
+    headers = {"Content-Disposition": f'attachment; filename="{_safe_filename_header(nome)}"'}
     if job_id:
         headers["X-NC-Job-Id"] = job_id
     return StreamingResponse(
@@ -542,30 +555,23 @@ def _importar_pdf_extractor():
 @router.post(
     "/analisar-pdf",
     summary="Analisar sequência de KMs e tipos de NCs do PDF de Constatação",
-    response_description="PDF de análise: alertas de salto de KM, emergenciais e NCs por tipo",
+    response_description="ZIP com PDF de análise e XLSX no formato do template de Relatório de Fiscalização",
 )
 async def nc_analisar_pdf(
     request: Request,
     pdfs: List[UploadFile] = File(..., description="Um ou mais PDFs de NC Constatação de Rotina Artesp"),
     limiar_km: float = Form(2.0, description="Gap mínimo de KM para gerar alerta (padrão 2 km)"),
+    lote: str = Form("13", description="Lote para o relatório (13, 21 ou 26). Define a concessionária no XLSX."),
+    excel: List[UploadFile] = File(default=[], description="Um ou mais Excels que acompanham os PDFs (mesmo layout do relatório). Preenchem col E, O, P."),
 ):
     """
-    Analisa **um ou mais** PDFs de Constatação de Rotina Artesp sem alterar nada.
-    Quando múltiplos PDFs são enviados (ex.: um por rodovia), as NCs são combinadas
-    antes da análise — os saltos de KM são verificados por rodovia e sentido.
-
-    - Extrai todas as NCs e ordena por rodovia → sentido → KM
-    - Detecta **saltos de KM** acima do limiar e alerta sobre possíveis
-      **panelas/buracos não apontados** (prazo legal: 24 h)
-    - Identifica **NCs emergenciais** (prazo ≤ 24 h após constatação)
-    - Retorna **PDF de análise** com NCs agrupadas por tipo em sequência de KM,
-      dados originais intactos
+    Analisa **um ou mais** PDFs de Constatação de Rotina Artesp.
+    Se **excel** for enviado (um ou mais arquivos no mesmo formato do relatório), usa as colunas E, O e P para preencher/complementar os dados extraídos dos PDFs.
+    Retorna **ZIP** com PDF de análise e XLSX do relatório.
     """
     _check_auth(request)
     mod = _importar_analisar_pdf()
     try:
-        # Limpeza automática: processar apenas os PDFs enviados nesta requisição
-        # (sem reutilizar dados de relatórios anteriores — mesmo padrão do fluxo MA).
         pdfs_bytes = []
         for i, f in enumerate(pdfs):
             data = await f.read()
@@ -573,12 +579,18 @@ async def nc_analisar_pdf(
                 raise HTTPException(413, f"Arquivo '{f.filename}' excede {MAX_MB} MB.")
             pdfs_bytes.append(data)
         nomes = [Path(f.filename or f"pdf_{i+1}").stem for i, f in enumerate(pdfs)]
-        pdf_rel, resumo = await asyncio.to_thread(
-            mod.analisar_e_gerar_pdf_multi, pdfs_bytes, limiar_km, nomes
+        lote_ok = (lote or "").strip() or None
+        excel_list: List[bytes] = []
+        for f in excel or []:
+            if f and f.filename and (f.filename.lower().endswith(".xlsx") or f.filename.lower().endswith(".xls")):
+                data = await f.read()
+                if len(data) > MAX_BYTES:
+                    raise HTTPException(413, f"Arquivo Excel '{f.filename}' excede o tamanho máximo.")
+                excel_list.append(data)
+        pdf_rel, xlsx_bytes, resumo = await asyncio.to_thread(
+            mod.analisar_e_gerar_pdf_multi, pdfs_bytes, limiar_km, nomes, lote_ok, excel_list
         )
         n_arqs = len(pdfs)
-        nome_saida = "Relatório de Análise de NCs.pdf"
-        # Relatório anterior: alertas não entram no PDF; headers zerados para não contar no log
         relatorio_hoje = resumo.get("relatorio_hoje", True)
         if relatorio_hoje:
             n_emerg = len(resumo.get("emergenciais_lista", []))
@@ -591,11 +603,16 @@ async def nc_analisar_pdf(
                 "alertas não exibidos no PDF (Total NCs: %s)",
                 resumo.get("total", 0),
             )
-        return StreamingResponse(
-            io.BytesIO(pdf_rel),
-            media_type="application/pdf",
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("Relatório de Análise de NCs.pdf", pdf_rel)
+            zf.writestr("Relatório de Fiscalização de Conservação de Rotina - Não Conformidades.xlsx", xlsx_bytes)
+        zip_bytes = buf.getvalue()
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
             headers={
-                "Content-Disposition":  f'attachment; filename="{nome_saida}"',
+                "Content-Disposition": 'attachment; filename="Relatorio_Analise_NCs.zip"',
                 "X-NC-Total":           str(resumo.get("total", 0)),
                 "X-NC-Emergenciais":    str(n_emerg),
                 "X-NC-Alertas":         str(n_alertas),
@@ -606,6 +623,8 @@ async def nc_analisar_pdf(
         )
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("nc/analisar-pdf: %s", traceback.format_exc())
         raise HTTPException(500, str(e))

@@ -55,6 +55,7 @@ class NcItemMA:
     # Grupo EAF (fiscalização) — preenchido por _atribuir_grupo_ma para relatório de análise
     grupo: int = 0
     empresa: str = ""
+    nome_fiscal: str = ""  # nome do fiscal / responsável técnico (extraído do PDF quando possível)
 
 
 # Mapeamento sentido (letra → nome completo) — usado na extração e ao montar registro para gravação
@@ -192,6 +193,27 @@ def extrair_dados_ma(pdf_bytes: bytes) -> Optional[dict]:
     if codigo_fiscalizacao_val.upper().startswith("LOTE"):
         lote_match = re.search(r"Lote\s*:\s*(\S+)", texto_limpo, re.I)
         codigo_fiscalizacao_val = (lote_match.group(1) or "").strip() if lote_match else ""
+    if not codigo_fiscalizacao_val and FITZ_OK:
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            if len(doc) > 0:
+                from nc_artesp.pdf_extractor import _extrair_codigo_nc
+                codigo_fiscalizacao_val = (_extrair_codigo_nc(doc[0], doc[0].rect) or "").strip()
+            doc.close()
+        except Exception:
+            pass
+
+    nome_fiscal_val = ""
+    for pat in (
+        r"Respons[aá]vel\s+T[eé]cnico\s*:\s*([^\n\r|;]+)",
+        r"Fiscal\s*:\s*([^\n\r|;]+)",
+        r"Respons[aá]vel\s*:\s*([^\n\r|;]+)",
+    ):
+        m = re.search(pat, texto_limpo, re.I)
+        if m:
+            nome_fiscal_val = (m.group(1) or "").strip()[:200]
+            break
+
     # Observações: aceitar "Observações" ou "Observação"; capturar até próxima data ou fim (igual macro VBA)
     obs_match = re.search(r"Observa[cç][oõ]es?\s*:\s*(.*?)(?=\d{2}/\d{2}/\d{4}|\Z)", texto_limpo, re.S | re.I)
     pat_texto = (patologia_match.group(1) or "").strip() if patologia_match else ""
@@ -202,6 +224,7 @@ def extrair_dados_ma(pdf_bytes: bytes) -> Optional[dict]:
     return {
         "codigo": codigo_nc,
         "codigo_fiscalizacao": codigo_fiscalizacao_val,
+        "nome_fiscal": nome_fiscal_val,
         "rodovia": rodovia,
         "kmi": km_val,
         "sentido": sentido_val,
@@ -214,6 +237,7 @@ def _dict_para_nc_item(d: dict) -> NcItemMA:
     nc = NcItemMA()
     nc.codigo = (d.get("codigo") or "").strip()
     nc.codigo_fiscalizacao = (d.get("codigo_fiscalizacao") or "").strip()
+    nc.nome_fiscal = (d.get("nome_fiscal") or "").strip()[:200]
     nc.rodovia = (d.get("rodovia") or "").strip()
     nc.km_ini_str = (d.get("kmi") or "").strip()
     if nc.km_ini_str:
@@ -298,6 +322,7 @@ def parse_pdf_ma_para_registros(pdf_bytes: bytes) -> list[dict]:
             "relatorio": nc.relatorio or "",
             "codigo": nc.codigo or "",
             "codigo_fiscalizacao": nc.codigo_fiscalizacao or "",
+            "nome_fiscal": getattr(nc, "nome_fiscal", "") or "",
             "resumo": resumo,
             "complemento": nc.complemento or "",
             "embasamento": nc.embasamento or nc.prazo_str or "",

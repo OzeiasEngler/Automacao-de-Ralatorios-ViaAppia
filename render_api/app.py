@@ -999,9 +999,10 @@ def _get_usuario_admin(usuario_email: str = Depends(_get_usuario_autenticado)):
     return usuario_email
 
 
-@app.get("/")
+@app.get("/", status_code=200)
+@app.head("/", status_code=200)
 def read_root():
-    """Página inicial do projeto Gerador ARTESP — redireciona para o Gerador GeoJSON."""
+    """Página inicial — redireciona para /web/geojson. HEAD aceito para health check."""
     html = """<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="0;url=/web/geojson">

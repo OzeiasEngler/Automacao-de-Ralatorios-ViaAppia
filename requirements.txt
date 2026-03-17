@@ -1,6 +1,7 @@
 # ── Servidor Web e Framework ────────────────────────────────────────────────
 fastapi
 uvicorn
+slowapi
 gunicorn
 python-multipart
 
@@ -33,6 +34,8 @@ piexif
 pymupdf
 # Extração de texto de PDF (alternativa para MA)
 pdfplumber
+# OCR para PDFs escaneados (opcional): pip install pytesseract + instalar Tesseract no sistema
+# pytesseract
 
 # ── Testes ────────────────────────────────────────────────────────────────────
 pytest>=7.0

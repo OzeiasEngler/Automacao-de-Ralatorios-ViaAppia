@@ -1,6 +1,7 @@
 # Servidor Web e Framework
 fastapi
 uvicorn
+slowapi
 gunicorn
 python-multipart
 
