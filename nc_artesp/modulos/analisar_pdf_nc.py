@@ -117,6 +117,11 @@ class NcItem:
     tipo_artemig: str     = ""   # ex.: QID (col A template Artemig)
     sh_artemig: str       = ""   # ex.: SH02 (col B)
     num_consol: str       = ""   # só para dedupe; exibição em observacao (Artemig)
+    patologia_artemig: str = ""  # mapeamento Nas01 → col. Tipo (Kcor)
+    indicador_artemig: str = ""
+    artemig_pdf_stem: str = ""  # nome do PDF sem .p/Exportar Kcor col. V/W
+    artemig_kcor_paginas_jpg: list = field(default_factory=list)  # páginas c/ foto → CE_n.jpg
+
 
 
 @dataclass
@@ -1605,7 +1610,40 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
         tipo_artemig=tipo_artemig,
         sh_artemig=sh_artemig,
         num_consol=num_consol,
+        patologia_artemig=(patologia or "")[:500],
+        indicador_artemig=(indicador or "")[:200],
     )
+
+
+def _stem_pdf_upload(nome_arquivo: str) -> str:
+    s = (nome_arquivo or "").strip().replace("\\", "/")
+    base = s.rsplit("/", 1)[-1]
+    return Path(base).stem if base else ""
+
+
+def _artemig_paginas_foto_kcor(pdf_bytes: bytes) -> list[int]:
+    """Índices 1-based das páginas com imagem (sufixo _N.jpg no Kcor, p.ex. _3,_4,_5)."""
+    if not FITZ_OK:
+        return []
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return []
+    try:
+        com_foto: list[int] = []
+        for i in range(len(doc)):
+            if doc[i].get_images():
+                com_foto.append(i + 1)
+        jpg_pages = [p for p in com_foto if p >= 3]
+        if not jpg_pages and len(com_foto) >= 3:
+            jpg_pages = com_foto[2:]
+        elif not jpg_pages and len(com_foto) >= 2:
+            jpg_pages = com_foto[1:]
+        elif not jpg_pages and com_foto:
+            jpg_pages = com_foto
+        return jpg_pages
+    finally:
+        doc.close()
 
 
 def parse_pdf_artemig(pdf_bytes: bytes) -> list[NcItem]:
@@ -3286,6 +3324,13 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
             parcial_ma = parse_pdf_ma(pdf_bytes)
             if parcial_ma:
                 parcial = _ncs_ma_para_nc_items(parcial_ma)
+        if lote_num == "50" and parcial:
+            stem_u = _stem_pdf_upload(src)
+            pags = _artemig_paginas_foto_kcor(pdf_bytes)
+            for nc in parcial:
+                if stem_u:
+                    nc.artemig_pdf_stem = stem_u
+                nc.artemig_kcor_paginas_jpg = list(pags)
         for nc in parcial:
             setattr(nc, "_origem", src)
         bloques.append((src, texto_pdf, parcial))
@@ -3317,6 +3362,18 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
                 existente.tipo_atividade = nc.tipo_atividade
             if not existente.grupo_atividade and nc.grupo_atividade:
                 existente.grupo_atividade = nc.grupo_atividade
+            if not (existente.patologia_artemig or "").strip() and (nc.patologia_artemig or "").strip():
+                existente.patologia_artemig = nc.patologia_artemig
+            if not (existente.indicador_artemig or "").strip() and (nc.indicador_artemig or "").strip():
+                existente.indicador_artemig = nc.indicador_artemig
+            if not (getattr(existente, "artemig_pdf_stem", None) or "").strip() and (
+                getattr(nc, "artemig_pdf_stem", None) or ""
+            ).strip():
+                existente.artemig_pdf_stem = nc.artemig_pdf_stem
+            if not getattr(existente, "artemig_kcor_paginas_jpg", None) and getattr(
+                nc, "artemig_kcor_paginas_jpg", None
+            ):
+                existente.artemig_kcor_paginas_jpg = list(nc.artemig_kcor_paginas_jpg)
             # Trecho (rodovia/km) define EAF; preencher lacunas ou preferir NEP/EBP 22 sobre Autoroutes
             if not (existente.rodovia or "").strip() and (nc.rodovia or "").strip():
                 existente.rodovia = nc.rodovia
@@ -3548,4 +3605,17 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
     xlsx_bytes = gerar_relatorio_xlsx(
         ncs_total, lote_selecionado=lote_ok, rotulo_lote_analise=rotulo_lo
     )
+    res["exportar_kcor_xlsx"] = None
+    res["exportar_kcor_nome"] = None
+    if lote_num == "50" and ncs_total:
+        try:
+            from nc_artemig.exportar_kcor_planilha import gerar_exportar_kcor_xlsx_bytes
+            from nc_artemig.config import nome_saida_excel_kcor
+
+            kcor_b = gerar_exportar_kcor_xlsx_bytes(ncs_total)
+            if kcor_b:
+                res["exportar_kcor_xlsx"] = kcor_b
+                res["exportar_kcor_nome"] = nome_saida_excel_kcor()
+        except Exception as ex:
+            logger.warning("Lote 50: Exportar Kcor não gerado: %s", ex)
     return pdf_rel, xlsx_bytes, res

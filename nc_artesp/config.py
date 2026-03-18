@@ -102,6 +102,8 @@ M02_FOTO_DPI_X = _env_int("ARTESP_M02_FOTO_DPI_X", 222)
 M02_FOTO_DPI_Y = _env_int("ARTESP_M02_FOTO_DPI_Y", 319)
 M02_FOTO_PDF_W = _env_int("ARTESP_M02_FOTO_PDF_W", 480)
 M02_FOTO_PDF_H = _env_int("ARTESP_M02_FOTO_PDF_H", 202)
+# PyMuPDF antes do redimensionamento (Extrair PDF — ARTESP e Artemig lote 50)
+M02_EXTRACAO_RENDER_DPI = _env_int("ARTESP_M02_EXTRACAO_RENDER_DPI", 150)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MÓDULO 03 — INSERIR NC CONSERVAÇÃO (macro Art_03)

@@ -4,10 +4,10 @@ from fastapi.testclient import TestClient
 
 
 def test_read_root(client: TestClient):
-    """Raiz redireciona para /web."""
+    """Raiz devolve página inicial com link/redirecionamento para GeoJSON."""
     r = client.get("/", follow_redirects=False)
-    assert r.status_code == 302
-    assert r.headers.get("location", "").endswith("/web")
+    assert r.status_code == 200
+    assert "/web/geojson" in (r.text or "")
 
 
 def test_api_config(client: TestClient):

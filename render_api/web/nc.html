@@ -150,6 +150,8 @@
     }
     /* Mobile: abas em múltiplas linhas para todos os botões visíveis (sem scroll) */
     @media (max-width: 900px) {
+      .nc-lote-strip-outer { padding-left: 12px !important; padding-right: 12px !important; }
+      .nc-lote-global-bar .form-input { min-width: 0 !important; flex: 1 1 220px; }
       .step-tabs {
         flex-wrap: wrap;
         overflow: visible;
@@ -275,6 +277,23 @@
     <div class="topnav-spacer"></div>
     <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
   </nav>
+  <!-- Lote fora do scroll do conteúdo: permanece visível em qualquer etapa -->
+  <div class="nc-lote-strip-outer" style="flex-shrink:0;width:100%;max-width:1400px;margin:0 auto;padding:12px 24px 10px;border-bottom:1px solid var(--border-color);background:linear-gradient(180deg,#152238,#121a2e);box-shadow:0 4px 12px rgba(0,0,0,.25)">
+    <div class="nc-lote-global-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px">
+      <span style="font-size:.9rem;font-weight:800;color:#fff;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.3)"><i class="fas fa-map-marked-alt" style="color:#fbbf24"></i> Lote</span>
+      <select id="sel-lote-nc-global" class="form-input" title="Obrigatório para todo o pipeline NC" style="min-width:300px;max-width:100%;font-size:.95rem;font-weight:600;padding:12px 14px;background:#1e293b;border:2px solid #f59e0b;color:#f8fafc">
+        <option value="">— Selecione o lote —</option>
+        <option value="13">13 — Rodovias das Colinas</option>
+        <option value="21">21 — Rodovias do Tietê</option>
+        <option value="26">26 — SP Serra</option>
+        <option value="50">50 — CONSOL (ARTEMIG - MG)</option>
+      </select>
+      <span style="font-size:.74rem;color:#94a3b8;line-height:1.4;max-width:520px">Válido para <strong>Análise PDF</strong>, <strong>Separar NC</strong>, <strong>Conservação</strong>, <strong>Meio Ambiente</strong> e demais etapas.</span>
+    </div>
+    <div id="nc-aviso-mudanca-lote" style="display:none;margin-top:10px;padding:10px 14px;font-size:.78rem;border-radius:var(--radius-sm);background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#fde68a">
+      <i class="fas fa-exchange-alt"></i> <strong>Lote alterado.</strong> Reinicie pelo <strong>Separar NC</strong> (ou 1ª etapa) antes de continuar o encadeamento.
+    </div>
+  </div>
   <div class="page-content" id="nc-page">
 
     <div class="page-header animate-in">
@@ -347,12 +366,9 @@
             </span>
           </div>
           <div class="card-body">
-            <div id="nc-aviso-mudanca-lote" style="display:none;margin-bottom:10px;padding:10px 14px;font-size:.78rem;border-radius:var(--radius-sm);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:var(--text-secondary)">
-              <i class="fas fa-exchange-alt"></i> <strong>Lote alterado.</strong> O encadeamento do pipeline foi reiniciado — execute de novo <strong>Separar NC</strong> (ou a 1ª etapa do fluxo) antes das demais.
-            </div>
             <div class="form-group" style="margin-bottom:16px;padding:12px 14px;background:var(--bg-surface-3);border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,.06)">
               <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 10px">
-                <i class="fas fa-map-marked-alt"></i> <strong>Primeiro escolha o lote</strong> — só então anexe PDFs e demais arquivos.
+                <i class="fas fa-map-marked-alt"></i> <strong>Lote</strong> — use a <strong>barra acima das etapas</strong> (todas as fases) ou o select abaixo (sincronizado).
               </p>
               <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">
                 <div>
@@ -500,7 +516,7 @@
                 <option value="26">Lote 26 — SP Serra</option>
                 <option value="50">Lote 50 — CONSOL (ARTEMIG - MG)</option>
               </select>
-              <p style="font-size:.72rem;color:var(--text-muted);margin:8px 0 0">Escolha o lote antes de anexar PDFs. O valor sincroniza com a aba <strong>Análise PDF</strong>.</p>
+              <p style="font-size:.72rem;color:var(--text-muted);margin:8px 0 0">O lote é o mesmo da <strong>barra acima das etapas</strong> (sincronizado com Análise PDF).</p>
             </div>
 
             <div class="upload-zone" id="zone-extrair-pdf">
@@ -1781,15 +1797,18 @@
   function ncLoteObrigatorio(logId, stepId) {
     if (!ncLoteValor()) {
       if (logId) {
-        var msg = (stepId === 'extrair-pdf') ? 'Selecione o lote acima.' : 'Selecione o lote (Análise PDF ou Extrair PDF).';
+        var msg = (stepId === 'extrair-pdf') ? 'Selecione o lote na barra acima das etapas ou em Extrair PDF.' : 'Selecione o lote na barra global acima das etapas (Lote).';
         logMsg(logId, msg, 'error');
       }
-      if (stepId) showFeedback(stepId, '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione o <strong>lote</strong> no topo da página antes de continuar.</div>');
+      if (stepId) showFeedback(stepId, '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione o <strong>lote</strong> na barra acima das abas (Análise PDF, Separar NC, …).</div>');
       return false;
     }
     return true;
   }
   function ncLoteValor() {
+    var g = document.getElementById('sel-lote-nc-global');
+    var vg = (g && String(g.value || '').trim()) ? String(g.value).trim() : '';
+    if (vg) return vg;
     var s = document.getElementById('sel-lote-analise');
     var e = document.getElementById('sel-lote-extrair-pdf');
     var va = (s && String(s.value || '').trim()) ? String(s.value).trim() : '';
@@ -2007,6 +2026,7 @@
     var LOTES_CONCESSIONARIA = { '13': 'Lote 13 Rodovias das Colinas', '21': 'Lote 21 Rodovias do Tietê', '26': 'Lote 26 SP Serra', '50': 'CONSOL' };
     var sel = document.getElementById('sel-lote-analise');
     var selExt = document.getElementById('sel-lote-extrair-pdf');
+    var gGlob = document.getElementById('sel-lote-nc-global');
     var campo = document.getElementById('campo-concessionaria-analise');
     var wrapExcel = document.getElementById('wrap-excel-analise');
     var msgArtemig = document.getElementById('msg-artemig-somente-pdf');
@@ -2028,12 +2048,13 @@
       }
       _ncLoteRegistrado = agora;
     }
-    function syncAnaliseParaExtrair() {
-      if (sel && selExt && sel.value !== selExt.value) selExt.value = sel.value;
-    }
-    function atualizarConcessionaria() {
-      if (campo && sel) campo.value = LOTES_CONCESSIONARIA[sel.value] || '';
-      var isArtemig = (sel && sel.value === '50');
+    function _ncApplyLote(v) {
+      v = (v == null ? '' : String(v)).trim();
+      if (gGlob) gGlob.value = v;
+      if (sel) sel.value = v;
+      if (selExt) selExt.value = v;
+      if (campo) campo.value = LOTES_CONCESSIONARIA[v] || '';
+      var isArtemig = (v === '50');
       if (wrapExcel) wrapExcel.style.display = isArtemig ? 'none' : '';
       if (msgArtemig) msgArtemig.style.display = isArtemig ? 'block' : 'none';
       if (isArtemig) {
@@ -2041,22 +2062,12 @@
         if (fileExcel) fileExcel.value = '';
       }
       ncAtualizarAnexosHabilitados();
-      syncAnaliseParaExtrair();
       _ncTratarMudancaLote();
     }
-    if (sel) sel.addEventListener('change', atualizarConcessionaria);
-    if (selExt) {
-      selExt.addEventListener('change', function () {
-        if (!sel) return;
-        if (sel.value !== selExt.value) {
-          sel.value = selExt.value;
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
-        } else {
-          ncAtualizarAnexosHabilitados();
-        }
-      });
-    }
-    atualizarConcessionaria();
+    if (gGlob) gGlob.addEventListener('change', function () { _ncApplyLote(gGlob.value); });
+    if (sel) sel.addEventListener('change', function () { _ncApplyLote(sel.value); });
+    if (selExt) selExt.addEventListener('change', function () { if (sel) _ncApplyLote(selExt.value); });
+    _ncApplyLote((gGlob && gGlob.value) || (sel && sel.value) || (selExt && selExt.value) || '');
   })();
 
   document.getElementById('clear-analisar-pdf').addEventListener('click', () => {

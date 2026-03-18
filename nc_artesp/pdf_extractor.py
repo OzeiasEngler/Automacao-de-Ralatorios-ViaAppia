@@ -1,7 +1,7 @@
 """
-Extração do PDF de NC Constatação: Texto (COD).jpg (só área acima das fotos),
-PDF (COD).jpg (texto+imagens, bloco completo), nc (COD).jpg (cada foto).
-CODIGO = Código da Fiscalização (nunca Lote). Requer: pymupdf, pillow.
+Extração do PDF de NC Constatação: Texto (COD).jpg, PDF (COD).jpg, nc (COD).jpg.
+Dimensões/DPI finais = M02_FOTO_* / M02_FOTO_PDF_* (ARTESP e Artemig lote 50).
+CODIGO = Código da Fiscalização. Requer: pymupdf, pillow.
 """
 
 from __future__ import annotations
@@ -36,11 +36,47 @@ Y0_MINIMO_BLOCO       = 66
 MARGEM_SUPERIOR       = 4
 FOLGA_APOS_FOTO_ANT   = 18
 
-# nc (N).jpg na extração: 800×500 px, 222×319 DPI
+# Fallback se nc_artesp.config não carregar (igual defaults M02)
 NC_IMAGE_WIDTH  = 800
 NC_IMAGE_HEIGHT = 500
 NC_IMAGE_DPI_X  = 222
 NC_IMAGE_DPI_Y  = 319
+
+
+def _cfg_m02_foto_nc() -> tuple[int, int, int, int]:
+    try:
+        from nc_artesp.config import (
+            M02_FOTO_DPI_X,
+            M02_FOTO_DPI_Y,
+            M02_FOTO_H,
+            M02_FOTO_W,
+        )
+        return (M02_FOTO_W, M02_FOTO_H, M02_FOTO_DPI_X, M02_FOTO_DPI_Y)
+    except Exception:
+        return (NC_IMAGE_WIDTH, NC_IMAGE_HEIGHT, NC_IMAGE_DPI_X, NC_IMAGE_DPI_Y)
+
+
+def _cfg_m02_foto_pdf_preview() -> tuple[int, int, int, int]:
+    try:
+        from nc_artesp.config import (
+            M02_FOTO_DPI_X,
+            M02_FOTO_DPI_Y,
+            M02_FOTO_PDF_H,
+            M02_FOTO_PDF_W,
+        )
+        return (M02_FOTO_PDF_W, M02_FOTO_PDF_H, M02_FOTO_DPI_X, M02_FOTO_DPI_Y)
+    except Exception:
+        return (480, 202, NC_IMAGE_DPI_X, NC_IMAGE_DPI_Y)
+
+
+def _resolve_dpi_extracao(dpi: Optional[int]) -> int:
+    if dpi is not None:
+        return int(dpi)
+    try:
+        from nc_artesp.config import M02_EXTRACAO_RENDER_DPI
+        return int(M02_EXTRACAO_RENDER_DPI)
+    except Exception:
+        return 150
 
 # Quadros em branco: fração mínima de pixels "não brancos" para considerar como foto real
 _UMBRAL_BRANCO = 250
@@ -221,13 +257,34 @@ def _renderizar_jpg(page: "fitz.Page", rect: "fitz.Rect", dpi: int = 150) -> byt
 
 
 def _redimensionar_nc_jpg(img_bytes: bytes) -> bytes:
-    """Saída nc (N).jpg: 800×500 px, DPI 222×319."""
+    """nc (COD).jpg: M02_FOTO_W×H e M02_FOTO_DPI (ARTESP = Artemig)."""
+    w, h, dx, dy = _cfg_m02_foto_nc()
     img = PILImage.open(io.BytesIO(img_bytes))
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
-    img = img.resize((NC_IMAGE_WIDTH, NC_IMAGE_HEIGHT), PILImage.LANCZOS)
+    try:
+        resample = PILImage.Resampling.LANCZOS
+    except AttributeError:
+        resample = getattr(PILImage, "LANCZOS", PILImage.BICUBIC)
+    img = img.resize((w, h), resample)
     buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=92, dpi=(NC_IMAGE_DPI_X, NC_IMAGE_DPI_Y))
+    img.save(buf, "JPEG", quality=92, dpi=(dx, dy))
+    return buf.getvalue()
+
+
+def _redimensionar_pdf_ou_texto_jpg(img_bytes: bytes) -> bytes:
+    """PDF (COD).jpg / Texto (COD).jpg: M02_FOTO_PDF_W×H e mesmo DPI M02."""
+    pw, ph, dx, dy = _cfg_m02_foto_pdf_preview()
+    img = PILImage.open(io.BytesIO(img_bytes))
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    try:
+        resample = PILImage.Resampling.LANCZOS
+    except AttributeError:
+        resample = getattr(PILImage, "LANCZOS", PILImage.BICUBIC)
+    img = img.resize((pw, ph), resample)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=92, dpi=(dx, dy))
     return buf.getvalue()
 
 
@@ -443,12 +500,13 @@ def extrair_imagens_pdf(pdf_path: str,
                          pasta_saida: Optional[str] = None,
                          pasta_saida_nc: Optional[str] = None,
                          pasta_saida_pdf: Optional[str] = None,
-                         dpi: int = 150,
+                         dpi: Optional[int] = None,
                          nc_global_start: int = 0,
                          nomear_por_indice_fiscalizacao: bool = False,
                          pasta_unica: bool = False) -> list:
     """Extrai Texto (COD).jpg, PDF (COD).jpg e nc (COD).jpg. Se pasta_unica, tudo na mesma pasta."""
     _check_deps()
+    dpi = _resolve_dpi_extracao(dpi)
     pdf_path = Path(pdf_path).resolve()
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF não encontrado: {pdf_path}")
@@ -613,7 +671,7 @@ def extrair_imagens_pdf(pdf_path: str,
                         jpg_txt = _renderizar_jpg(page, clip_txt, dpi)
                         if jpg_txt and not _eh_jpg_quase_em_branco(jpg_txt):
                             nome_t = _nome_unico(f"Texto ({cod}).jpg")
-                            (p_pdf / nome_t).write_bytes(jpg_txt)
+                            (p_pdf / nome_t).write_bytes(_redimensionar_pdf_ou_texto_jpg(jpg_txt))
                             salvos.append(str(p_pdf / nome_t))
                     if (
                         clip_pdf
@@ -623,7 +681,7 @@ def extrair_imagens_pdf(pdf_path: str,
                         jpg_pdf = _renderizar_jpg(page, clip_pdf, dpi)
                         if jpg_pdf and not _eh_jpg_quase_em_branco(jpg_pdf):
                             nome = _nome_unico(f"PDF ({cod}).jpg")
-                            (p_pdf / nome).write_bytes(jpg_pdf)
+                            (p_pdf / nome).write_bytes(_redimensionar_pdf_ou_texto_jpg(jpg_pdf))
                             salvos.append(str(p_pdf / nome))
                             pdf_imagem_ja_escrita_esta_pagina = True
                     for fr in fotos_unicas:
@@ -699,7 +757,7 @@ def extrair_imagens_pdf(pdf_path: str,
     return salvos
 
 
-def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: int = 150,
+def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: Optional[int] = None,
                          nomear_por_indice_fiscalizacao: bool = False,
                          pasta_unica: bool = False) -> tuple[bytes, int]:
     """PDF → ZIP. pasta_unica: Texto/PDF/nc na mesma pasta (ex.: Artemig lote 50)."""

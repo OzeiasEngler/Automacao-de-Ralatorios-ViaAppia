@@ -438,6 +438,14 @@ def _carregar_modelo_resp(lote: str | None = None) -> bytes:
 def _carregar_modelo_kcor(lote: str | None = None) -> bytes:
     if (lote or "").strip() == "50":
         try:
+            from nc_artemig.config import MODELO_KCOR_KRIA
+
+            p = Path(MODELO_KCOR_KRIA)
+            if p.is_file():
+                return p.read_bytes()
+        except Exception:
+            pass
+        try:
             return _ler_asset(_NOME_MODELO_KCOR, _NC_ARTEMIG_TEMPLATES)
         except HTTPException:
             pass
@@ -631,6 +639,11 @@ async def nc_analisar_pdf(
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(nome_pdf.replace("\\", "/"), pdf_rel)
             zf.writestr(nome_xlsx.replace("\\", "/"), xlsx_bytes)
+            kcor_b = resumo.get("exportar_kcor_xlsx") or b""
+            kcor_nome = (resumo.get("exportar_kcor_nome") or "").strip()
+            if kcor_b and kcor_nome and (lote_slug or "").strip() == "50":
+                arc_kcor = f"{pasta}/{kcor_nome}".replace("\\", "/")
+                zf.writestr(arc_kcor, kcor_b)
         zip_bytes = buf.getvalue()
         return Response(
             content=zip_bytes,
@@ -663,7 +676,10 @@ async def nc_analisar_pdf(
 async def nc_extrair_pdf(
     request: Request,
     pdfs: List[UploadFile] = File(..., description="Um ou mais PDFs de NC Constatação Artesp"),
-    dpi: int = Form(150, description="Resolução de extração (padrão 150)"),
+    dpi: Optional[int] = Form(
+        None,
+        description="Resolução PyMuPDF antes do redimensionamento; padrão = ARTESP_M02_EXTRACAO_RENDER_DPI (150).",
+    ),
     lote: str = Form("", description="Número do lote (13, 21, 26, 50…). Obrigatório; entra no nome do ZIP."),
     nomear_por_indice_fiscalizacao: bool = Form(
         False,
