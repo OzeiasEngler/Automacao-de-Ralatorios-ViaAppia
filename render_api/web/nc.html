@@ -444,6 +444,12 @@
               <input type="number" id="limiar-analisar-pdf" class="form-input"
                      value="2" min="0.5" max="50" step="0.5" style="width:120px">
             </div>
+            <div class="form-group" style="margin-top:10px">
+              <label style="font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="chk-teste-local-analise">
+                <span>Teste local — mostrar alertas no PDF mesmo se a data da constatação não for hoje</span>
+              </label>
+            </div>
 
             <div class="progress-bar-container" id="prog-analisar-pdf">
               <div class="progress-bar-fill" id="progfill-analisar-pdf"
@@ -1498,7 +1504,7 @@
       'Validando PDFs, lote e Excel opcional',
       'Extraindo texto e blocos por página',
       'Identificando NCs, códigos e rodovias',
-      'Cruzando com MAPA EAF / regras Artemig',
+      'Cruzando com MAPA EAF / regras do lote',
       'Analisando gaps de KM e sequência de códigos',
       'Classificando emergenciais e alertas',
       'Gerando PDF de análise (ReportLab)',
@@ -1566,8 +1572,19 @@
     '_default': ['Autenticando requisição', 'Processando no servidor', 'Finalizando saída']
   };
 
+  function _ncPipelineStepsResolved(stepId) {
+    var steps = (NC_PIPELINE_STEPS[stepId] || NC_PIPELINE_STEPS._default).slice();
+    if (stepId === 'analisar-pdf' && steps.length > 3) {
+      var lo = (typeof ncLoteValor === 'function' ? (ncLoteValor() || '').trim() : '');
+      steps[3] = lo === '50'
+        ? 'Cruzando com MAPA EAF / regras Artemig (CONSOL)'
+        : 'Cruzando com MAPA EAF / regras ARTESP (lote ' + (lo || '?') + ')';
+    }
+    return steps;
+  }
+
   function _ncStartLivePipelineLog(logId, stepId) {
-    var steps = NC_PIPELINE_STEPS[stepId] || NC_PIPELINE_STEPS._default;
+    var steps = _ncPipelineStepsResolved(stepId);
     var box = document.getElementById(logId);
     if (box) box.classList.add('nc-log-active');
     var bar = document.createElement('div');
@@ -1590,7 +1607,7 @@
   }
 
   function _ncReplayPipelineSteps(logId, stepId, cb) {
-    var steps = NC_PIPELINE_STEPS[stepId] || NC_PIPELINE_STEPS._default;
+    var steps = _ncPipelineStepsResolved(stepId);
     var box = document.getElementById(logId);
     if (!box || !steps.length) { if (cb) cb(); return; }
     var empty = box.querySelector('.log-empty');
@@ -1841,8 +1858,6 @@
   }
 
   async function executarModulo({ stepId, endpoint, buildFormData, filename, mimeType, logId, timeoutMs }) {
-    const tk = localStorage.getItem('artesp_token');
-    if (!tk) { showLogin('Faça login para continuar.'); return; }
     if (!ncLoteObrigatorio(logId, stepId)) return;
 
     const btn = document.getElementById('btn-' + stepId);
@@ -2099,8 +2114,6 @@
     if (_pdfsAnalise.length === 0) return;
     if (!ncLoteObrigatorio('log-analisar-pdf', 'analisar-pdf')) return;
     const limiar = parseFloat(document.getElementById('limiar-analisar-pdf').value) || 2.0;
-    const tk = localStorage.getItem('artesp_token');
-    if (!tk) { showLogin('Faça login para continuar.'); return; }
 
     const btn = document.getElementById('btn-analisar-pdf');
     btn.disabled = true;
@@ -2121,6 +2134,8 @@
       var fileExcel = document.getElementById('file-excel-analise');
       if (fileExcel && fileExcel.files && fileExcel.files.length > 0)
         for (var i = 0; i < fileExcel.files.length; i++) fd.append('excel', fileExcel.files[i]);
+      var chkTeste = document.getElementById('chk-teste-local-analise');
+      if (chkTeste && chkTeste.checked) fd.append('teste_local', '1');
 
       setProgress('analisar-pdf', 30, true);
       const r = await fetch('/nc/analisar-pdf', {
@@ -2326,8 +2341,6 @@
     if (!loteNum) { logMsg('log-extrair-pdf', 'Selecione o lote.', 'error'); return; }
     const nome  = `lote_${loteNum}_${n}_pdfs_imagens.zip`;
     const logId = 'log-extrair-pdf';
-    const tk    = localStorage.getItem('artesp_token');
-    if (!tk) { showLogin('Faça login para continuar.'); return; }
 
     const btn = document.getElementById('btn-extrair-pdf');
     btn.disabled = true;
@@ -2412,8 +2425,6 @@
     if (!ncLoteObrigatorio('log-separar', 'separar')) return;
     const n     = files.length;
     const logId = 'log-separar';
-    const tk    = localStorage.getItem('artesp_token');
-    if (!tk) { showLogin('Faça login para continuar.'); return; }
 
     const btn = document.getElementById('btn-separar');
     btn.disabled = true;
@@ -2781,8 +2792,6 @@
       return;
     }
     const stem = (f.name || 'acumulado').replace(/\.xlsx?$/i, '');
-    const tk = localStorage.getItem('artesp_token');
-    if (!tk) { showLogin('Faça login para continuar.'); return; }
 
     const btn = document.getElementById('btn-exportar-calendario');
     btn.disabled = true;

@@ -15,6 +15,9 @@ Uso:
 
   O script envia o PDF para http://127.0.0.1:8000/nc/analisar-pdf, salva o ZIP
   em Relatorio_Analise_NCs.zip (na pasta atual) e extrai em test_analise_saida/.
+
+  --teste-local  Força seções de alerta no PDF mesmo com data da constatação ≠ hoje.
+  Ou defina ARTESP_NC_TESTE_LOCAL=1 ao subir o uvicorn (vale para todas as chamadas).
 """
 from __future__ import annotations
 
@@ -36,6 +39,11 @@ def main():
     parser.add_argument("--port", type=int, default=8000, help="Porta do uvicorn (default 8000)")
     parser.add_argument("--out-zip", type=Path, default=Path("Relatorio_Analise_NCs.zip"), help="Arquivo ZIP de saída")
     parser.add_argument("--extract-dir", type=Path, default=Path("test_analise_saida"), help="Pasta para extrair o ZIP")
+    parser.add_argument(
+        "--teste-local",
+        action="store_true",
+        help="Força alertas no PDF (gap/emerg.) mesmo se a data da constatação ≠ hoje",
+    )
     args = parser.parse_args()
 
     pdf_path = args.pdf.resolve()
@@ -52,10 +60,13 @@ def main():
 
     try:
         with httpx.Client(timeout=120.0) as client:
+            data = {"limiar_km": "2.0", "lote": "13"}
+            if args.teste_local:
+                data["teste_local"] = "1"
             r = client.post(
                 url,
                 files=[("pdfs", (pdf_path.name, pdf_bytes, "application/pdf"))],
-                data={"limiar_km": "2.0", "lote": "13"},
+                data=data,
             )
     except httpx.ConnectError as e:
         print(f"Erro: não foi possível conectar em {url}")

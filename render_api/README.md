@@ -116,12 +116,22 @@ O **GeoJSON** (`/web` — `index.html`) é a referência em produção no Render
 
 ## Testes
 
+Na **raiz** do repositório (usa `pytest.ini`):
+
 ```bash
 pip install -r requirements.txt
-pytest render_api/tests/ -v
+python -m pytest
 ```
 
-Os testes requerem dependências completas (PyJWT, pandas, etc.). Configure `ARTESP_WEB_USERS` com um usuário de teste ou use o padrão `teste@artesp.local`/`teste123` definido em `conftest.py`.
+Ou `test_local.bat` (Windows). Alternativa: `pytest render_api/tests/ -v` a partir da pasta `render_api`.
+
+Os testes requerem dependências completas (PyJWT, pandas, etc.). O `conftest.py` define `teste@artesp.local` / `teste123`.
+
+**Analisar PDF localmente** (script + modo alertas com PDF antigo): ver `TESTE_ANALISAR_PDF_LOCAL.md` na raiz (`--teste-local` ou `ARTESP_NC_TESTE_LOCAL=1`).
+
+## Excel — não apagar formatação
+
+Templates `.xlsx` (relatório, Kcor-Kria): usar **openpyxl** com `load_workbook` e alterar células; evitar `pandas.to_excel()` por cima do mesmo ficheiro. Ver **[docs/EXCEL_PRESERVAR_FORMATACAO.md](../docs/EXCEL_PRESERVAR_FORMATACAO.md)** (modo edição, `ExcelWriter` + `overlay`).
 
 ## Pipeline NC (Não Conformidades)
 

@@ -571,6 +571,15 @@ def _importar_pdf_extractor():
         )
 
 
+def _flag_teste_local(val_form: str) -> bool:
+    v = (val_form or "").strip().lower()
+    if v in ("0", "false", "no", "off"):
+        return False
+    if v in ("1", "true", "yes", "on"):
+        return True
+    return (os.getenv("ARTESP_NC_TESTE_LOCAL") or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 @router.post(
     "/analisar-pdf",
     summary="Analisar sequência de KMs e tipos de NCs do PDF de Constatação",
@@ -582,12 +591,11 @@ async def nc_analisar_pdf(
     limiar_km: float = Form(2.0, description="Gap mínimo de KM para gerar alerta (padrão 2 km)"),
     lote: str = Form("", description="Lote para o relatório (13, 21, 26 ou 50 Artemig). Obrigatório."),
     excel: List[UploadFile] = File(default=[], description="Um ou mais Excels que acompanham os PDFs (mesmo layout do relatório). Preenchem col E, O, P."),
+    teste_local: str = Form(
+        "",
+        description="1/true ou env ARTESP_NC_TESTE_LOCAL: força alertas no PDF (útil com PDFs de data ≠ hoje).",
+    ),
 ):
-    """
-    Analisa **um ou mais** PDFs de Constatação de Rotina Artesp.
-    Se **excel** for enviado (um ou mais arquivos no mesmo formato do relatório), usa as colunas E, O e P para preencher/complementar os dados extraídos dos PDFs.
-    Retorna **ZIP** com PDF de análise e XLSX do relatório.
-    """
     _check_auth(request)
     if not (lote or "").strip():
         raise HTTPException(400, "Selecione o lote.")
@@ -608,8 +616,15 @@ async def nc_analisar_pdf(
                 if len(data) > MAX_BYTES:
                     raise HTTPException(413, f"Arquivo Excel '{f.filename}' excede o tamanho máximo.")
                 excel_list.append(data)
+        tl = _flag_teste_local(teste_local)
         pdf_rel, xlsx_bytes, resumo = await asyncio.to_thread(
-            mod.analisar_e_gerar_pdf_multi, pdfs_bytes, limiar_km, nomes, lote_ok, excel_list
+            mod.analisar_e_gerar_pdf_multi,
+            pdfs_bytes,
+            limiar_km,
+            nomes,
+            lote_ok,
+            excel_list,
+            tl,
         )
         n_arqs = len(pdfs)
         relatorio_hoje = resumo.get("relatorio_hoje", True)
@@ -624,7 +639,6 @@ async def nc_analisar_pdf(
                 "alertas não exibidos no PDF (Total NCs: %s)",
                 resumo.get("total", 0),
             )
-        # Nome do ZIP alinhado ao lote do formulário (evita slug 13 quando o cliente envia 50).
         lote_slug = (lote or "").strip() or "13"
         try:
             _rotulo, slug = mod.rotulo_e_slug_lote_para_saida(lote_slug)

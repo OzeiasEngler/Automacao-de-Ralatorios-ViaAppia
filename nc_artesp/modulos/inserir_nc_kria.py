@@ -488,6 +488,8 @@ def _processar_pdf_meio_ambiente(
         ws_out.cell(row=r, column=_K_W).value = nome_arq
         ws_out.cell(row=r, column=_K_X).value = ""
         ws_out.cell(row=r, column=_K_Y).value = ""
+        _forcar_texto_so_data_kcor_cols_m_r(ws_out, r)
+        _aplicar_bordas_linha(ws_out, r, 25)
 
     nome_saida = f"{timestamp_agora()} - {nome_origem}.xlsx"
     destino_kcor = caminho_dentro_limite_windows(pasta_saida / nome_saida)
@@ -574,9 +576,34 @@ def _aplicar_bordas_linha(ws, row: int, col_fim: int = 25):
         ws.cell(row=row, column=col).border = _BORDA_CELULA
 
 
+def _forcar_texto_so_data_kcor_cols_m_r(ws, row: int) -> None:
+    """M–R como texto dd/mm/aaaa (formato @ evita hora herdada do template)."""
+    from datetime import date, datetime
+
+    for c in range(_K_M, _K_R + 1):
+        cell = ws.cell(row=row, column=c)
+        v = cell.value
+        if v is None or v == "":
+            cell.number_format = "@"
+            continue
+        if isinstance(v, (datetime, date)):
+            cell.value = v.strftime("%d/%m/%Y")
+        elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            try:
+                from openpyxl.utils.datetime import from_excel
+
+                cell.value = from_excel(float(v)).strftime("%d/%m/%Y")
+            except Exception:
+                pass
+        else:
+            s = str(v).strip()
+            if re.match(r"^\d{1,2}/\d{1,2}/\d{4}", s) and " " in s:
+                cell.value = s.split()[0].strip()[:10]
+        cell.number_format = "@"
+
+
 def _desfazer_merge_colunas_linha(ws, row: int, col_ini: int, col_fim: int):
-    """Desfaz merges na linha row entre col_ini e col_fim.
-    Necessário: template tem Q:T (ou mais) mesclados na linha 2; sem desfazer, só a primeira célula recebe valor."""
+    """Desfaz merges na faixa (template mescla Q:T; senão só a 1.ª célula recebe valor)."""
     from openpyxl.utils.cell import range_boundaries
     to_unmerge = []
     for mc in list(ws.merged_cells.ranges):
@@ -594,8 +621,7 @@ def _desfazer_merge_colunas_linha(ws, row: int, col_ini: int, col_fim: int):
 
 
 def _copiar_estilo_linha(ws, row_origem: int, row_destino: int, col_fim: int = 25):
-    """Copia estilo colunas 1–21; aplica bordas 1–col_fim.
-    Só até U: V–Y são preenchidas depois; copiar estilo do template em 22–25 (células às vezes mescladas) sobrescreveria o valor."""
+    """Estilo 1–U; bordas até col_fim (V–Y preenchidas depois, sem copiar estilo do modelo)."""
     col_ate_u = min(21, col_fim)
     for col in range(1, col_ate_u + 1):
         src = ws.cell(row=row_origem, column=col)
@@ -1028,6 +1054,8 @@ def _processar_arquivo(arq_path: Path,
         ws_out.cell(row=r, column=_K_W).value = nome_arq
         ws_out.cell(row=r, column=_K_X).value = ""
         ws_out.cell(row=r, column=_K_Y).value = ""
+        _forcar_texto_so_data_kcor_cols_m_r(ws_out, r)
+        _aplicar_bordas_linha(ws_out, r, 25)
 
     nome_saida = f"{timestamp_agora()} - {arq_path.name}"
     destino_kcor = caminho_dentro_limite_windows(pasta_saida / nome_saida)

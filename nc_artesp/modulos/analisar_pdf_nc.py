@@ -2194,6 +2194,93 @@ def _detectar_colunas_saida_template(ws, cabecalho_fim: int = 4) -> dict[str, in
     return col_map
 
 
+def _data_sem_hora_celula(s) -> str:
+    """Normaliza valor de célula de data do relatório XLSX para dd/mm/aaaa."""
+    from datetime import date, datetime
+
+    if s is None:
+        return ""
+    if isinstance(s, datetime):
+        return s.strftime("%d/%m/%Y")
+    try:
+        if isinstance(s, date):
+            return s.strftime("%d/%m/%Y")
+    except Exception:
+        pass
+    if isinstance(s, (int, float)) and not isinstance(s, bool):
+        try:
+            from openpyxl.utils.datetime import from_excel
+
+            return from_excel(float(s)).strftime("%d/%m/%Y")
+        except Exception:
+            pass
+    t = str(s).strip()
+    if not t:
+        return ""
+    if " " in t:
+        t = t.split()[0].strip()
+    return t[:10] if len(t) >= 10 else t
+
+
+def _coluna_data_reparo_relatorio(val: str) -> str:
+    v = (val or "").strip()
+    if not v:
+        return ""
+    if re.match(r"(?i)^em\s+at[eé]\s+", v):
+        return v
+    return _data_sem_hora_celula(v)
+
+
+def _aplicar_borda_fina_linha_relatorio(ws, row: int, col_fim: int) -> None:
+    from openpyxl.styles import Border, Side
+
+    thin = Side(style="thin", color="000000")
+    b = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for col in range(1, col_fim + 1):
+        ws.cell(row=row, column=col).border = b
+
+
+def _copiar_estilo_linha_relatorio_template(ws, row_orig: int, row_dst: int, col_fim: int) -> None:
+    """Duplica estilo da linha modelo e uniformiza bordas na faixa."""
+    from copy import copy
+
+    col_ate = min(21, col_fim)
+    for col in range(1, col_ate + 1):
+        src = ws.cell(row=row_orig, column=col)
+        dst = ws.cell(row=row_dst, column=col)
+        if src.has_style:
+            dst.font = copy(src.font)
+            dst.border = copy(src.border)
+            dst.fill = copy(src.fill)
+            dst.number_format = src.number_format
+            dst.alignment = copy(src.alignment)
+    _aplicar_borda_fina_linha_relatorio(ws, row_dst, col_fim)
+
+
+def _ajustar_linhas_dados_relatorio_xlsx(ws, lin_ref: int, n_ncs: int, col_fim: int) -> None:
+    """Ajusta quantidade de linhas de dados sem apagar o bloco inteiro (preserva formatação do template)."""
+    col_fim = max(int(col_fim or 22), 1)
+    lin_ref = int(lin_ref)
+    n_ncs = max(0, int(n_ncs or 0))
+    if n_ncs <= 0:
+        if ws.max_row >= lin_ref:
+            ws.delete_rows(lin_ref, ws.max_row - lin_ref + 1)
+        return
+    if ws.max_row < lin_ref:
+        ws.insert_rows(ws.max_row + 1, lin_ref - ws.max_row)
+        _aplicar_borda_fina_linha_relatorio(ws, lin_ref, col_fim)
+    ult = lin_ref + n_ncs - 1
+    mr = ws.max_row
+    if mr > ult:
+        ws.delete_rows(ult + 1, mr - ult)
+        mr = ws.max_row
+    if mr < ult:
+        need = ult - mr
+        ws.insert_rows(mr + 1, need)
+        for r in range(mr + 1, ult + 1):
+            _copiar_estilo_linha_relatorio_template(ws, lin_ref, r, col_fim)
+
+
 def gerar_relatorio_xlsx(
     ncs: list[NcItem],
     lote_selecionado: str | None = None,
@@ -2260,8 +2347,10 @@ def gerar_relatorio_xlsx(
                             column=1,
                             value=f"Lote em análise: {rotulo_lote_analise.strip()}",
                         )
-                    while ws.max_row >= PRIMEIRA_LINHA_DADOS:
-                        ws.delete_rows(ws.max_row, 1)
+                    col_fim_tpl = min(max(ws.max_column or 22, 22), 30)
+                    _ajustar_linhas_dados_relatorio_xlsx(
+                        ws, PRIMEIRA_LINHA_DADOS, len(ncs), col_fim_tpl
+                    )
                 finally:
                     try:
                         Path(tmp_path).unlink(missing_ok=True)
@@ -2313,7 +2402,7 @@ def gerar_relatorio_xlsx(
         conc_val = _concessionaria_por_lote(lote_selecionado) if lote_selecionado else _concessionaria_por_lote(nc.concessionaria or nc.lote) or (nc.concessionaria or nc.lote or "").strip()
         # Preencher quando a informação existe nos documentos; vazio só quando não presente
         ws.cell(row=row_idx, column=col_map["codigo"], value=(nc.codigo or "").strip())
-        ws.cell(row=row_idx, column=col_map["data_con"], value=(nc.data_con or "").strip())
+        ws.cell(row=row_idx, column=col_map["data_con"], value=_data_sem_hora_celula(nc.data_con or ""))
         ws.cell(row=row_idx, column=col_map["horario_fiscalizacao"], value=(nc.horario_fiscalizacao or "").strip())
         ws.cell(row=row_idx, column=col_map["rodovia"], value=(nc.rodovia or "").strip())
         ws.cell(row=row_idx, column=col_map["concessionaria"], value=conc_val)
@@ -2334,17 +2423,27 @@ def gerar_relatorio_xlsx(
         ws.cell(row=row_idx, column=col_map["tipo_atividade"], value=(nc.tipo_atividade or "").strip())
         ws.cell(row=row_idx, column=col_map["grupo_atividade"], value=(nc.grupo_atividade or "").strip())
         ws.cell(row=row_idx, column=col_map["atividade"], value=(nc.atividade or "").strip())
-        ws.cell(row=row_idx, column=18, value=(nc.data_con or "").strip())
+        ws.cell(row=row_idx, column=18, value=_data_sem_hora_celula(nc.data_con or ""))
         pz_out = (nc.prazo_str or "").strip()
         if preencher_colunas_artemig:
             pz_out = _prazo_str_valido_artemig(pz_out)
-        ws.cell(row=row_idx, column=col_map["prazo_str"], value=pz_out)
+        ws.cell(row=row_idx, column=col_map["prazo_str"], value=_coluna_data_reparo_relatorio(pz_out))
         ws.cell(row=row_idx, column=col_map["empresa"], value=(nc.empresa or "").strip())
         ws.cell(row=row_idx, column=col_map["nome_fiscal"], value=(nc.nome_fiscal or "").strip())
         if preencher_colunas_artemig:
             ws.cell(row=row_idx, column=1, value=(getattr(nc, "tipo_artemig", None) or "").strip())
             ws.cell(row=row_idx, column=2, value=(getattr(nc, "sh_artemig", None) or "").strip())
             ws.cell(row=row_idx, column=22, value=(nc.observacao or "").strip()[:500])
+
+    if ncs and wb is not None and ws is not None and template_path.is_file() and template_path.suffix.lower() == ".xlsx":
+        ult = PRIMEIRA_LINHA_DADOS + len(ncs) - 1
+        col_fim_rel = max(22, min(ws.max_column or 22, 25))
+        for r in range(PRIMEIRA_LINHA_DADOS, ult + 1):
+            _aplicar_borda_fina_linha_relatorio(ws, r, col_fim_rel)
+            for c in {col_map["data_con"], 18, 19}:
+                cell = ws.cell(row=r, column=c)
+                if cell.value is not None and str(cell.value).strip():
+                    cell.number_format = "@"
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -2377,7 +2476,8 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                         alertas_codigo: list[CodigoGapAlerta],
                         limiar_km: float = LIMIAR_GAP_KM,
                         mapa_eaf: list | None = None,
-                        rotulo_lote_analise: str = "") -> bytes:
+                        rotulo_lote_analise: str = "",
+                        forcar_alertas_pdf: bool = False) -> bytes:
     """PDF de analise: mesmo layout ARTESP/Artemig; alertas de codigo so ARTESP."""
     if not REPORTLAB_OK:
         raise ImportError("reportlab não instalado: pip install reportlab")
@@ -2416,10 +2516,12 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
         1 for n in ncs if not getattr(n, "origem_ma", False) and _is_panela_artemig_nc(n)
     )
     n_ma = sum(1 for n in ncs if getattr(n, "origem_ma", False))
-    # Alerta de emergenciais (prazo 24 h) só vale para relatório do mesmo dia da constatação
     data_con_dt = _parse_data(data_c)
     data_con_date = data_con_dt.date() if data_con_dt else None
-    relatorio_hoje = data_con_date is not None and data_relatorio == data_con_date
+    # Só no dia da constatação, exceto teste_local (PDF antigo no dev).
+    relatorio_hoje = forcar_alertas_pdf or (
+        data_con_date is not None and data_relatorio == data_con_date
+    )
     lote   = res.get("lote", "")
 
     story.append(Spacer(1, 4*mm))
@@ -2646,7 +2748,6 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
             ]),
         ))
 
-    # Alertas: emergenciais e gap KM no mesmo dia; saltos de codigo so ARTESP (retidas).
     if relatorio_hoje:
         if regime_artesp and alertas_codigo:
             story.append(Spacer(1, 6*mm))
@@ -3265,7 +3366,8 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
                                 limiar_km: float = LIMIAR_GAP_KM,
                                 nomes: list[str] | None = None,
                                 lote: str | None = None,
-                                excel_bytes: bytes | list[bytes] | None = None) -> tuple[bytes, bytes, dict]:
+                                excel_bytes: bytes | list[bytes] | None = None,
+                                teste_local: bool = False) -> tuple[bytes, bytes, dict]:
     """
     Pipeline completo para múltiplos PDFs.
     Se excel_bytes for informado (Excel que acompanha os PDFs), preenche horário (E), tipo (O) e grupo (P)
@@ -3489,47 +3591,34 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
 
     res = _montar_resumo_serializavel(ncs_total, alertas_km, alertas_codigo)
     res["n_arquivos"] = len(pdfs_list)
-    # Para API/log: alertas só contam quando relatório é do mesmo dia da constatação
     data_c = res.get("data_con", "")
     data_con_dt = _parse_data(data_c)
     data_con_date = data_con_dt.date() if data_con_dt else None
     data_relatorio = date.today()
-    res["relatorio_hoje"] = data_con_date is not None and data_relatorio == data_con_date
+    res["relatorio_hoje"] = bool(teste_local) or (
+        data_con_date is not None and data_relatorio == data_con_date
+    )
 
-    # Validação responsável técnico (mapa do lote): só zera se nome pertencer a outra EAF.
+    # Responsável técnico: zera só se o nome não for do mapa do lote (outra EAF).
     try:
         def _to_nome_list(v: str) -> list[str]:
-            """
-            Aceita valor único ou múltiplos nomes separados por ';' ou ','.
-            Ex.: "A; B" ou "A, B".
-            """
             s = (v or "").strip()
             if not s:
                 return []
             parts = [p.strip() for p in re.split(r"[;,]", s) if p and p.strip()]
             return parts or [s]
 
-        # empresa_tag -> lista de nomes permitidos (mapa do lote selecionado)
         empresa_para_nomes: dict[str, list[str]] = {
             (emp or "").strip(): _to_nome_list(nome_map)
             for emp, nome_map in (mapa_responsavel_lote or {}).items()
         }
 
         def _mapear_emp_para_chave(empresa: str) -> str:
-            """
-            Normaliza o "tag" de EAF para bater com as chaves do mapa.
-            Ex.: "AUTOROUTES G2" -> "Autoroutes"
-            """
             e = (empresa or "").strip()
             if not e:
                 return ""
-            # normaliza espaços/case para facilitar match
             e_norm = re.sub(r"\s+", " ", e)
-
-            # remove sufixos comuns que aparecem em OCR/labels (ex.: "Autoroutes G2")
             e_norm = re.sub(r"\bG\s*\d+\b", "", e_norm, flags=re.IGNORECASE).strip()
-
-            # match exato primeiro (com normalização)
             if e_norm in empresa_para_nomes:
                 return e_norm
             if e in empresa_para_nomes:
@@ -3600,6 +3689,7 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
         ncs_total, alertas_km, alertas_codigo,
         limiar_km=limiar_km, mapa_eaf=mapa_eaf_lote,
         rotulo_lote_analise=rotulo_lo,
+        forcar_alertas_pdf=bool(teste_local),
     )
     lote_ok = (lote or "").strip() or None
     xlsx_bytes = gerar_relatorio_xlsx(

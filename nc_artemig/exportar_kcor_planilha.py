@@ -17,6 +17,51 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+def _aplicar_bordas_linha_kcor(ws, row: int, col_fim: int = 25) -> None:
+    from openpyxl.styles import Border, Side
+
+    b = Border(
+        left=Side(style="thin", color="000000"),
+        right=Side(style="thin", color="000000"),
+        top=Side(style="thin", color="000000"),
+        bottom=Side(style="thin", color="000000"),
+    )
+    for col in range(1, col_fim + 1):
+        ws.cell(row=row, column=col).border = b
+
+
+def _desfazer_merge_colunas_linha_kcor(ws, row: int, col_ini: int, col_fim: int) -> None:
+    from openpyxl.utils.cell import range_boundaries
+
+    to_unmerge = []
+    for mc in list(ws.merged_cells.ranges):
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(str(mc))
+        except Exception:
+            continue
+        if row >= min_row and row <= max_row and not (col_fim < min_col or col_ini > max_col):
+            to_unmerge.append(mc)
+    for mc in to_unmerge:
+        try:
+            ws.unmerge_cells(str(mc))
+        except Exception:
+            pass
+
+
+def _copiar_estilo_linha_kcor(ws, row_origem: int, row_destino: int, col_fim: int = 25) -> None:
+    col_ate_u = min(21, col_fim)
+    for col in range(1, col_ate_u + 1):
+        src = ws.cell(row=row_origem, column=col)
+        dst = ws.cell(row=row_destino, column=col)
+        if src.has_style:
+            dst.font = src.font.copy()
+            dst.border = src.border.copy()
+            dst.fill = src.fill.copy()
+            dst.number_format = src.number_format
+            dst.alignment = src.alignment.copy()
+    _aplicar_bordas_linha_kcor(ws, row_destino, col_fim)
+
 _CLASS = "Eng. QID"
 
 
@@ -65,9 +110,12 @@ def _patologia_para_kcor(pat: str, indicador: str, atividade: str) -> tuple[str,
 
 
 def _parse_dt(s: str) -> datetime | None:
+    t = (s or "").strip()
+    if " " in t:
+        t = t.split()[0].strip()
     for fmt in ("%d/%m/%Y", "%d/%m/%y"):
         try:
-            return datetime.strptime((s or "").strip(), fmt)
+            return datetime.strptime(t, fmt)
         except ValueError:
             continue
     return None
@@ -122,26 +170,17 @@ def _local_coluna_j(nc: Any) -> str:
     return "Faixa de Rolamento"
 
 
-def _dt_com_hora(nc: Any) -> datetime | None:
+def _data_kcor_so_data(nc: Any) -> tuple[str, datetime.date | None]:
+    """Data Kcor como dd/mm/aaaa (hora fica na coluna Hora)."""
     dt = _parse_dt(nc.data_con or "")
     if not dt:
-        return None
-    h = (getattr(nc, "horario_fiscalizacao", None) or "").strip()
-    mm = re.match(r"(\d{1,2})\s*:\s*(\d{2})", h.replace(" ", ""))
-    if mm:
-        try:
-            return dt.replace(hour=int(mm.group(1)), minute=int(mm.group(2)))
-        except ValueError:
-            pass
-    return dt
+        return "", None
+    d = dt.date()
+    return d.strftime("%d/%m/%Y"), d
 
 
 def _stem_subpasta_fotos(nc: Any) -> str:
-    """
-    Uma pasta por ocorrência, alinhada à **mesma linha** (código + consol da NC).
-    Prioridade: NOT-yy-xxxxx_PAVIMENTO_CE{consol} a partir do código fiscalização + Nº Consol;
-    senão stem do PDF daquele upload.
-    """
+    """Pasta por NC: NOT-yy-xxxxx_PAVIMENTO_CE{consol} se houver código+consol; senão stem do PDF."""
     cod = _codigo_fiscalizacao_arquivos(nc)
     cons = (getattr(nc, "num_consol", None) or "").strip()
     if len(cod) >= 9 and cons.isdigit():
@@ -152,7 +191,7 @@ def _stem_subpasta_fotos(nc: Any) -> str:
 
 
 def _montar_v_w_kcor(nc: Any) -> tuple[str, str]:
-    """V/W só a partir desta NC: pasta e ficheiros com o **código de fiscalização desta linha**."""
+    """Caminho pasta (V) e lista de JPG (W) por código de fiscalização da linha."""
     from nc_artemig.config import DIR_BASE_FOTOS_KCOR
 
     base = (DIR_BASE_FOTOS_KCOR or os.environ.get("ARTEMIG_KCOR_DIR_FOTOS") or "").strip()
@@ -215,8 +254,24 @@ def gerar_exportar_kcor_xlsx_bytes(ncs: list[Any]) -> bytes | None:
         shutil.copy2(str(modelo), tmp)
         wb = openpyxl.load_workbook(tmp)
         ws = wb["Dados"] if "Dados" in wb.sheetnames else wb.active
-        while ws.max_row > 1:
-            ws.delete_rows(2, 1)
+
+        from openpyxl.styles import Border, Side
+
+        _side_k = Side(style="thin", color="000000")
+        _border_linha_k = Border(
+            left=_side_k, right=_side_k, top=_side_k, bottom=_side_k
+        )
+
+        lin_mod = 2
+        n_lin = len(ncs50)
+        for r in range(lin_mod + 1, lin_mod + n_lin):
+            if r > ws.max_row:
+                ws.insert_rows(r, 1)
+                _copiar_estilo_linha_kcor(ws, lin_mod, r, 25)
+        for r in range(lin_mod, lin_mod + n_lin):
+            _desfazer_merge_colunas_linha_kcor(ws, r, 17, 20)
+            for col in range(1, 26):
+                ws.cell(r, col).value = None
 
         for idx, nc in enumerate(ncs50, start=1):
             r = idx + 1
@@ -245,18 +300,21 @@ def gerar_exportar_kcor_xlsx_bytes(ncs: list[Any]) -> bytes | None:
             ws.cell(r, c["Gestor"], "")
             ws.cell(r, c["Executores"], "")
 
-            dt_h = _dt_com_hora(nc)
+            ds, d0 = _data_kcor_so_data(nc)
             pd = _prazo_dias_efetivo(nc)
-            if dt_h:
-                ws.cell(r, c["Data_Solicitacao"], dt_h)
-                ws.cell(r, c["Dt_Inicio_Prog"], dt_h)
-                ws.cell(r, c["Dt_Inicio_Exec"], dt_h)
+            if ds and d0:
+                ws.cell(r, c["Data_Solicitacao"], ds)
+                ws.cell(r, c["Dt_Inicio_Prog"], ds)
+                ws.cell(r, c["Dt_Inicio_Exec"], ds)
                 if pd and getattr(nc, "emergencial", False):
-                    ws.cell(r, c["Dt_Fim_Prog"], datetime(dt_h.year, dt_h.month, dt_h.day))
+                    fim = d0
+                elif pd:
+                    fim = d0 + timedelta(days=pd)
                 else:
-                    ws.cell(r, c["Dt_Fim_Prog"], dt_h + timedelta(days=pd) if pd else dt_h)
+                    fim = d0
+                ws.cell(r, c["Dt_Fim_Prog"], fim.strftime("%d/%m/%Y"))
                 if pd:
-                    ws.cell(r, c["Data_Suspensao"], dt_h + timedelta(days=pd))
+                    ws.cell(r, c["Data_Suspensao"], (d0 + timedelta(days=pd)).strftime("%d/%m/%Y"))
             if pd:
                 ws.cell(r, c["Prazo"], pd)
             elif getattr(nc, "prazo_dias", None) is not None:
@@ -283,6 +341,23 @@ def gerar_exportar_kcor_xlsx_bytes(ncs: list[Any]) -> bytes | None:
             ws.cell(r, c["Arquivos"], w_arq)
             ws.cell(r, c["Indicador"], ind[:120] if ind else "")
             ws.cell(r, c["Unidade"], "")
+
+            for col_k in (
+                c["Data_Solicitacao"],
+                c["Data_Suspensao"],
+                c["Dt_Inicio_Prog"],
+                c["Dt_Fim_Prog"],
+                c["Dt_Inicio_Exec"],
+                c["Dt_Fim_Exec"],
+            ):
+                cl = ws.cell(r, col_k)
+                if cl.value is not None and str(cl.value).strip():
+                    sv = str(cl.value).strip()
+                    if " " in sv and re.match(r"^\d{1,2}/\d{1,2}/\d{4}", sv):
+                        cl.value = sv.split()[0][:10]
+                cl.number_format = "@"
+            for col_k in range(1, 26):
+                ws.cell(r, col_k).border = _border_linha_k
 
         buf = io.BytesIO()
         wb.save(buf)
