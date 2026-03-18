@@ -67,7 +67,6 @@ MAX_UPLOAD_MB = _ler_int_env("ARTESP_FOTOS_MAX_UPLOAD_MB", _DEFAULT_UPLOAD_MB)
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024 if MAX_UPLOAD_MB else 0
 
 
-# ─── Autenticação (reutiliza o middleware do app principal) ───────────────────
 def _get_auth(request: Request):
     """
     Verifica JWT Bearer ou cookie de sessão.
@@ -85,7 +84,6 @@ def _get_auth(request: Request):
             return {}  # ambiente sem auth (desenvolvimento local)
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
 def _ler_upload(arquivo: UploadFile) -> bytes:
     """Lê UploadFile em bytes; aplica limite se MAX_UPLOAD_BYTES > 0."""
     conteudo = arquivo.file.read()
@@ -131,17 +129,17 @@ def _importar_core():
         )
 
 
-# ─── Assets: Relação Total de coordenadas por lote ───────────────────────────
-# Cada módulo tem seu próprio assets: fotos_campo usa fotos_campo/assets
 FOTOS_ASSETS = Path(__file__).resolve().parent.parent / "fotos_campo" / "assets"
-# Template do relatório Foto 2 Lados (módulo nc_artesp)
 NC_ARTESP_ASSETS = Path(__file__).resolve().parent.parent / "nc_artesp" / "assets"
+NC_ARTEMIG_ASSETS = Path(__file__).resolve().parent.parent / "nc_artemig" / "assets"
+ARTEMIG_MALHA_DIR = NC_ARTEMIG_ASSETS / "Malha"
+ARTEMIG_TEMPLATES_DIR = NC_ARTEMIG_ASSETS / "Template"
 FOTO2LADOS_MODELO_NOME = "Planilha Modelo Conservação - Foto 2 Lados.xlsx"
-# Lote 13, 21 e 26 — arquivos em fotos_campo/assets (XLSX ou CSV)
 RELACOES_POR_LOTE: dict[str, str] = {
     "13": "Relação Total - Lote 13.xlsx",
     "21": "Relação Total - Lote 21.xlsx",
     "26": "Relação Total - Lote 26.xlsx",
+    "50": "Relação Total Lote 50.xlsx",
 }
 DEFAULT_LOTE = "13"
 
@@ -206,13 +204,10 @@ def _sanitizar_rodovia(s: str) -> str:
     return s[:80] if s else "Sem_rodovia"
 
 
-# ─── Router ──────────────────────────────────────────────────────────────────
 router = APIRouter(prefix="/fotos", tags=["Fotos de Campo"])
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 #  MÓDULO 1 — Listar fotos + GPS EXIF
-# ──────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/listar",
@@ -245,9 +240,7 @@ async def listar_fotos(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 #  MÓDULO 2 — Coordenadas → Rodovia / km / Sentido
-# ──────────────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/coordenadas-km",
@@ -288,9 +281,7 @@ async def coordenadas_km(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 #  PROCESSAR COMPLETO — Listar + Coordenadas + ZIP por rodovia
-# ──────────────────────────────────────────────────────────────────────────────
 
 def _csv_relacao_para_xlsx_bytes(csv_path: Path) -> bytes:
     """Lê CSV da Relação Total (; separador, header Rodovia;Km;Sentido;Latitude;Longitude) e retorna XLSX em bytes."""
@@ -313,10 +304,27 @@ def _normalizar_nome(s: str) -> str:
 
 
 def _carregar_relacao_assets(lote: str = DEFAULT_LOTE) -> bytes:
-    """Carrega a Relação Total do lote (13, 21 ou 26) a partir de fotos_campo/assets. Retorna XLSX em bytes."""
+    """Carrega a Relação Total do lote. Lote 50 = nc_artemig/assets/Malha; 13/21/26 = fotos_campo/assets."""
     nome = RELACOES_POR_LOTE.get(lote) or RELACOES_POR_LOTE.get(DEFAULT_LOTE)
     if not nome:
         nome = RELACOES_POR_LOTE[DEFAULT_LOTE]
+    if (lote or "").strip() == "50":
+        path = ARTEMIG_MALHA_DIR / nome
+        if not path.is_file() and ARTEMIG_MALHA_DIR.is_dir():
+            nome_nfc = _normalizar_nome(nome)
+            for p in ARTEMIG_MALHA_DIR.iterdir():
+                if p.is_file() and _normalizar_nome(p.name) == nome_nfc:
+                    path = p
+                    break
+        if not path.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Relação Total do lote 50 (ARTEMIG) não encontrada. "
+                    f"Pasta: nc_artemig/assets/Malha. Arquivo esperado: {nome}"
+                ),
+            )
+        return path.read_bytes()
     path = FOTOS_ASSETS / nome
     if not path.is_file():
         nome_nfc = _normalizar_nome(nome)
@@ -343,7 +351,7 @@ def _carregar_relacao_assets(lote: str = DEFAULT_LOTE) -> bytes:
                 status_code=503,
                 detail=(
                     f"Relação Total do lote {lote} não encontrada. "
-                    f"Pasta usada: fotos_campo/assets (assets do módulo). "
+                    f"Pasta usada: fotos_campo/assets. "
                     f"Arquivo esperado: {nome} (ou {base}.csv). "
                     f"Arquivos na pasta: {lista}"
                 ),
@@ -353,9 +361,18 @@ def _carregar_relacao_assets(lote: str = DEFAULT_LOTE) -> bytes:
     return path.read_bytes()
 
 
-def _carregar_modelo_foto2lados() -> Optional[bytes]:
-    """Carrega o template do relatório Foto 2 Lados de nc_artesp/assets. Retorna None se não existir."""
+def _carregar_modelo_foto2lados(lote: str = "") -> Optional[bytes]:
+    """Template Foto 2 Lados: Lote 50 = nc_artemig/assets/Template; 13/21/26 = nc_artesp/assets."""
     nome = FOTO2LADOS_MODELO_NOME
+    if (lote or "").strip() == "50":
+        path = ARTEMIG_TEMPLATES_DIR / nome
+        if path.is_file():
+            return path.read_bytes()
+        if ARTEMIG_TEMPLATES_DIR.is_dir():
+            nome_nfc = _normalizar_nome(nome)
+            for p in ARTEMIG_TEMPLATES_DIR.iterdir():
+                if p.is_file() and _normalizar_nome(p.name) == nome_nfc:
+                    return p.read_bytes()
     path = NC_ARTESP_ASSETS / nome
     if path.is_file():
         return path.read_bytes()
@@ -378,7 +395,7 @@ async def processar_completo(
         ...,
         description="ZIP com as fotos de campo (JPG/PNG).",
     ),
-    lote: str = Form("13", description="Lote da Relação Total: 13, 21 ou 26"),
+    lote: str = Form("", description="Lote da Relação Total: 13, 21, 26 ou 50 (ARTEMIG). Obrigatório."),
 ):
     """
     Executa automaticamente: gera a listagem a partir do ZIP →
@@ -387,17 +404,17 @@ async def processar_completo(
     Devolve um único ZIP com: Listagem/, Por_rodovia/.
     """
     _get_auth(request)
+    lote_ok = (lote or "").strip()
+    if not lote_ok or lote_ok not in RELACOES_POR_LOTE:
+        raise HTTPException(400, "Selecione o lote (13, 21, 26 ou 50).")
     core = _importar_core()
-    lote_ok = (lote or "").strip() or DEFAULT_LOTE
-    if lote_ok not in RELACOES_POR_LOTE:
-        lote_ok = DEFAULT_LOTE
     zip_bytes     = _ler_upload(fotos_zip)
     relacao_bytes = _carregar_relacao_assets(lote_ok)
 
     xlsx_listagem, _ = core.listar_de_zip(zip_bytes)
     xlsx_km          = core.coordenadas_km_bytes(xlsx_listagem, relacao_bytes)
     zip_foto2lados   = None
-    modelo_2lados    = _carregar_modelo_foto2lados()
+    modelo_2lados    = _carregar_modelo_foto2lados(lote_ok)
     if modelo_2lados:
         try:
             assunto = f"Fotos de Campo Lote {lote_ok}"
@@ -487,14 +504,14 @@ def _montar_zip_fotos(
 async def processar_completo_progresso(
     request: Request,
     fotos_zip: UploadFile = File(..., description="ZIP com as fotos de campo."),
-    lote: str = Form("13", description="Lote da Relação Total: 13, 21 ou 26"),
+    lote: str = Form("", description="Lote da Relação Total: 13, 21, 26 ou 50 (ARTEMIG). Obrigatório."),
 ):
     """Listagem + Rodovia/km + organização por rodovia com log em tempo real (SSE).
     Ao final envia download_id para GET /fotos/download/{id}."""
     _get_auth(request)
-    lote_ok = (lote or "").strip() or DEFAULT_LOTE
-    if lote_ok not in RELACOES_POR_LOTE:
-        lote_ok = DEFAULT_LOTE
+    lote_ok = (lote or "").strip()
+    if not lote_ok or lote_ok not in RELACOES_POR_LOTE:
+        raise HTTPException(400, "Selecione o lote (13, 21, 26 ou 50).")
     zip_bytes     = _ler_upload(fotos_zip)
     relacao_bytes = _carregar_relacao_assets(lote_ok)
     core          = _importar_core()
@@ -518,7 +535,7 @@ async def processar_completo_progresso(
             await asyncio.sleep(0.02)
 
             zip_foto2lados = None
-            modelo_2lados = _carregar_modelo_foto2lados()
+            modelo_2lados = _carregar_modelo_foto2lados(lote_ok)
             if modelo_2lados:
                 yield _evt({"type": "progress", "status": "Gerando relatório Foto 2 Lados...", "progresso": 72})
                 try:
@@ -634,9 +651,7 @@ async def fotos_download(request: Request, download_id: str):
     raise HTTPException(status_code=404, detail="Download não encontrado ou expirado. Processe as fotos novamente.")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 #  INFO — Lista de endpoints disponíveis
-# ──────────────────────────────────────────────────────────────────────────────
 
 @router.get("/", summary="Status do módulo Fotos de Campo")
 async def fotos_info():
@@ -661,11 +676,10 @@ async def fotos_info():
     except ImportError:
         fitz_ok = False
 
-    # Lotes com Relação Total disponível em assets
-    lotes_disponiveis = [
-        {"lote": k, "arquivo": v, "disponivel": (FOTOS_ASSETS / v).is_file()}
-        for k, v in RELACOES_POR_LOTE.items()
-    ]
+    lotes_disponiveis = []
+    for k, v in RELACOES_POR_LOTE.items():
+        disp = (ARTEMIG_MALHA_DIR / v).is_file() if k == "50" else (FOTOS_ASSETS / v).is_file()
+        lotes_disponiveis.append({"lote": k, "arquivo": v, "disponivel": disp})
     return {
         "modulo": "fotos_campo",
         "versao": "1.0.0",

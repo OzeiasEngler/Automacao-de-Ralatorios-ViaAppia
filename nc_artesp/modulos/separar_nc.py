@@ -50,12 +50,10 @@ from utils.helpers import (
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # TEMPLATE EAF — planilha base para os arquivos gerados (cabeçalho 1–4; dados a partir da 5)
 # Procura DENTRO do projeto nc_artesp (assets/Template ou assets/templates).
 # Ordem: ARTESP_TEMPLATE_EAF (se definido) → nc_artesp/assets/Template → nc_artesp/assets/templates
 # Aceita: Template_EAF.xlsx ou Template_EAF.xlsx.xlsx
-# ─────────────────────────────────────────────────────────────────────────────
 def _caminho_template_eaf() -> Path:
     """Retorna o Path do template EAF. Procura em nc_artesp/assets/ (dentro do projeto)."""
     # 1. ARTESP_TEMPLATE_EAF (ficheiro ou pasta)
@@ -83,7 +81,6 @@ def _caminho_template_eaf() -> Path:
 # ESTRUTURA DA PLANILHA NO SEPARAR NC (fixo):
 #   Linhas 1 a 4 = cabeçalho (nunca gravar dados aqui).
 #   A partir da linha 5 = dados (sempre gravar linhas do grupo a partir da linha 5).
-# ─────────────────────────────────────────────────────────────────────────────
 LINHA_CABECALHO_FIM = 4   # última linha do cabeçalho (1–4)
 PRIMEIRA_LINHA_DADOS = 5  # gravar dados sempre a partir da linha 5
 
@@ -94,7 +91,6 @@ PRIMEIRA_LINHA_DADOS = 5  # gravar dados sempre a partir da linha 5
 #   "Data Reparo" → T(20) no template manual | S(19) nos exports do sistema ARTESP
 # Demais colunas (para preenchimento completo pelo módulo MA):
 #   G=concessionária/EAF, H=km inicial (formato 143+800), J=km final, L=sentido, O=tipo atividade, P=grupo, U=responsável
-# ─────────────────────────────────────────────────────────────────────────────
 COL_KM_I_M   = 9   # I – metros inicial
 COL_KM_F_M   = 11  # K – metros final
 COL_CODIGO   = 3   # C – código fiscalização / número da NC

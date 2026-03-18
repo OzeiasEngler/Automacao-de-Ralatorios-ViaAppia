@@ -497,7 +497,6 @@ def _processar_pdf_meio_ambiente(
     logger.info(f"  Kcor-Kria (PDF MA) salvo: {destino_kcor.name}")
     return destino_kcor
 
-# ─── Colunas do formulário de entrada (1-based) ───────────────────────────────
 _COL_B  = 2   # número NC / âncora para seleção
 _COL_D  = 4   # rodovia (y-1), km inicial (y)
 _COL_F  = 6   # sentido (y-1), km final (y), data (y+1)
@@ -506,7 +505,6 @@ _COL_H  = 8   # código (y), relatório (y+1)
 _COL_L  = 12  # complemento/nº foto (y), prazo dias (y+2)
 _COL_C  = 3   # usada apenas para detectar última linha com dado
 
-# ─── Colunas da planilha Kcor-Kria de saída (1-based) ─────────────────────────
 # Template inicia em A; nenhuma coluna deve ser pulada para importação Kcor
 _K_A  = 1    # NumItem (sequencial)
 _K_B  = 2    # Origem ("Artesp")
@@ -717,9 +715,7 @@ def _prazo_para_numero(prazo) -> str | int:
         return s[:20]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # PROCESSAMENTO DE UM ÚNICO ARQUIVO
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _processar_arquivo(arq_path: Path,
                         modo: str,
@@ -728,7 +724,8 @@ def _processar_arquivo(arq_path: Path,
                         pasta_fotos_nc: Path | None,
                         modelo_kcor: Path,
                         pasta_saida: Path,
-                        forcar_fallback: bool = False) -> Path | None:
+                        forcar_fallback: bool = False,
+                        regime_artemig: bool = False) -> Path | None:
     """
     Processa um único arquivo XLSX de formulário de foto.
     Retorna o Path do Kcor-Kria gerado, ou None em caso de erro.
@@ -740,7 +737,6 @@ def _processar_arquivo(arq_path: Path,
 
     logger.info(f"Processando [{modo}]: {arq_path.name}")
 
-    # ── Abrir e ler o formulário ──────────────────────────────────────────────
     wb_form = load_workbook(str(arq_path), data_only=True)
     ws      = wb_form.active
 
@@ -759,7 +755,6 @@ def _processar_arquivo(arq_path: Path,
         if not _str(_cell(ws, y, _COL_D)) and not _str(_cell(ws, y, _COL_H)):
             break
 
-        # ── Ler campos ────────────────────────────────────────────────────────
         # Layout Kria (âncora j=8 em M02; y=9=j+1 aqui):
         #   y-3 (j-2=6): B=nº NC                      → numero
         #   y-2 (j-1=7): G=embasamento (data envio no form)  → embasamento; data reparo para Kcor-Kria col 16 = D10
@@ -808,7 +803,6 @@ def _processar_arquivo(arq_path: Path,
         data_str_raw = data_raw
         data_reparo_dt = parse_data(data_reparo_raw)  # D10 → coluna Data Reparo no Kcor-Kria
 
-        # ── Mapeamento serviço → tipo NC (só Conservação) ─────────────────────
         if eh_conservacao:
             descricao = texto  # col G y-1 é a descrição do serviço
             nc_info   = SERVICO_NC.get(descricao, None)
@@ -857,9 +851,17 @@ def _processar_arquivo(arq_path: Path,
         logger.warning(f"  Nenhum registro encontrado em {arq_path.name}")
         return None
 
+    if regime_artemig and eh_conservacao:
+        try:
+            from nc_artemig.sentido_kcor import sentido_artemig_para_kcor
+            for reg in registros:
+                rod = (reg.get("rod_raw") or reg.get("rod_tag") or "").strip()
+                reg["sentido"] = sentido_artemig_para_kcor(rod, reg.get("sentido") or "")
+        except Exception:
+            pass
+
     logger.info(f"  {len(registros)} NC(s) lida(s).")
 
-    # ── FASE 1: Exportar imagens ──────────────────────────────────────────────
     garantir_pasta(pasta_imagens)
     nomes_arquivo = []
 
@@ -936,7 +938,6 @@ def _processar_arquivo(arq_path: Path,
 
         nomes_arquivo.append(nome_jpg)
 
-    # ── FASE 2: Montar planilha Kcor-Kria ────────────────────────────────────
     if not modelo_kcor.exists():
         logger.error(f"Modelo Kcor-Kria não encontrado: {modelo_kcor}")
         return None
@@ -986,8 +987,12 @@ def _processar_arquivo(arq_path: Path,
         ws_out.cell(row=r, column=_K_F).value = reg["rod_tag"]
         ws_out.cell(row=r, column=_K_G).value = reg["kminicial_t"]
         ws_out.cell(row=r, column=_K_H).value = reg.get("kmfinal_t") or reg.get("kminicial_t") or ""
-        # Col I: sentido sempre gravado como texto (Leste/Oeste/Norte/Sul/Interna/Externa)
-        ws_out.cell(row=r, column=_K_I).value = _sentido_para_texto(reg.get("sentido") or "") or ""
+        # Col I: Artemig (Nas01) já vem expandido; ARTESP/MA usa letra → nome
+        if regime_artemig and eh_conservacao:
+            sentido_i = (reg.get("sentido") or "").strip()
+        else:
+            sentido_i = _sentido_para_texto(reg.get("sentido") or "") or ""
+        ws_out.cell(row=r, column=_K_I).value = sentido_i[:120]
         ws_out.cell(row=r, column=_K_J).value = ""  # Local (vazio)
         ws_out.cell(row=r, column=_K_K).value = "Conservação"
 
@@ -1037,9 +1042,7 @@ def _processar_arquivo(arq_path: Path,
     return destino_kcor
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # FUNÇÕES PÚBLICAS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def executar_conservacao(pasta_entrada: Path | None = None,
                           pasta_imagens: Path | None = None,
@@ -1048,7 +1051,8 @@ def executar_conservacao(pasta_entrada: Path | None = None,
                           pasta_fotos_pdf: Path | None = None,
                           pasta_fotos_nc: Path | None = None,
                           forcar_fallback: bool = False,
-                          callback_progresso=None) -> list[Path]:
+                          callback_progresso=None,
+                          regime_artemig: bool = False) -> list[Path]:
     """
     M03 Conservação: formulários Kria (.xlsx) → planilhas Kcor-Kria (.xlsx).
     Entrada: pasta_entrada (ZIP extraído ou pasta com .xlsx do Modelo Foto), modelo_kcor (template), pastas de fotos opcionais.
@@ -1067,6 +1071,7 @@ def executar_conservacao(pasta_entrada: Path | None = None,
         pasta_imagens, pasta_fotos_pdf, pasta_fotos_nc,
         modelo_kcor, pasta_saida,
         forcar_fallback, callback_progresso,
+        regime_artemig=regime_artemig,
     )
 
 
@@ -1092,6 +1097,7 @@ def executar_meio_ambiente(pasta_entrada: Path | None = None,
         pasta_imagens, None, None,
         modelo_kcor, pasta_saida,
         forcar_fallback, callback_progresso,
+        regime_artemig=False,
     )
 
 
@@ -1155,7 +1161,6 @@ def executar_pipeline_meio_ambiente_pdf(
     garantir_pasta(pasta_imagens)
     garantir_pasta(pasta_saida_kria)
 
-    # ── M1 equivalente: parsear PDF → lista de NCs ─────────────────────────
     ncs_ma = parse_pdf_ma(pdf_bytes)
     if not ncs_ma:
         logger.warning("Pipeline MA: nenhuma NC extraída do PDF.")
@@ -1174,7 +1179,6 @@ def executar_pipeline_meio_ambiente_pdf(
         if eaf_path:
             logger.info(f"Pipeline MA: EAF (template Separar NC) gerado: {eaf_path.name}")
 
-    # ── Extrair imagens do PDF (para Kria, Resposta e Kcor) ────────────────
     import tempfile
     try:
         from ..pdf_extractor import extrair_imagens_pdf
@@ -1190,7 +1194,6 @@ def executar_pipeline_meio_ambiente_pdf(
     except Exception as e:
         logger.warning(f"Pipeline MA: extração de imagens falhou: {e}")
 
-    # ── M2 equivalente: gerar Kria e Resposta ───────────────────────────────
     # MA coleta dados do PDF (não de Excel). Sempre gerar Kria/Resposta a partir dos dados do PDF.
     resultado_m2 = {"kria": [], "resposta": []}
     try:
@@ -1245,7 +1248,6 @@ def executar_pipeline_meio_ambiente_pdf(
         except Exception as e_m2:
             logger.warning("Pipeline MA: Separar NC + M02 (fluxo Excel) falhou (%s). Kria/Resposta já gerados do PDF.", e_m2)
 
-    # ── M3 equivalente: gerar Kcor-Kria ────────────────────────────────────
     kcor_lista = executar_meio_ambiente_pdf(
         pdf_bytes,
         pasta_imagens=pasta_imagens,
@@ -1272,7 +1274,8 @@ def _executar_em_pasta(pasta_entrada: Path, modo: str,
                         modelo_kcor: Path,
                         pasta_saida: Path,
                         forcar_fallback: bool,
-                        callback_progresso) -> list[Path]:
+                        callback_progresso,
+                        regime_artemig: bool = False) -> list[Path]:
     """Engine comum para os dois modos."""
     arquivos = sorted([
         f for f in pasta_entrada.glob("*.xlsx")
@@ -1307,6 +1310,7 @@ def _executar_em_pasta(pasta_entrada: Path, modo: str,
                 modelo_kcor     = modelo_kcor,
                 pasta_saida     = pasta_saida,
                 forcar_fallback = forcar_fallback,
+                regime_artemig  = regime_artemig,
             )
             gerado_kcor[0] = res
             # Arquivo de entrada é renomeado para _Processado - nome; copiar esse de volta

@@ -27,7 +27,6 @@ from utils.helpers import garantir_pasta
 
 logger = logging.getLogger(__name__)
 
-# ─── Índices de coluna (1-based) ─────────────────────────────────────────────
 _E  = 5   # Tipo NC
 _F  = 6   # Rodovia
 _G  = 7   # KM inicial
@@ -108,13 +107,11 @@ def _criar_via_win32com(arquivo_acumulado: Path,
         if not tipo_nc:
             continue
 
-        # ── Montar campos ─────────────────────────────────────────────────────
         assunto = f"{tipo_nc} - {rodovia} {km_i} {sentido} - Kria: {num_kria}"
         data_con_str = dt_sol[:10] if len(dt_sol) >= 10 else dt_sol
         corpo = f"{obs_gest}\n\n - Data Constatação: {data_con_str}\n\n{obs_geral}"
         data_inicio = _data_inicio(obs_geral)
 
-        # ── Criar AppointmentItem ─────────────────────────────────────────────
         try:
             appt = folder.Items.Add()
             appt.Subject     = assunto
@@ -128,7 +125,6 @@ def _criar_via_win32com(arquivo_acumulado: Path,
                 except Exception:
                     pass  # data inválida — ignora e ainda salva o evento
 
-            # ── Anexos ────────────────────────────────────────────────────────
             if arquivos and diretorio:
                 partes = arquivos.split(";")
                 arq1 = partes[0].strip()
@@ -236,8 +232,6 @@ def _criar_via_ical(arquivo_acumulado: Path,
     logger.info(f"  .ics gerado: {destino.name} ({adicionados} evento(s))")
     return destino
 
-
-# ─── GERAÇÃO ICS PURO (web — sem Outlook, sem dependência extra) ─────────────
 
 def _escape_ics(s: str) -> str:
     """Escapa caracteres especiais para texto ICS."""
@@ -372,8 +366,6 @@ def gerar_ics_bytes(xlsx_bytes: bytes) -> tuple[bytes, int]:
     return ics_content.encode("utf-8"), n_eventos
 
 
-# ─── INTERFACE PÚBLICA ────────────────────────────────────────────────────────
-
 def executar(arquivo_acumulado: Path,
              usar_outlook: bool = True,
              pasta_saida_ics: Path | None = None,
@@ -411,7 +403,6 @@ def executar(arquivo_acumulado: Path,
         ics_path = _criar_via_ical(arquivo_acumulado, pasta_ics, callback_progresso)
         resultado["ics"] = ics_path
 
-    # ── Chamar módulo 08 automaticamente (como no VBA) ────────────────────────
     if executar_mod08:
         logger.info("Módulo 06 → chamando Módulo 08 automaticamente...")
         try:

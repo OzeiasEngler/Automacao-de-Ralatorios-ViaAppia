@@ -1,7 +1,4 @@
-/* ═══════════════════════════════════════════════════════════════
-   BLOCO PADRÃO — Design system + layout + log (GeoJSON, Fotos, NC)
-   Use em todas as páginas de bloco para o mesmo visual e log.
-   ═══════════════════════════════════════════════════════════════ */
+/* Bloco padrão: layout + log compartilhado entre páginas. */
 
 :root {
   /* Paleta Deep Dark Modern */
@@ -48,8 +45,6 @@ body {
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: var(--accent-hover); text-decoration: underline; }
-
-/* ── Topbar ── */
 .topbar {
   flex-shrink: 0;
   height: var(--topbar-h);
@@ -123,8 +118,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   transition: var(--transition);
 }
 .btn-logout:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
-
-/* ── Topnav ── */
 .topnav {
   flex-shrink: 0;
   height: var(--nav-h);
@@ -157,8 +150,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 }
 .topnav .nav-icon { font-size: 1rem; }
 .topnav-spacer { flex: 1; }
-
-/* ── Page content ── */
 .page-content {
   flex: 1;
   min-height: 0;
@@ -189,8 +180,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 }
 .page-header h1 { font-size: 1.4rem; font-weight: 700; }
 .page-header p { font-size: .82rem; color: var(--text-muted); margin-top: 2px; }
-
-/* ── Cards (Glassmorphism) ── */
 .card {
   background: var(--bg-surface);
   backdrop-filter: blur(12px);
@@ -216,8 +205,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 }
 .card-header i { color: var(--accent); }
 .card-body { padding: 20px; }
-
-/* ── Grid (form + log) ── */
 .grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -261,8 +248,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   .btn { padding: 8px 16px; font-size: .82rem; }
   .upload-zone { padding: 32px 16px; }
 }
-
-/* ── Upload zone (profissional) ── */
 .upload-zone {
   border: 2px dashed #2a3a52;
   border-radius: var(--radius);
@@ -306,8 +291,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 }
 .file-info.show { display: flex; }
 .file-info i { color: var(--success); }
-
-/* ── Buttons ── */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -343,8 +326,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .btn-outline:hover { background: var(--bg-surface-3); color: var(--text-primary); }
 .btn-success { background: var(--success); color: #fff; }
 .btn-success:hover { filter: brightness(1.1); }
-
-/* ── Form ── */
 .form-input {
   width: 100%;
   padding: 8px 12px;
@@ -370,8 +351,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   color: var(--text-secondary);
   margin-bottom: 6px;
 }
-
-/* ── Utilitários (ícones, badges, texto) ── */
 .icon-circle {
   width: 48px;
   height: 48px;
@@ -388,8 +367,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .text-accent { color: var(--accent); }
 .fw-600 { font-weight: 600; }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-
-/* ── Linha de NC (card por item) ── */
 .nc-row.card {
   padding: 1rem 1.25rem;
   margin-bottom: 0.5rem;
@@ -410,7 +387,47 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .nc-row .flex-grow-1 { min-width: 0; }
 .nc-row .text-muted.small { font-size: .8rem; color: var(--text-muted); }
 
-/* ── Log (padrão único para todas as páginas) ── */
+@keyframes nc-log-glow {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.12), 0 0 10px rgba(59, 130, 246, 0.06); }
+  50% { box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.32), 0 0 18px rgba(59, 130, 246, 0.14); }
+}
+@keyframes nc-log-line-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes nc-log-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+.log-container.nc-log-active {
+  animation: nc-log-glow 2.2s ease-in-out infinite;
+  border-color: rgba(59, 130, 246, 0.32) !important;
+}
+.log-container .log-live-bar {
+  position: sticky;
+  bottom: 0;
+  margin-top: 10px;
+  padding: 10px 12px 4px;
+  background: linear-gradient(180deg, transparent, rgba(10, 14, 23, 0.97) 25%);
+  border-top: 1px solid rgba(59, 130, 246, 0.22);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+.log-container .log-live-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: nc-log-dot-pulse 0.9s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+.log-container .log-live-text { flex: 1; min-height: 1.25em; }
+.log-line.log-line-appear { animation: nc-log-line-in 0.32s ease-out forwards; }
+
 .log-container {
   background: #0a0e17;
   border: 1px solid var(--border-color);
@@ -427,7 +444,8 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .log-container::-webkit-scrollbar { width: 6px; }
 .log-container::-webkit-scrollbar-track { background: transparent; }
 .log-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
-.log-line { padding: 2px 0; }
+.log-line { padding: 3px 0; }
+.log-line.log-step { padding-left: 4px; border-left: 2px solid rgba(59, 130, 246, 0.35); margin-left: 2px; }
 .log-line .time { color: var(--text-muted); margin-right: 8px; }
 .log-line.success { color: var(--success); }
 .log-line.error { color: var(--danger); }
@@ -444,8 +462,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   color: var(--text-muted);
 }
 .log-empty i { font-size: 1.8rem; opacity: .4; }
-
-/* ── Progress bar ── */
 .progress-bar-container {
   background: var(--bg-surface-3);
   border-radius: 6px;
@@ -501,8 +517,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   border-radius: 0 4px 4px 0;
   animation: indeterminate-move 1.5s ease-in-out infinite;
 }
-
-/* ── Status badge ── */
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -516,8 +530,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .status-badge.processing { background: rgba(59,130,246,.15); color: var(--accent); }
 .status-badge.done { background: rgba(16,185,129,.15); color: var(--success); }
 .status-badge.error { background: rgba(239,68,68,.15); color: var(--danger); }
-
-/* ── Result area ── */
 .result-area {
   display: none;
   margin-top: 16px;
@@ -527,8 +539,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   border-radius: var(--radius-sm);
 }
 .result-area.show { display: block; }
-
-/* ── Alerts ── */
 .alert {
   padding: 10px 14px;
   border-radius: var(--radius-sm);
@@ -539,8 +549,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .alert-success { background: rgba(16,185,129,.12); color: var(--success); border: 1px solid rgba(16,185,129,.2); }
 .alert-warning { background: rgba(245,158,11,.12); color: var(--warning); border: 1px solid rgba(245,158,11,.2); }
 .alert-info { background: rgba(6,182,212,.12); color: var(--info); border: 1px solid rgba(6,182,212,.2); }
-
-/* ── Login overlay ── */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -571,8 +579,6 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .login-card .logo p { font-size: .78rem; color: var(--text-muted); margin-top: 4px; }
 .login-card .form-group { margin-bottom: 18px; }
 .login-card .form-group .form-input { padding: 10px 14px; font-size: .88rem; }
-
-/* ── Rodapé do sistema ── */
 .app-footer {
   flex-shrink: 0;
   margin-top: auto;

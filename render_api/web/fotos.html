@@ -56,6 +56,24 @@
       transition: background 0.3s ease, border-color 0.3s ease;
     }
     .fotos-page .upload-zone:hover,
+    .fotos-page .upload-zone.fotos-sem-lote {
+      opacity: 0.55;
+      pointer-events: none;
+      position: relative;
+    }
+    .fotos-page .upload-zone.fotos-sem-lote::after {
+      content: 'Selecione o lote acima';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.35);
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: inherit;
+    }
     .fotos-page .upload-zone.dragover {
       border-color: var(--accent);
       background: rgba(59, 130, 246, 0.08);
@@ -142,7 +160,7 @@
     <a href="/web"><span class="nav-icon"><i class="fas fa-home"></i></span> Início</a>
     <a href="/web/geojson"><span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> GeoJSON ARTESP</a>
     <a href="/web/fotos" class="active"><span class="nav-icon"><i class="fas fa-camera"></i></span> Fotos de Campo</a>
-    <a href="/web/nc"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP</a>
+    <a href="/web/nc"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP - SP / NC ARTEMIG - MG</a>
     <div class="topnav-spacer"></div>
     <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
   </nav>
@@ -157,14 +175,17 @@
         </div>
 
         <label style="display:block;margin-bottom:6px;font-size:0.85rem;color:var(--text-muted);">Relação Total (lote)</label>
+        <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 8px">Escolha o lote primeiro; em seguida use a área de fotos abaixo.</p>
         <select id="selectLote" style="width:100%;padding:10px 12px;margin-bottom:16px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(17,24,39,0.9);color:var(--text);font-size:0.9rem;">
+          <option value="">Selecione o lote…</option>
           <option value="13">Lote 13</option>
           <option value="21">Lote 21</option>
           <option value="26">Lote 26</option>
+          <option value="50">Lote 50 (ARTEMIG - MG)</option>
         </select>
 
         <label style="display:block;margin-bottom:8px;font-size:0.85rem;color:var(--text-muted);">Fotos (ZIP, arquivos ou pasta)</label>
-        <div class="upload-zone" id="uploadZone">
+        <div class="upload-zone fotos-sem-lote" id="uploadZone">
           <input type="file" id="fotosInput" accept="image/*,.jpg,.jpeg,.png,.gif,.bmp,.tif,.tiff,.JPG,.JPEG,.PNG" multiple style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;">
           <input type="file" id="fotosInputPasta" webkitdirectory directory multiple style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;">
           <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
@@ -222,7 +243,6 @@
 
   <script src="/web-static/auth-primeiro-acesso.js"></script>
   <script>
-    /* ═══ Auth (igual GeoJSON) ═══ */
     const loginOverlay = document.getElementById('loginOverlay');
     const token = localStorage.getItem('artesp_token');
     const userEmail = localStorage.getItem('artesp_user_email');
@@ -286,8 +306,6 @@
       localStorage.removeItem('artesp_user_email');
       location.reload();
     });
-
-    /* ═══ Estado e elementos ═══ */
     let uploadedFotosFiles = [];
     const uploadZone = document.getElementById('uploadZone');
     const fotosInput = document.getElementById('fotosInput');
@@ -331,6 +349,19 @@
       return /\.(jpe?g|png|gif|bmp|webp|tiff?)$/i.test(f.name || '');
     }
 
+    function fotosAtualizarZonaLote() {
+      var sel = document.getElementById('selectLote');
+      var ok = sel && String(sel.value || '').trim();
+      if (uploadZone) uploadZone.classList.toggle('fotos-sem-lote', !ok);
+      ['btnSelecionarArquivos', 'btnSelecionarPasta'].forEach(function (id) {
+        var b = document.getElementById(id);
+        if (b) b.disabled = !ok;
+      });
+    }
+    var selLoteFotos = document.getElementById('selectLote');
+    if (selLoteFotos) selLoteFotos.addEventListener('change', fotosAtualizarZonaLote);
+    fotosAtualizarZonaLote();
+
     function atualizarFileInfo() {
       const n = uploadedFotosFiles.length;
       if (fileInfoText) fileInfoText.textContent = n + ' foto(s) selecionada(s)';
@@ -350,15 +381,23 @@
     }
 
     fotosInput.addEventListener('change', function() {
+      if (!document.getElementById('selectLote').value.trim()) { this.value = ''; return; }
       if (this.files && this.files.length) addFiles(this.files, true);
       this.value = '';
     });
     fotosInputPasta.addEventListener('change', function() {
+      if (!document.getElementById('selectLote').value.trim()) { this.value = ''; return; }
       if (this.files && this.files.length) addFiles(this.files, true);
       this.value = '';
     });
-    document.getElementById('btnSelecionarArquivos').addEventListener('click', () => fotosInput.click());
-    document.getElementById('btnSelecionarPasta').addEventListener('click', () => fotosInputPasta.click());
+    document.getElementById('btnSelecionarArquivos').addEventListener('click', function () {
+      if (!document.getElementById('selectLote').value.trim()) { logMsg('Selecione o lote (Relação Total) acima.', 'error'); return; }
+      fotosInput.click();
+    });
+    document.getElementById('btnSelecionarPasta').addEventListener('click', function () {
+      if (!document.getElementById('selectLote').value.trim()) { logMsg('Selecione o lote (Relação Total) acima.', 'error'); return; }
+      fotosInputPasta.click();
+    });
     document.getElementById('btnLimparFotos').addEventListener('click', () => addFiles([], false));
 
     function lerPasta(entry, lista) {
@@ -387,6 +426,10 @@
     uploadZone.addEventListener('drop', function(e) {
       e.preventDefault();
       uploadZone.classList.remove('dragover');
+      if (!document.getElementById('selectLote').value.trim()) {
+        logMsg('Selecione o lote antes de soltar as fotos.', 'error');
+        return;
+      }
       const items = e.dataTransfer && e.dataTransfer.items;
       const files = e.dataTransfer && e.dataTransfer.files;
       if (items && items.length) {
@@ -455,6 +498,13 @@
       if (uploadedFotosFiles.length === 0) return;
       const tk = localStorage.getItem('artesp_token');
       if (!tk) { showLogin('Faça login para processar.'); return; }
+      var selLotePre = document.getElementById('selectLote');
+      var loteValPre = (selLotePre && String(selLotePre.value || '').trim()) ? String(selLotePre.value).trim() : '';
+      if (!loteValPre) {
+        logMsg('Selecione o lote (Relação Total).', 'error');
+        fotosProcessarFeedback.innerHTML = '<div class="alert alert-danger">Selecione o <strong>lote</strong> antes de processar.</div>';
+        return;
+      }
 
       fotosProcessarFeedback.innerHTML = '';
       btnProcessarFotos.disabled = true;
@@ -484,7 +534,7 @@
         const blob = await zip.generateAsync({ type: 'blob' });
         const fd = new FormData();
         var selLote = document.getElementById('selectLote');
-        var loteVal = (selLote && selLote.value) ? String(selLote.value).trim() : '13';
+        var loteVal = (selLote && String(selLote.value || '').trim()) ? String(selLote.value).trim() : '';
         fd.append('lote', loteVal);
         fd.append('fotos_zip', new File([blob], 'fotos_enviadas.zip', { type: 'application/zip' }));
 

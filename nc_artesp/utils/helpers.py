@@ -33,9 +33,7 @@ def configurar_log(nivel: int = logging.INFO,
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # DATAS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def parse_data(valor) -> Optional[datetime]:
     """Parseia datas em vários formatos; retorna datetime ou None."""
@@ -108,9 +106,7 @@ def timestamp_completo() -> str:
     return datetime.now().strftime("%Y%m%d - %H%M%S")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # KM E METROS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def pad_metros(valor) -> str:
     """Normaliza metros para 3 dígitos ('50' → '050', '1000' → '000')."""
@@ -189,9 +185,7 @@ def formatar_numero(n, largura_ou_decimais: int = 3) -> str:
         return str(n)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # NOMES DE ARQUIVO E PASTAS
-# ─────────────────────────────────────────────────────────────────────────────
 
 _CHARS_INVALIDOS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
@@ -273,9 +267,7 @@ def renomear_arquivo(src, dst) -> Path:
     return dst
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # RODOVIAS E MAPA EAF (grupos por trecho km — Contatos EAFs)
-# ─────────────────────────────────────────────────────────────────────────────
 
 def normalizar_rodovia_para_busca(rodovia: str) -> str:
     """
@@ -332,6 +324,14 @@ def obter_grupo_empresa_por_trecho(rodovia: str, km: float, mapa_eaf: list) -> t
             dig_a = "".join(re.findall(r"\d+", a))
             dig_b = "".join(re.findall(r"\d+", b))
             return dig_a == dig_b
+        if a.startswith("MG") and b.startswith("MG"):
+            dig_a = "".join(re.findall(r"\d+", a))
+            dig_b = "".join(re.findall(r"\d+", b))
+            return bool(dig_a and dig_b and dig_a == dig_b)
+        if a.startswith("BR") and b.startswith("BR"):
+            dig_a = "".join(re.findall(r"\d+", a))
+            dig_b = "".join(re.findall(r"\d+", b))
+            return bool(dig_a and dig_b and dig_a == dig_b)
         return False
     # Pode haver múltiplas EAFs na mesma rodovia (e até trechos próximos).
     # Então, em vez de retornar a "primeira" correspondência, coletamos todas
@@ -389,9 +389,7 @@ def normalizar_rodovia_eaf(rodovia_raw: str, rodovias: dict) -> dict:
     return {"tag": "FORA", "nome": raw or "Desconhecida", "sentidos": [], "codigo": raw or "FORA", "n": 0}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # CAMINHOS DE FOTOS (usados por gerar_modelo_foto e inserir_nc_kria)
-# ─────────────────────────────────────────────────────────────────────────────
 
 def path_foto_nc(pasta_nc, numero: "int | str") -> Path:
     """Retorna Path para 'nc (N).jpg' na pasta. N = número ou código (ex: HE.13.0111 para MA)."""
@@ -399,8 +397,24 @@ def path_foto_nc(pasta_nc, numero: "int | str") -> Path:
 
 
 def path_foto_pdf(pasta_pdf, numero: "int | str") -> Path:
-    """Retorna Path para 'PDF (N).jpg' na pasta. N = número ou código (ex: HE.13.0111 para MA)."""
-    return Path(pasta_pdf) / f"PDF ({numero}).jpg"
+    """Retorna Path para 'PDF (N).jpg' (subpasta PDF/ se existir)."""
+    p = Path(pasta_pdf)
+    sub = p / "PDF"
+    if sub.is_dir():
+        return sub / f"PDF ({numero}).jpg"
+    return p / f"PDF ({numero}).jpg"
+
+
+def _pastas_busca_foto_extracao(pasta: "Path", prefixo: str) -> list:
+    """nc/ e PDF/ (extração web) ou raiz (legado)."""
+    pasta = Path(pasta)
+    sub = "PDF" if (prefixo or "").strip().upper() == "PDF" else "nc"
+    out = []
+    if (pasta / sub).is_dir():
+        out.append(pasta / sub)
+    if pasta.is_dir():
+        out.append(pasta)
+    return out or [pasta]
 
 
 def encontrar_foto_por_codigo_ou_numero(
@@ -410,32 +424,34 @@ def encontrar_foto_por_codigo_ou_numero(
     numero: int | None = None,
 ) -> "Path | None":
     """
-    Encontra arquivo de foto na pasta por código ou número.
-    prefixo: "nc" ou "PDF" (para nc (N).jpg ou PDF (N).jpg).
-    Aceita número (1, 00001) ou código alfanumérico (ex: HE.13.0111 — Meio Ambiente).
-    Retorna Path do primeiro que existir, ou None.
+    Encontra arquivo de foto por código ou número.
+    prefixo: "nc" ou "PDF". Procura em pasta/nc/ e pasta/PDF/ (ZIP extração) e na raiz.
     """
     pasta = Path(pasta)
     if not pasta.is_dir():
         return None
     prefix = f"{prefixo} ("
     suffix = ").jpg"
+    bases = _pastas_busca_foto_extracao(pasta, prefixo)
 
     def _buscar_por_codigo_str(cod: str) -> "Path | None":
         cod = (cod or "").strip()
         if not cod:
             return None
-        exacto = pasta / f"{prefixo} ({cod}){suffix}"
-        if exacto.is_file():
-            return exacto
-        try:
-            for f in sorted(pasta.iterdir()):
-                if not f.is_file() or not f.name.lower().endswith(".jpg"):
-                    continue
-                if f.name.startswith(prefix + cod + ")") or f.name.startswith(prefix + cod + "_"):
-                    return f
-        except OSError:
-            pass
+        for base in bases:
+            exacto = base / f"{prefixo} ({cod}){suffix}"
+            if exacto.is_file():
+                return exacto
+            try:
+                for f in sorted(base.iterdir()):
+                    if not f.is_file() or not f.name.lower().endswith(".jpg"):
+                        continue
+                    if f.name.startswith(prefix + cod + ")") or f.name.startswith(
+                        prefix + cod + "_"
+                    ):
+                        return f
+            except OSError:
+                pass
         return None
 
     # Código alfanumérico (ex: HE.13.0111)
@@ -454,23 +470,23 @@ def encontrar_foto_por_codigo_ou_numero(
             n = int(float(str(valor).strip()))
         except (ValueError, TypeError):
             continue
-        # Exato: PDF (1).jpg ou PDF (00001).jpg
         for cod in (str(n), str(n).zfill(5)):
-            exacto = pasta / f"{prefixo} ({cod}){suffix}"
-            if exacto.is_file():
-                return exacto
-        # Com sufixo _1, _2: PDF (00001)_1.jpg
+            for base in bases:
+                exacto = base / f"{prefixo} ({cod}){suffix}"
+                if exacto.is_file():
+                    return exacto
         try:
-            for f in sorted(pasta.iterdir()):
-                if not f.is_file() or not f.name.lower().endswith(".jpg"):
-                    continue
-                if not f.name.startswith(prefix):
-                    continue
-                rest = f.name[len(prefix):]
-                if ")" in rest:
-                    mid = rest.split(")")[0]
-                    if mid == str(n) or mid == str(n).zfill(5):
-                        return f
+            for base in bases:
+                for f in sorted(base.iterdir()):
+                    if not f.is_file() or not f.name.lower().endswith(".jpg"):
+                        continue
+                    if not f.name.startswith(prefix):
+                        continue
+                    rest = f.name[len(prefix) :]
+                    if ")" in rest:
+                        mid = rest.split(")")[0]
+                        if mid == str(n) or mid == str(n).zfill(5):
+                            return f
         except OSError:
             pass
     return None

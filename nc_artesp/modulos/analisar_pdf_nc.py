@@ -23,21 +23,20 @@ import logging
 import os
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ── PyMuPDF ───────────────────────────────────────────────────────────────────
 try:
     import fitz
     FITZ_OK = True
 except ImportError:
     FITZ_OK = False
 
-# ── ReportLab ────────────────────────────────────────────────────────────────
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -59,9 +58,7 @@ except ImportError:
     openpyxl = None
     OPENPYXL_OK = False
 
-# ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURAÇÕES
-# ─────────────────────────────────────────────────────────────────────────────
 
 LIMIAR_GAP_KM   = 2.0    # gap entre NCs consecutivas (km) para gerar alerta
 PRAZO_EMERG_MAX = 1      # prazo ≤ 1 dia = emergencial (24 h)
@@ -89,9 +86,7 @@ ATIVIDADES_24H = [
 ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # MODELO DE DADOS
-# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class NcItem:
@@ -119,6 +114,9 @@ class NcItem:
     empresa: str          = ""   # nome da empresa fiscalizadora (col 20 EAF)
     nome_fiscal: str      = ""   # responsável técnico (col 21)
     origem_ma: bool       = False
+    tipo_artemig: str     = ""   # ex.: QID (col A template Artemig)
+    sh_artemig: str       = ""   # ex.: SH02 (col B)
+    num_consol: str       = ""   # só para dedupe; exibição em observacao (Artemig)
 
 
 @dataclass
@@ -148,9 +146,7 @@ class CodigoGapAlerta:
     codigos_faltantes: list  # lista dos códigos ausentes (até 10 por alerta)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # PARSER DO PDF
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _km_para_float(s: str) -> float:
     """'50 + 950' → 50.950 ; '67 + 000' → 67.0"""
@@ -181,8 +177,25 @@ def _prazo_dias(data_con: str, prazo: str) -> Optional[int]:
 
 
 def _is_panela(atividade: str) -> bool:
-    a = atividade.lower()
+    a = (atividade or "").lower()
     return any(p in a for p in PALAVRAS_PANELA)
+
+
+def _is_panela_artemig_nc(nc: NcItem) -> bool:
+    """Artemig: atividade vazia; usar indicador/patologia/grupo/tipo."""
+    if getattr(nc, "tipo_panela", False):
+        return True
+    if (getattr(nc, "lote", None) or "").strip() != "50":
+        return False
+    blob = " ".join(
+        [
+            nc.tipo_atividade or "",
+            nc.grupo_atividade or "",
+            nc.atividade or "",
+            getattr(nc, "observacao", "") or "",
+        ]
+    )
+    return _is_panela(blob)
 
 
 # Grupo = resumo da atividade; Tipo = descrição do tipo. (palavras na atividade, grupo, tipo)
@@ -234,7 +247,7 @@ def _extrair_texto_pdf(pdf_bytes: bytes) -> str:
         try:
             blocs = pag.get_text("blocks")
             if blocs:
-                # Ordenar por y depois x (ordem de leitura) e juntar texto de cada bloco
+                # Blocos PyMuPDF não vêm em ordem de leitura
                 blocs.sort(key=lambda b: (round(b[1], 0), round(b[0], 0)))
                 blocos_str = "\n".join((b[4] or "").strip() for b in blocs if (b[4] or "").strip())
                 if len(blocos_str.strip()) < _EXTRAIR_TEXTO_MIN_LEN and txt.strip():
@@ -777,14 +790,12 @@ def _parse_nc_block(block: str) -> Optional[NcItem]:
                     nc.prazo_str = ln.strip()
                     break
 
-    # ── rodovia nome
     for ln in lines:
         m = re.match(r'Rodovia:\s*(.+)', ln, re.IGNORECASE)
         if m:
             nc.rodovia_nome = m.group(1).strip()
             break
 
-    # ── calcular prazo em dias e classificar
     if nc.data_con and nc.prazo_str:
         nc.prazo_dias = _prazo_dias(nc.data_con, nc.prazo_str)
         if nc.prazo_dias is not None:
@@ -867,14 +878,15 @@ def _parse_nc_block(block: str) -> Optional[NcItem]:
 
 def _atribuir_grupo(nc: NcItem, mapa_eaf: list[dict]) -> None:
     """
-    Atribui o número do Grupo EAF (coluna V do template) e o nome da empresa
-    à NC com base no mapeamento por trecho (rodovia + km), conforme Contatos EAFs.
-    Usa nc_artesp.utils.helpers.obter_grupo_empresa_por_trecho.
+    Atribui grupo EAF e empresa por trecho (MAPA_EAF). Só sobrescreve quando o mapa
+    devolve valor; mapa vazio (ex. lote 50) não apaga empresa já vinda do PDF (rodapé EAF).
     """
     from nc_artesp.utils.helpers import obter_grupo_empresa_por_trecho
     grupo, empresa = obter_grupo_empresa_por_trecho(nc.rodovia, nc.km_ini, mapa_eaf)
-    nc.grupo = grupo
-    nc.empresa = empresa
+    if grupo:
+        nc.grupo = grupo
+    if empresa:
+        nc.empresa = empresa
 
 
 def parse_pdf_nc(pdf_bytes: bytes) -> list[NcItem]:
@@ -925,9 +937,712 @@ def parse_pdf_nc(pdf_bytes: bytes) -> list[NcItem]:
     return ncs
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+def _texto_pdf_indica_layout_artemig(texto: str) -> bool:
+    """Layout típico de notificação Artemig (MG). Constatação ARTESP (SP) não dispara."""
+    if not texto or len(texto.strip()) < 45:
+        return False
+    t = texto[:20000]
+    if not re.search(r"(MG[- ]?050|BR[- ]?265|BR[- ]?491)", t, re.I):
+        return False
+    return bool(
+        re.search(
+            r"(NOTIFICA[OÇ]|N[ºo°]?\s*da\s*CONSOL|LOCALIZA[ÇC][AÃ]?O|LOCALIZA[OÇ][AÃ]O|REGISTRO\s+FOTOGR)",
+            t,
+            re.I,
+        )
+    )
+
+
+def _nc_parece_artemig(nc: NcItem) -> bool:
+    """NC vinda de PDF Artemig (campos exclusivos ou rodovia da malha MG)."""
+    if (getattr(nc, "tipo_artemig", None) or "").strip():
+        return True
+    if (getattr(nc, "num_consol", None) or "").strip():
+        return True
+    r = re.sub(r"[\s._-]", "", (nc.rodovia or "").upper())
+    if "MG050" in r:
+        return True
+    if "BR265" in r or "BR491" in r:
+        return True
+    return False
+
+
+_LOTES_ANALISE = frozenset({"13", "21", "26", "50"})
+
+
+def _lotes_indicados_no_texto(texto: str) -> set[str]:
+    """Trechos típicos de constatação ARTESP / notificação Artemig → números de lote."""
+    s: set[str] = set()
+    if not texto or len(texto.strip()) < 20:
+        return s
+    tu = texto[:35000].upper()
+    if _texto_pdf_indica_layout_artemig(texto):
+        s.add("50")
+    for n in _LOTES_ANALISE:
+        if re.search(rf"\bLOTE\s*:?\s*{n}\b", tu):
+            s.add(n)
+    if "RODOVIAS DAS COLINAS" in tu:
+        s.add("13")
+    if re.search(r"RODOVIAS DO TIET", tu):
+        s.add("21")
+    if re.search(r"\bLOTE\s*:?\s*26\b", tu):
+        s.add("26")
+    if "NASCENTES DAS GERAIS" in tu:
+        s.add("50")
+    return {x for x in s if x in _LOTES_ANALISE}
+
+
+def _indicios_lote_um_arquivo(texto: str, parcial: list[NcItem]) -> set[str]:
+    out = _lotes_indicados_no_texto(texto)
+    for nc in parcial:
+        n = _lote_num_do_pdf(nc)
+        if n and n in _LOTES_ANALISE:
+            out.add(n)
+    for nc in parcial:
+        if _nc_parece_artemig(nc):
+            out.add("50")
+    return {x for x in out if x in _LOTES_ANALISE}
+
+
+def _validar_lotes_pdf_vs_selecionado(
+    bloques: list[tuple[str, str, list[NcItem]]],
+    lote_num: str,
+) -> None:
+    """
+    Um arquivo não pode misturar lotes; o lote inferido de cada PDF deve coincidir
+    com o selecionado e ser único entre os arquivos.
+    """
+    try:
+        from nc_artesp.config import _LOTE_CONCESSIONARIA as _LC
+    except Exception:
+        _LC = {}
+
+    def _nome_l(n: str) -> str:
+        return _LC.get(n, f"Lote {n}")
+
+    msg_artemig = (
+        "PDF(s) no formato Artemig (MG). Selecione o lote 50 (CONSOL) "
+        "ou use constatações ARTESP (lotes 13, 21 ou 26)."
+    )
+    msg_nao_artemig = (
+        "Este(s) PDF(s) são de constatação ARTESP (lotes 13, 21 ou 26). "
+        "Para notificação Artemig, selecione o lote 50."
+    )
+
+    por_arquivo: list[tuple[str, str | None]] = []
+    for src, texto, parcial in bloques:
+        if not parcial:
+            por_arquivo.append((src, None))
+            continue
+        ind = _indicios_lote_um_arquivo(texto, parcial)
+        if len(ind) > 1:
+            raise ValueError(
+                f'O arquivo «{src}» indica mais de um lote ({", ".join(sorted(ind))}). '
+                "Use um PDF por lote, sem misturar concessionárias."
+            )
+        por_arquivo.append((src, next(iter(ind)) if ind else None))
+
+    detectados = {v for _, v in por_arquivo if v is not None}
+    if len(detectados) > 1:
+        raise ValueError(
+            "Os PDFs são de lotes diferentes ({}). Envie apenas arquivos do **mesmo** lote.".format(
+                ", ".join(_nome_l(x) for x in sorted(detectados))
+            )
+        )
+
+    if len(detectados) == 1:
+        unico = next(iter(detectados))
+        if unico != lote_num:
+            raise ValueError(
+                "Os PDFs são do {} (lote {}), mas você selecionou {} (lote {}). "
+                "Ajuste o lote no menu ou troque os arquivos.".format(
+                    _nome_l(unico), unico, _nome_l(lote_num), lote_num
+                )
+            )
+        return
+
+    # Nenhum indício explícito de número de lote no conjunto
+    if lote_num == "50":
+        for src, texto, parcial in bloques:
+            if not parcial:
+                continue
+            if not (
+                _texto_pdf_indica_layout_artemig(texto)
+                or any(_nc_parece_artemig(nc) for nc in parcial)
+            ):
+                raise ValueError(
+                    f'Lote 50: o arquivo «{src}» não parece ser notificação Artemig (MG). {msg_artemig}'
+                )
+    else:
+        for src, texto, parcial in bloques:
+            if not parcial:
+                continue
+            if _texto_pdf_indica_layout_artemig(texto) or any(_nc_parece_artemig(nc) for nc in parcial):
+                raise ValueError(
+                    f'O arquivo «{src}» é Artemig (lote 50). {msg_nao_artemig}'
+                )
+
+
+def _data_artemig_dd_mm_yyyy(s: str) -> str:
+    """DD/MM/AA ou DD/MM/AAAA → DD/MM/AAAA (ano com 2 dígitos: 00–69 → 20xx)."""
+    s = (s or "").strip()
+    m = re.match(r"(\d{2})/(\d{2})/(\d{2}|\d{4})$", s)
+    if not m:
+        return s
+    d, mo, y = m.group(1), m.group(2), m.group(3)
+    if len(y) == 2:
+        yi = int(y)
+        y = str(2000 + yi if yi < 70 else 1900 + yi)
+    return f"{d}/{mo}/{y}"
+
+
+def _prazo_artemig(texto: str, data_con: str) -> tuple[str, Optional[int], bool]:
+    """
+    Artemig: data de reprovação (se houver), senão prazo em dias, senão data em linha
+    útil após «Prazo para Atendimento» (nunca legenda «à Notificação:»).
+    """
+    prazo_str = ""
+    prazo_dias: Optional[int] = None
+    emerg = False
+    d0 = _parse_data(data_con) if data_con else None
+
+    repro_m = re.search(
+        r"(?:[Dd]ata\s+de\s+)?[Rr]epro(?:va[çc][aã]o|va[cç][aã]o)\s*:?\s*(\d{2}/\d{2}/\d{2,4})",
+        texto,
+        re.I,
+    ) or re.search(
+        r"[Dd]ata\s+repro\S*\s*:?\s*(\d{2}/\d{2}/\d{2,4})",
+        texto,
+        re.I,
+    ) or re.search(
+        r"[Rr]epro\.?\s*(?:[Dd]ata|em)\s*:?\s*(\d{2}/\d{2}/\d{2,4})",
+        texto,
+        re.I,
+    )
+    if repro_m:
+        cand = _data_artemig_dd_mm_yyyy(repro_m.group(1).strip())
+        dlim = _parse_data(cand) if cand else None
+        if dlim and (not d0 or dlim.date() >= d0.date()):
+            prazo_str = cand
+            if data_con:
+                prazo_dias = _prazo_dias(data_con, prazo_str)
+
+    pm = re.search(r"Prazo\s+para\s+Atendimento", texto, re.I)
+    janela = texto[pm.end() : pm.end() + 450] if pm else texto
+    em_m = re.search(
+        r"em\s+at[eé]\s+(\d+)\s*dias?\s*(úteis|uteis|corridos)?",
+        janela,
+        re.I,
+    ) or re.search(r"em\s+at[eé]\s+(\d+)\s*dias?", texto, re.I)
+    if not prazo_str and em_m and data_con:
+        n = int(em_m.group(1))
+        if d0:
+            prazo_dias = n
+            prazo_str = (d0.date() + timedelta(days=n)).strftime("%d/%m/%Y")
+    elif not prazo_str and em_m:
+        prazo_str = f"em até {em_m.group(1)} dias"
+        prazo_dias = int(em_m.group(1))
+    if not prazo_str:
+        for raw in (janela.split("\n") if pm else []):
+            ln = (raw or "").strip()
+            if len(ln) < 8:
+                continue
+            if re.search(
+                r"(?i)^à\s*Notifica|^\s*Notifica[çc][aã]o\s*:?\s*$|Atendimento\s+a\s+Notifica",
+                ln,
+            ):
+                continue
+            if not re.search(r"\d{2}/\d{2}/\d{2,4}", ln):
+                continue
+            dm = re.search(r"(\d{2}/\d{2}/\d{2,4})", ln)
+            if not dm:
+                continue
+            cand = _data_artemig_dd_mm_yyyy(dm.group(1).strip())
+            dlim = _parse_data(cand) if cand else None
+            if dlim and (not d0 or dlim.date() >= d0.date()):
+                prazo_str = cand
+                if data_con:
+                    prazo_dias = _prazo_dias(data_con, prazo_str)
+                break
+    if prazo_dias is not None:
+        emerg = prazo_dias <= PRAZO_EMERG_MAX
+    elif prazo_str and data_con:
+        pd = _prazo_dias(data_con, prazo_str)
+        if pd is not None:
+            prazo_dias = pd
+            emerg = pd <= PRAZO_EMERG_MAX
+    return prazo_str, prazo_dias, emerg
+
+
+def _limpar_legenda_consol_artemig(s: str) -> str:
+    """Remove rótulos Nº CONSOL / CONSOL da notificação que vazam para atividade/indicador."""
+    if not (s or "").strip():
+        return ""
+    t = re.sub(r"(?i)N[ºoO°]?\s*(?:da\s*)?CONSOl?\s*:?\s*", "", s)
+    t = re.sub(r"(?i)\bCONSOl?\s*,?\s*da\s+notifica[çc][aã]o\s*:?\s*", "", t)
+    return re.sub(r"\s{2,}", " ", t).strip(" ,.;—-|")
+
+
+def _limpar_legendas_campo_artemig(s: str) -> str:
+    """Remove legendas típicas do PDF Artemig; mantém só o conteúdo útil do campo."""
+    if not (s or "").strip():
+        return ""
+    t = s.strip()
+    for pat in (
+        r"(?i)\bNotifica[çc][aã]o\s*\|\s*Data\s*\|\s*Hora\s*\|\s*Indicador\s*\|\s*Patologia\b[^\n]*",
+        r"(?i)\bNotifica[çc][aã]o\s+Data\s+Hora\s+Indicador\s+Patologia\b[^\n]*",
+        r"(?i)Prazo\s+para\s+Atendimento(\s+a\s+Notifica[çc][aã]o)?[^\n]*",
+        r"(?i)LOCALIZA[ÇC][AÃ]?O\s*:?",
+        r"(?i)à\s+Notifica[çc][aã]o\s*:?",
+        r"(?i)\bRegistro\s+Fotogr[aá]fico\b\s*",
+        r"(?i)\bHor[aá]rio\s+da\s+Fiscaliza[çc][aã]o\s*:?",
+        r"(?i)\bData\s+Fiscaliza[çc][aã]o\s*:?",
+        r"(?i)\bC[oó]d\.?\s*Fiscaliza[çc][aã]o\s*:?",
+        r"(?i)\bConcession[aá]ria\s+Lote\s*:?",
+        r"(?i)\bTrecho\s*:?",
+        r"(?i)\bKM\s*[Ii]nicial\b\s*:?",
+        r"(?i)\bKM\s*[Ff]inal\b\s*:?",
+        r"(?i)\bSentido\s*:?\s*(?=(CRESCENTE|DECRESCENTE|AMBOS)\b)",
+    ):
+        t = re.sub(pat, " ", t)
+    t = re.sub(
+        r"(?i)^\s*(Indicador|Patologia|Tipo|Descri[çc][aã]o|Observa[çc][aã]o)\s*:?\s*",
+        "",
+        t,
+    )
+    t = _limpar_legenda_consol_artemig(t)
+    _toks = r"Notifica[çc][aã]o|Data|Hora|Indicador|Patologia"
+    for _ in range(8):
+        n = re.sub(rf"(?i)^(?:{_toks})(\s+(?:{_toks}))*\s+", "", t).strip()
+        if n == t:
+            break
+        t = n
+    t = re.sub(r"\s{2,}", " ", t).strip(" ,.;—-|")
+    if re.fullmatch(
+        r"(?i)(Notifica[çc][aã]o|Data|Hora|Indicador|Patologia|Tipo|SH)\s*:?",
+        t,
+    ):
+        return ""
+    return t[:500] if len(t) > 500 else t
+
+
+def _sentido_artemig_normalizado(rodovia: str, sentido_bruto: str) -> str:
+    """CRESCENTE/DECRESCENTE/AMBOS → texto Kcor (mesma regra do XLSX / Nas01)."""
+    s = re.sub(r"(?i)^\s*sentido\s*:?\s*", "", (sentido_bruto or "").strip())
+    try:
+        from nc_artemig.sentido_kcor import sentido_artemig_para_kcor
+
+        return sentido_artemig_para_kcor(rodovia or "", s)
+    except Exception:
+        return s
+
+
+def _prazo_str_valido_artemig(s: str) -> str:
+    """Evita gravar legendas do PDF na coluna de data."""
+    x = (s or "").strip()
+    if not x:
+        return ""
+    if re.search(r"(?i)notifica[çc][aã]o|atendimento\s+a\s+notifica", x) and not re.search(
+        r"\d{2}/\d{2}/\d{2,4}", x
+    ):
+        return ""
+    return x
+
+
+def _texto_e_bloco_legenda_atividade_artemig(s: str) -> bool:
+    """PDF linearizado: CONSOL + registro + tabela localização + prazo colados numa linha."""
+    if not s or len(s) < 80:
+        return False
+    u = s.upper()
+    hits = sum(
+        [
+            "CONSOL" in u and ("Nº" in s or "N " in s or "DA CONSOL" in u),
+            "REGISTRO" in u and "FOTO" in u,
+            "KM INICIAL" in u or "KM FINAL" in u,
+            "RODOVIA" in u and "SH" in u,
+            "DECRESCENTE" in u or "CRESCENTE" in u,
+            "EM ATÉ" in u or "(CINCO) DIAS" in u or "NOTIFICA" in u,
+            "DESCRI" in u and "ÃO" in s,
+        ]
+    )
+    return hits >= 4
+
+
+def _extrair_descricao_atividade_artemig(texto: str) -> str:
+    """Só o texto após «Descrição:» (NC Artemig); ignora o restante colado no PDF."""
+    if not texto:
+        return ""
+    melhor = ""
+    for m in re.finditer(
+        r"(?is)Descri[çc][aã]o\s*:?\s*(.+?)(?=\s*(?:EAF\s*[:\s]|Respons[aá]vel\s+T[ée]cnico)\b|\Z)",
+        texto,
+    ):
+        frag = m.group(1).strip()
+        frag = re.split(r"(?i)\s+Prazo\s+para\s+Atendimento\b", frag)[0]
+        frag = re.split(r"(?i)\s+Em\s+até\s+\d+\s*[\(\d]", frag)[0]
+        frag = re.sub(r"\s+", " ", frag).strip()
+        frag = _limpar_legendas_campo_artemig(frag)
+        if len(frag) > len(melhor) and len(frag) > 25:
+            melhor = frag
+    return melhor[:500] if melhor else ""
+
+
+def _cortar_resto_tabela_antes_localizacao_artemig(resto: str) -> str:
+    """Tabela linearizada: indicador+patologia vêm antes de MG-050 SH… / BR-265 SH…."""
+    if not (resto or "").strip():
+        return ""
+    r = resto.strip()
+    m = re.search(
+        r"(?i)\s+(?=(?:MG|BR)[- ]?\d{3}\s+SH\d{2,3}\b)",
+        r,
+    )
+    if m is not None and m.start() >= 10:
+        return r[: m.start()].strip()
+    m2 = re.search(
+        r"(?i)\s+(?=LOCALIZA[ÇC][AÃ]?O\b)",
+        r,
+    )
+    if m2 is not None and m2.start() >= 10:
+        return r[: m2.start()].strip()
+    return r
+
+
+def _indicador_patologia_de_resto_artemig(resto: str) -> tuple[str, str]:
+    """Indicador | Patologia sem vazar bloco de localização (comportamento uniforme entre PDFs)."""
+    r = _cortar_resto_tabela_antes_localizacao_artemig(resto)
+    if not r:
+        return "", ""
+    partes = [p.strip() for p in re.split(r"\s{2,}", r) if p.strip()]
+    if len(partes) >= 2:
+        return partes[0][:120], " ".join(partes[1:])[:500]
+    sp = r.split(None, 3)
+    if len(sp) >= 3:
+        dois = f"{sp[0]} {sp[1]}"
+        if re.match(
+            r"(?i)(Parâmetros|Drenagem|Pavimento|Sinaliza|Defensa|Limpeza|Seguran)",
+            dois,
+        ):
+            return dois[:120], (sp[2] if len(sp) > 2 else "")[:500]
+    if len(sp) >= 2:
+        return sp[0][:120], " ".join(sp[1:])[:500]
+    return r[:120], ""
+
+
+def _eh_texto_localizacao_resumo_artemig(s: str) -> bool:
+    """Linha tipo MG-050 SH06 128,450 … CRESCENTE PISTA — não é atividade."""
+    if not s or len(s) < 20:
+        return False
+    return bool(
+        re.search(r"(?i)(MG[- ]?\d{3}|BR[- ]?\d{3})\s+SH\d{2,3}", s)
+    ) and bool(re.search(r"(?i)CRESCENTE|DECRESCENTE|AMBOS|PISTA|DOMÍNIO|FX\.", s))
+
+
+def _extrair_num_consol_artemig(texto: str) -> str:
+    """Só a numeração (6–10 dígitos) após marcadores CONSOL; ignora legenda/colação."""
+    if not texto:
+        return ""
+    for pat in (
+        r"N[ºoO°]?\s*da\s*CONSOL",
+        r"N[ºoO°]?\s*CONSOL",
+        r"(?<![A-Za-z0-9])CONSOL\s*(?:da\s*notifica[çc][aã]o\s*)?:?",
+    ):
+        for m in re.finditer(pat, texto, re.I):
+            trecho = texto[m.end() : m.end() + 60]
+            dm = re.search(r"\d{6,10}", trecho)
+            if dm:
+                return dm.group(0)
+    return ""
+
+
+# Artemig: grupo EAF 50 (contrato MG); MAPA próprio em nc_artemig — nunca mapa lote 13.
+_GRUPO_FISCALIZACAO_ARTEMIG = "CONSOL"
+_GRUPO_EAF_ARTEMIG_ANALISE = 50
+
+
+def _parse_artemig_texto(texto: str) -> NcItem | None:
+    """Layout Artemig MG; código NC = coluna Notificação da tabela."""
+    if not texto or len(texto.strip()) < 40:
+        return None
+    if not re.search(r"(NOTIFICA[OÇ]|CONSOL|LOCALIZA[OÇ][AÃ]O)", texto, re.I):
+        return None
+    if not re.search(r"(MG[- ]?050|BR[- ]?265|BR[- ]?491)", texto, re.I):
+        return None
+
+    def _float_br(s: str) -> float:
+        try:
+            return float((s or "").replace(",", ".").strip())
+        except Exception:
+            return 0.0
+
+    tipo_artemig = ""
+    tm = re.search(r"(?mi)^\s*Tipo\s*:?\s*([A-Za-z0-9À-ÿ_\s/-]+)", texto)
+    if tm and (tm.group(1) or "").strip():
+        tipo_artemig = (tm.group(1).strip().split()[0])[:20]
+    if not tipo_artemig and re.search(r"\bQID\b", texto, re.I):
+        tipo_artemig = "QID"
+    if not tipo_artemig and re.search(r"(?i)FISCALIZA[CÇ]", texto):
+        tipo_artemig = "FISCALIZACAO"[:20]
+
+    num_consol = _extrair_num_consol_artemig(texto)
+
+    notificacao = ""
+    data_con = ""
+    hora = ""
+    indicador = ""
+    patologia = ""
+    linha_tab = re.search(
+        r"(?m)^\s*(\d{8,10})\s+(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+)$",
+        texto,
+    )
+    if not linha_tab:
+        linha_tab = re.search(
+            r"(?s)(\d{8,10})\s+(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)(?=\n\s*\n|LOCALIZA[ÇC]|Prazo\s+para|N[ºo°]?\s*da\s*CONSOL)",
+            texto,
+            re.I,
+        )
+    if linha_tab:
+        notificacao = linha_tab.group(1).strip()
+        data_con = _data_artemig_dd_mm_yyyy(linha_tab.group(2).strip())
+        hora = linha_tab.group(3).replace(" ", "").strip()
+        resto = (linha_tab.group(4) or "").strip()
+        indicador, patologia = _indicador_patologia_de_resto_artemig(resto)
+
+    if not notificacao:
+        notif_m = re.search(
+            r"(?:Notifica[çc][aã]o\s+)?(\d{8,10})\s+(\d{2}/\d{2}/\d{2,4})",
+            texto,
+            re.I,
+        )
+        notificacao = notif_m.group(1) if notif_m else ""
+        if notif_m and not data_con:
+            data_con = _data_artemig_dd_mm_yyyy(notif_m.group(2).strip())
+        if not data_con:
+            data_m = re.search(r"(\d{2}/\d{2}/\d{2,4})", texto)
+            data_con = _data_artemig_dd_mm_yyyy((data_m.group(1).strip() if data_m else ""))
+
+    codigo = (notificacao or (("CE" + num_consol) if num_consol else "") or "").strip()
+    if not codigo:
+        fallback = re.search(r"\b(\d{9})\b", texto)
+        codigo = fallback.group(1) if fallback else "Artemig-1"
+
+    rodovia_m = re.search(r"(MG[- ]?050|BR[- ]?265|BR[- ]?491)", texto, re.I)
+    rodovia = (rodovia_m.group(1).replace(" ", " ").strip()) if rodovia_m else ""
+    if rodovia and "-" not in rodovia and " " in rodovia:
+        rodovia = rodovia.replace(" ", "-", 1)
+
+    loc_m = re.search(r"LOCALIZA[OÇ][AÃ]O", texto, re.I)
+    bloco_loc = texto[loc_m.end() : loc_m.end() + 900] if loc_m else texto
+
+    def _sh_de_texto(tx: str) -> str:
+        m = re.search(r"(?i)\bSH\s*0*(\d{1,3})\b", tx or "")
+        if m:
+            n = int(m.group(1), 10)
+            return f"SH{n:02d}" if n < 1000 else f"SH{n}"
+        m = re.search(r"\b(SH\d{2,4})\b", tx or "", re.I)
+        return m.group(1).upper() if m else ""
+
+    sh_artemig = _sh_de_texto(bloco_loc) or _sh_de_texto(texto)
+
+    kms = re.findall(r"\d{2,3}[,.]\d{3}", bloco_loc) or re.findall(r"\d{2,3}[,.]\d{3}", texto)
+    km_ini = _float_br(kms[0]) if len(kms) >= 1 else 0.0
+    km_fim = _float_br(kms[1]) if len(kms) >= 2 else km_ini
+
+    sentido_m = re.search(
+        r"(?i)(?:Sentido\s*:?\s*)?(CRESCENTE|DECRESCENTE|AMBOS)\b",
+        bloco_loc if loc_m else texto,
+    ) or re.search(r"(?i)(?:Sentido\s*:?\s*)?(CRESCENTE|DECRESCENTE|AMBOS)\b", texto)
+    sentido_raw = (sentido_m.group(1).strip()) if sentido_m else ""
+    sentido = _sentido_artemig_normalizado(rodovia, sentido_raw)
+
+    if not hora:
+        hm = re.search(r"(\d{1,2}\s*:\s*\d{2}|\d{1,2}:\d{2})", texto)
+        hora = (hm.group(1).replace(" ", "").strip()) if hm else ""
+
+    if not indicador and not patologia:
+        linhas = [ln.strip() for ln in texto.splitlines() if ln.strip()]
+        for i, ln in enumerate(linhas):
+            if re.search(r"\d{1,2}\s*:\s*\d{2}|\d{1,2}:\d{2}", ln) and re.search(r"\d{8,10}", ln):
+                resto = re.sub(r"^\s*\d{8,10}\s+", "", ln)
+                hm2 = re.search(r"(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+)$", resto)
+                if hm2:
+                    ind_pat = hm2.group(3).strip()
+                    pp = [p.strip() for p in re.split(r"\s{2,}", ind_pat) if p.strip()]
+                    if len(pp) >= 2:
+                        indicador, patologia = pp[0][:120], " ".join(pp[1:])[:500]
+                    elif pp:
+                        patologia = pp[0][:500]
+                break
+            if re.match(r"^\d{1,2}\s*:\s*\d{2}$|^\d{1,2}:\d{2}$", ln):
+                if i + 1 < len(linhas):
+                    indicador = linhas[i + 1][:100]
+                if i + 2 < len(linhas):
+                    patologia = linhas[i + 2][:100]
+                break
+
+    indicador = _limpar_legendas_campo_artemig(indicador)
+    patologia = _limpar_legendas_campo_artemig(patologia)
+
+    descricao_m = re.search(r"(?:Descri[çc][aã]o\s*:?\s*)(.*?)(?=LOCALIZA[OÇ][AÃ]O|EAF\s*:)", texto, re.I | re.DOTALL)
+    descricao = _limpar_legendas_campo_artemig(
+        (descricao_m.group(1).strip()[:500] if descricao_m else "").replace("\n", " ")
+    )
+
+    nome_rt = ""
+    for pat in (
+        r"Respons[aá]vel\s+T[ée]cnico\s*:?\s*([^\n\r]+?)(?:\n\s*\n|EAF\s*[:\s]|$)",
+        r"Respons[aá]vel\s+T[ée]cnico\s*:?\s*\n\s*([^\n\r]+)",
+        r"(?:R\.?\s*T\.?\s*Respons[aá]vel|Resp\.?\s*T[ée]cnico)\s*:?\s*([^\n\r]+)",
+    ):
+        rm = re.search(pat, texto, re.I | re.DOTALL)
+        if rm:
+            nome_rt = re.sub(r"\s+", " ", rm.group(1).strip())[:120]
+            break
+
+    def _sem_consol_em_campos(
+        *partes: str, consol: str
+    ) -> tuple[str, str, str]:
+        """Evita repetir o Nº CONSOL em tipo/grupo/atividade (CONSOL só em observação)."""
+        c = (consol or "").strip()
+        out: list[str] = []
+        for p in partes:
+            s = (p or "").strip()
+            if c and s == c:
+                s = ""
+            elif c:
+                s = re.sub(rf"\b{re.escape(c)}\b", "", s)
+                s = re.sub(r"\s{2,}", " ", s).strip(" ,.;—-")
+            out.append(s)
+        return (
+            out[0] if len(out) > 0 else "",
+            out[1] if len(out) > 1 else "",
+            out[2] if len(out) > 2 else "",
+        )
+
+    atv_desc = _extrair_descricao_atividade_artemig(texto)
+    blob_pi = f"{patologia or ''} {indicador or ''}".strip()
+    tipo_a, grp_a, atv_a = _sem_consol_em_campos(
+        patologia or indicador,
+        indicador or patologia,
+        descricao or (patologia + " " + (indicador or "")).strip(),
+        consol=num_consol,
+    )
+    if atv_desc:
+        _, _, atv_a = _sem_consol_em_campos("", "", atv_desc, consol=num_consol)
+    elif _texto_e_bloco_legenda_atividade_artemig(atv_a) or _texto_e_bloco_legenda_atividade_artemig(
+        blob_pi
+    ):
+        atv_a = _sem_consol_em_campos(
+            "", "", descricao or "", consol=num_consol
+        )[2]
+    if _eh_texto_localizacao_resumo_artemig(atv_a):
+        atv_a = (atv_desc or descricao or "").strip()
+    if len((atv_a or "").strip()) < 18 or re.fullmatch(
+        r"(?i)qid\s*:?\s*",
+        (atv_a or "").strip(),
+    ):
+        atv_a = (atv_desc or descricao or "").strip()
+    if _eh_texto_localizacao_resumo_artemig(atv_a) or re.fullmatch(
+        r"(?i)qid\s*:?\s*",
+        (atv_a or "").strip(),
+    ):
+        atv_a = ""
+    tipo_a = _limpar_legendas_campo_artemig(tipo_a)
+    grp_a = _limpar_legendas_campo_artemig(grp_a)
+    atv_a = _limpar_legendas_campo_artemig(atv_a)
+    if _eh_texto_localizacao_resumo_artemig(tipo_a):
+        tipo_a = indicador or tipo_a
+    if _eh_texto_localizacao_resumo_artemig(grp_a):
+        grp_a = patologia or indicador or grp_a
+
+    prazo_str, prazo_dias, emerg_p = _prazo_artemig(texto, data_con)
+    prazo_str = _prazo_str_valido_artemig(prazo_str)
+    if not prazo_str:
+        prazo_dias = None
+        emerg_p = False
+
+    obs_parts: list[str] = []
+    if num_consol:
+        obs_parts.append(num_consol)
+    obs_m = re.search(r"Observ[aã][çc][aã]o\s*:?\s*([^\n]+)", texto, re.I)
+    if obs_m:
+        ox = re.sub(
+            r"(?i)N[ºoO°]?\s*(?:da\s*)?CONSOL\s*:?\s*\d{0,12}\s*",
+            "",
+            obs_m.group(1).strip(),
+        ).strip(" ,;—-|")
+        if ox:
+            obs_parts.append(_limpar_legendas_campo_artemig(ox[:300]))
+    observacao = _limpar_legendas_campo_artemig(" | ".join(obs_parts))[:500]
+
+    _blob_pav = " ".join(
+        x for x in (patologia, indicador, tipo_a, grp_a, atv_a) if (x or "").strip()
+    )
+    _tipo_panela_art = _is_panela(_blob_pav)
+
+    return NcItem(
+        codigo=codigo,
+        data_con=data_con,
+        horario_fiscalizacao=hora,
+        rodovia=rodovia,
+        concessionaria="CONSOL",
+        lote="50",
+        km_ini=km_ini,
+        km_fim=km_fim,
+        km_ini_str=str(km_ini).replace(".", ","),
+        km_fim_str=str(km_fim).replace(".", ","),
+        sentido=sentido,
+        tipo_atividade=tipo_a,
+        grupo_atividade=grp_a,
+        atividade=atv_a,
+        observacao=observacao,
+        prazo_str=prazo_str,
+        prazo_dias=prazo_dias,
+        emergencial=emerg_p,
+        tipo_panela=_tipo_panela_art,
+        empresa=_GRUPO_FISCALIZACAO_ARTEMIG,
+        grupo=_GRUPO_EAF_ARTEMIG_ANALISE,
+        nome_fiscal=nome_rt,
+        tipo_artemig=tipo_artemig,
+        sh_artemig=sh_artemig,
+        num_consol=num_consol,
+    )
+
+
+def parse_pdf_artemig(pdf_bytes: bytes) -> list[NcItem]:
+    """NCs do PDF Artemig (MG): tenta 1 NC por página; senão, texto inteiro."""
+    if not FITZ_OK:
+        texto = _extrair_texto_pdf(pdf_bytes)
+        nc = _parse_artemig_texto(texto or "")
+        return [nc] if nc else []
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    ncs: list[NcItem] = []
+    try:
+        for page in doc:
+            t = (page.get_text() or "").strip()
+            if len(t) < 40:
+                continue
+            nc = _parse_artemig_texto(t)
+            if nc:
+                ncs.append(nc)
+        if not ncs:
+            full = "\n\f\n".join((doc[i].get_text() or "") for i in range(len(doc)))
+            nc = _parse_artemig_texto(full)
+            if nc:
+                ncs = [nc]
+    finally:
+        doc.close()
+    vistos: set[str] = set()
+    out: list[NcItem] = []
+    for nc in ncs:
+        ch = (nc.codigo or "") + "|" + (nc.num_consol or "") + "|" + str(nc.km_ini)
+        if ch in vistos:
+            continue
+        vistos.add(ch)
+        out.append(nc)
+    return out
+
+
 # ANÁLISE DE SEQUÊNCIA DE KM
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _trecho_do_grupo_para_nc(nc: NcItem, mapa_eaf: list[dict]) -> tuple[float, float] | None:
     """
@@ -968,14 +1683,12 @@ def analisar_gaps(ncs: list[NcItem], limiar_km: float = LIMIAR_GAP_KM,
     ncs = [nc for nc in ncs if not getattr(nc, "origem_ma", False)]
     mapa = mapa_eaf if mapa_eaf is not None else _MAPA_EAF_PADRAO
 
-    # Só entram na análise NCs cujo (rodovia, km) está dentro de um trecho do seu grupo
     com_trecho: list[tuple[NcItem, tuple[float, float]]] = []
     for nc in ncs:
         t = _trecho_do_grupo_para_nc(nc, mapa)
         if t is not None:
             com_trecho.append((nc, t))
 
-    # Agrupar por (grupo, data_con, rodovia, sentido, trecho_ini, trecho_fim)
     buckets: dict[tuple, list[NcItem]] = {}
     for nc, (trecho_ini, trecho_fim) in com_trecho:
         data_con = (nc.data_con or "").strip()
@@ -1010,15 +1723,10 @@ def analisar_gaps(ncs: list[NcItem], limiar_km: float = LIMIAR_GAP_KM,
 
 def analisar_sequencia_codigos(ncs: list[NcItem]) -> list[CodigoGapAlerta]:
     """
-    Detecta saltos na numeração sequencial do Código Fiscalização por grupo EAF.
-    Apenas NCs de Conservação (pavimento) entram na análise — Meio Ambiente
-    não fiscaliza pavimento, portanto não gera alerta de apontamentos não entregues.
-
-    O Código Fiscalização é atribuído sequencialmente pelo sistema ARTESP.
-    Um salto (ex: 896643 → 896648) indica que os códigos 896644–896647 foram
-    gerados mas NÃO foram entregues à concessionária.
-    Esses apontamentos ocultos são potencialmente BURACOS/PANELAS NA PISTA
-    — único tipo com prazo de 24 horas e que pode ser retido.
+    [Somente regime ARTESP] Saltos na numeração do Código Fiscalização por grupo EAF.
+    Na ARTESP o código é sequencial; lacunas sugerem NC gerada e não entregue (em geral
+    retida só buraco/panela). No Artemig (lote 50) essa lógica não se aplica — todas as
+    constatações do PDF entram no relatório; não chamar para Artemig (retornar []).
     """
     if not ncs:
         return []
@@ -1028,7 +1736,6 @@ def analisar_sequencia_codigos(ncs: list[NcItem]) -> list[CodigoGapAlerta]:
         digits = re.sub(r'\D', '', str(codigo))
         return int(digits) if digits else None
 
-    # Agrupar por grupo EAF
     buckets: dict[int, list[NcItem]] = {}
     for nc in ncs:
         g = nc.grupo or 0
@@ -1036,7 +1743,6 @@ def analisar_sequencia_codigos(ncs: list[NcItem]) -> list[CodigoGapAlerta]:
 
     alertas: list[CodigoGapAlerta] = []
     for grupo_num, bucket in sorted(buckets.items()):
-        # Filtrar NCs com código numérico válido e ordenar
         com_num = [(n, _para_int(n.codigo)) for n in bucket]
         com_num = [(nc, num) for nc, num in com_num if num is not None]
         if len(com_num) < 2:
@@ -1050,7 +1756,6 @@ def analisar_sequencia_codigos(ncs: list[NcItem]) -> list[CodigoGapAlerta]:
             diff = num_b - num_a
             if diff <= 1:
                 continue
-            # Há códigos faltantes entre num_a e num_b
             faltantes = [str(num_a + j) for j in range(1, min(diff, 11))]
             alertas.append(CodigoGapAlerta(
                 grupo=grupo_num,
@@ -1064,18 +1769,71 @@ def analisar_sequencia_codigos(ncs: list[NcItem]) -> list[CodigoGapAlerta]:
     return alertas
 
 
+def _rotulo_tipo_resumo_artemig(nc: NcItem) -> str:
+    """Artemig: indicador/patologia; evita ' / ' com metade vazia (ex.: '/ Panelas e / Buracos')."""
+
+    def _lim(s: str) -> str:
+        s = (s or "").strip()
+        s = re.sub(r"^\s*/+\s*|\s*/+\s*$", "", s).strip()
+        return s
+
+    ta, ga, at = _lim(nc.tipo_atividade), _lim(nc.grupo_atividade), _lim(nc.atividade)
+    for bad in ("/", "-", ".", "e", "E"):
+        if ta == bad:
+            ta = ""
+        if ga == bad:
+            ga = ""
+    if ta and ga:
+        if ta.lower() in ga.lower() or ga.lower() in ta.lower():
+            lab = ga if len(ga) >= len(ta) else ta
+        else:
+            lab = f"{ta} / {ga}"
+    elif ta:
+        lab = ta
+    elif ga:
+        lab = ga
+    elif at:
+        lab = at
+    else:
+        tid = (getattr(nc, "tipo_artemig", None) or "").strip()
+        sh = (getattr(nc, "sh_artemig", None) or "").strip()
+        lab = " | ".join(x for x in (tid, sh) if x) or "(sem classificacao no PDF)"
+    lab = re.sub(r"\s*/\s*/\s*", " / ", lab)
+    lab = re.sub(r"^[\s/\-]+", "", lab).strip()
+    lab = re.sub(r"\s*/\s*$", "", lab).strip()
+    return lab[:200]
+
+
 def resumo_estatistico(ncs: list[NcItem]) -> dict:
     """Retorna dicionário com métricas resumidas para o cabeçalho do relatório."""
     if not ncs:
         return {}
-    tipos = {}
+    eh_artemig_50 = any((getattr(n, "lote", None) or "").strip() == "50" for n in ncs)
+    tipos: dict[str, int] = {}
     for nc in ncs:
-        tipos[nc.atividade] = tipos.get(nc.atividade, 0) + 1
+        if getattr(nc, "origem_ma", False):
+            k = ((nc.atividade or "").strip() or "Meio Ambiente")[:200]
+        elif eh_artemig_50:
+            k = _rotulo_tipo_resumo_artemig(nc)
+        else:
+            k = ((nc.atividade or "").strip() or "(sem atividade)")[:200]
+        tipos[k] = tipos.get(k, 0) + 1
     emergenciais = [nc for nc in ncs if nc.emergencial]
-    panelas_poss = [nc for nc in ncs if nc.tipo_panela]
-    rodovias     = sorted(set(nc.rodovia for nc in ncs if nc.rodovia))
+    panelas_poss = [nc for nc in ncs if _is_panela_artemig_nc(nc)]
+    rodovias = sorted(set(nc.rodovia for nc in ncs if nc.rodovia))
+    if any((getattr(n, "lote", None) or "").strip() == "50" for n in ncs):
+        def _sig_rod(r: str) -> str:
+            return re.sub(r"[\s-]", "", (r or "").upper())
+
+        padrao = ["MG-050", "BR-265", "BR-491"]
+        seen = {_sig_rod(p) for p in padrao}
+        out = list(padrao)
+        for r in sorted(set(nc.rodovia for nc in ncs if nc.rodovia)):
+            if _sig_rod(r) not in seen:
+                out.append(r.strip())
+                seen.add(_sig_rod(r))
+        rodovias = out
     data_con     = ncs[0].data_con if ncs else ""
-    # Resumo por grupo EAF (Conservação) e Meio Ambiente separado
     grupos: dict[int, dict] = {}
     for nc in ncs:
         if getattr(nc, "origem_ma", False):
@@ -1102,9 +1860,7 @@ def resumo_estatistico(ncs: list[NcItem]) -> dict:
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # GERAÇÃO DO RELATÓRIO PDF (ReportLab)
-# ─────────────────────────────────────────────────────────────────────────────
 
 # Paleta ARTESP
 COR_HEADER    = colors.HexColor("#1e3a5f")   # azul escuro
@@ -1144,6 +1900,12 @@ def _estilos():
         "tabcel": ParagraphStyle("tabcel",
             fontName="Helvetica", fontSize=8,
             textColor=colors.HexColor("#2c3e50"), alignment=TA_LEFT),
+        "tabcel_qtd": ParagraphStyle("tabcel_qtd",
+            fontName="Helvetica-Bold", fontSize=8,
+            textColor=colors.HexColor("#2c3e50"), alignment=TA_CENTER),
+        "tabcel_art_tipo": ParagraphStyle("tabcel_art_tipo",
+            fontName="Helvetica", fontSize=7, leading=8,
+            textColor=colors.HexColor("#2c3e50"), alignment=TA_LEFT),
         "tabcel_emerg": ParagraphStyle("tabcel_emerg",
             fontName="Helvetica-Bold", fontSize=8,
             textColor=COR_EMERG, alignment=TA_LEFT),
@@ -1165,14 +1927,28 @@ def _km_fmt(v: float) -> str:
 
 
 def _safe_latin1(s: str) -> str:
-    """Garante string encodável em Latin-1 (evita erro em ReportLab/Helvetica e headers)."""
+    """Latin-1 para Helvetica: troca travessão/emoji; mantém ç/ã se já couberem em Latin-1."""
     if not s:
         return s
-    nfd = unicodedata.normalize("NFD", s)
-    sem_comb = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    for a, b in (
+        ("\u2014", "-"),
+        ("\u2013", "-"),
+        ("\u2212", "-"),
+        ("\u2264", "<="),
+        ("\u2265", ">="),
+        ("\u2022", "*"),
+    ):
+        s = s.replace(a, b)
+    s = re.sub(
+        r"[\U0001F300-\U0001FAFF\U00002700-\U000027BF\U00002600-\U000027BF]",
+        "",
+        s,
+    )
     try:
-        return sem_comb.encode("latin-1").decode("latin-1")
+        return s.encode("latin-1").decode("latin-1")
     except UnicodeEncodeError:
+        nfd = unicodedata.normalize("NFD", s)
+        sem_comb = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
         return sem_comb.encode("latin-1", "replace").decode("latin-1")
 
 
@@ -1191,29 +1967,67 @@ def _banner(texto: str, cor: colors.Color, estilos: dict):
     )
 
 
+def _pdf_eh_artemig_lote50(ncs_ref: list[NcItem]) -> bool:
+    return bool(ncs_ref and any((getattr(n, "lote", None) or "").strip() == "50" for n in ncs_ref))
+
+
+def _pdf_regime_e_artesp(ncs_ref: list[NcItem]) -> bool:
+    """True = ARTESP (salto de código, retidas). False = Artemig lote 50."""
+    return not _pdf_eh_artemig_lote50(ncs_ref)
+
+
 def _tabela_ncs(ncs_tipo: list[NcItem], estilos: dict) -> Table:
-    """Tabela com os dados originais de cada NC (sem alteração)."""
-    cabecalho = ["Cód. Fiscal.", "Grp", "KM Inicial", "KM Final", "Sentido",
-                 "Data Const.", "Prazo", "Obs"]
-    linhas = [
-        [Paragraph(c, estilos["tabcab"]) for c in cabecalho]
-    ]
-    colunas_w = [26*mm, 10*mm, 20*mm, 20*mm, 26*mm, 20*mm, 20*mm, 28*mm]
+    """Tabela com dados das NCs; Artemig inclui col. Tipo (QID) e SH."""
+    es_artemig = _pdf_eh_artemig_lote50(ncs_tipo)
+    col_obs = "Nº CONSOL" if es_artemig else "Obs"
+    if es_artemig:
+        cabecalho = [
+            "Cód.", "Tipo", "SH", "Grp", "KM Ini", "KM Fim", "Sentido",
+            "Data", "Prazo", col_obs,
+        ]
+        colunas_w = [17 * mm, 30 * mm, 13 * mm, 7 * mm, 13 * mm, 13 * mm,
+                     22 * mm, 13 * mm, 11 * mm, 22 * mm]
+    else:
+        cabecalho = ["Cód. Fiscal.", "Grp", "KM Inicial", "KM Final", "Sentido",
+                     "Data Const.", "Prazo", col_obs]
+        colunas_w = [26 * mm, 10 * mm, 20 * mm, 20 * mm, 26 * mm, 20 * mm, 20 * mm, 28 * mm]
+
+    def _esc(s: str) -> str:
+        return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    linhas = [[Paragraph(_safe_latin1(c), estilos["tabcab"]) for c in cabecalho]]
 
     for nc in sorted(ncs_tipo, key=lambda n: n.km_ini):
         est = estilos["tabcel_emerg"] if nc.emergencial else estilos["tabcel"]
-        prazo_txt = nc.prazo_str + (" ⚠" if nc.emergencial else "")
-        grupo_txt = str(nc.grupo) if nc.grupo else "—"
-        linhas.append([
-            Paragraph(nc.codigo,      est),
-            Paragraph(grupo_txt,      est),
-            Paragraph(_km_fmt(nc.km_ini) if nc.km_ini else nc.km_ini_str, est),
-            Paragraph(_km_fmt(nc.km_fim) if nc.km_fim else nc.km_fim_str, est),
-            Paragraph(nc.sentido,     est),
-            Paragraph(nc.data_con,    est),
-            Paragraph(prazo_txt,      est),
-            Paragraph(nc.observacao[:40] if nc.observacao else "—", est),
-        ])
+        prazo_txt = nc.prazo_str + (" !" if nc.emergencial else "")
+        grupo_txt = str(nc.grupo) if nc.grupo else ("-" if not es_artemig else str(_GRUPO_EAF_ARTEMIG_ANALISE))
+        if es_artemig:
+            tid = _esc((getattr(nc, "tipo_artemig", None) or "-").strip() or "-")
+            sh = _esc((getattr(nc, "sh_artemig", None) or "-").strip() or "-")
+            est_tipo = estilos.get("tabcel_art_tipo", estilos["tabcel"])
+            linhas.append([
+                Paragraph(_safe_latin1(nc.codigo or ""), est),
+                Paragraph(_safe_latin1(tid[:40]), est_tipo),
+                Paragraph(_safe_latin1(sh[:14]), est),
+                Paragraph(grupo_txt, est),
+                Paragraph(_km_fmt(nc.km_ini) if nc.km_ini else nc.km_ini_str, est),
+                Paragraph(_km_fmt(nc.km_fim) if nc.km_fim else nc.km_fim_str, est),
+                Paragraph(_safe_latin1(nc.sentido or ""), est),
+                Paragraph(_safe_latin1(nc.data_con or ""), est),
+                Paragraph(_safe_latin1(prazo_txt), est),
+                Paragraph(_safe_latin1((nc.observacao or "-")[:400]), est),
+            ])
+        else:
+            linhas.append([
+                Paragraph(_safe_latin1(nc.codigo or ""), est),
+                Paragraph(grupo_txt, est),
+                Paragraph(_km_fmt(nc.km_ini) if nc.km_ini else nc.km_ini_str, est),
+                Paragraph(_km_fmt(nc.km_fim) if nc.km_fim else nc.km_fim_str, est),
+                Paragraph(_safe_latin1(nc.sentido or ""), est),
+                Paragraph(_safe_latin1(nc.data_con or ""), est),
+                Paragraph(_safe_latin1(prazo_txt), est),
+                Paragraph(_safe_latin1((nc.observacao or "-")[:800]), est),
+            ])
 
     ts = TableStyle([
         # Cabeçalho
@@ -1281,10 +2095,44 @@ def _concessionaria_por_lote(lote_ou_concessionaria: str) -> str:
     return (lote_ou_concessionaria or "").strip()
 
 
-def _caminho_template_relatorio_xlsx() -> Path:
-    """Caminho do template do relatório (config: ARTESP_TEMPLATE_RELATORIO ou assets/templates)."""
+def _caminho_template_relatorio_xlsx(lote_selecionado: str | None = None) -> Path:
+    """Lote 50: template Artemig (A/B/V); demais: ARTESP_TEMPLATE_RELATORIO."""
+    if (lote_selecionado or "").strip() == "50":
+        try:
+            from nc_artemig.config import TEMPLATE_RELATORIO_ANALISE_PDF
+            p = Path(TEMPLATE_RELATORIO_ANALISE_PDF)
+            if p.is_file():
+                return p.resolve()
+        except Exception:
+            pass
     from nc_artesp.config import TEMPLATE_RELATORIO_XLSX
     return Path(TEMPLATE_RELATORIO_XLSX).resolve()
+
+
+def rotulo_e_slug_lote_para_saida(lote: str | None) -> tuple[str, str]:
+    """(rótulo para cabeçalhos, pasta segura para ZIP)."""
+    try:
+        from nc_artesp.config import LOTES_MENU_ANALISE, _LOTE_CONCESSIONARIA
+    except Exception:
+        LOTES_MENU_ANALISE, _LOTE_CONCESSIONARIA = [], {}
+    num_m = re.search(r"\d+", (lote or "").strip() or "13")
+    num = num_m.group(0) if num_m else "13"
+    rotulo = ""
+    for k, lab in LOTES_MENU_ANALISE:
+        if k == num:
+            rotulo = lab
+            break
+    if not rotulo:
+        nome = _LOTE_CONCESSIONARIA.get(num, "")
+        rotulo = f"Lote {num}" + (f" — {nome}" if nome else "")
+    slug_map = {
+        "13": "Lote13_Rodovias_Colinas",
+        "21": "Lote21_Rodovias_Tiete",
+        "26": "Lote26_SP_Serra",
+        "50": "Lote50_ARTEMIG_MG",
+    }
+    slug = slug_map.get(num, f"Lote{num}_Analise")
+    return rotulo, slug
 
 
 # Colunas do template de saída (relatório XLSX). km_ini: col 8+9; km_fim: 10+11.
@@ -1308,13 +2156,23 @@ def _detectar_colunas_saida_template(ws, cabecalho_fim: int = 4) -> dict[str, in
     return col_map
 
 
-def gerar_relatorio_xlsx(ncs: list[NcItem], lote_selecionado: str | None = None) -> bytes:
+def gerar_relatorio_xlsx(
+    ncs: list[NcItem],
+    lote_selecionado: str | None = None,
+    rotulo_lote_analise: str = "",
+) -> bytes:
     """Preenche o template XLSX a partir de NcItem. Coluna fica vazia só quando a informação não está nos documentos lidos."""
     if not OPENPYXL_OK:
         raise ImportError("openpyxl não instalado: pip install openpyxl")
-    template_path = _caminho_template_relatorio_xlsx()
+    template_path = _caminho_template_relatorio_xlsx(lote_selecionado)
+    preencher_colunas_artemig = (
+        (lote_selecionado or "").strip() == "50"
+        and template_path.is_file()
+        and "artemig" in template_path.name.lower()
+    )
     CABECALHO_FIM = 4
     PRIMEIRA_LINHA_DADOS = 5
+    insere_linha_lote = bool((rotulo_lote_analise or "").strip())
     wb = None
     ws = None
 
@@ -1329,10 +2187,16 @@ def gerar_relatorio_xlsx(ncs: list[NcItem], lote_selecionado: str | None = None)
                 wb = openpyxl.Workbook()
                 ws = wb.active
                 ws.title = "Relatório"
-                for r in range(min(CABECALHO_FIM, sh.nrows)):
+                row_off = 1
+                if insere_linha_lote:
+                    ws.cell(row=1, column=1, value=f"Lote em análise: {rotulo_lote_analise.strip()}")
+                    row_off = 2
+                    CABECALHO_FIM = 5
+                    PRIMEIRA_LINHA_DADOS = 6
+                for r in range(min(4, sh.nrows)):
                     for c in range(min(sh.ncols, 30)):
                         v = sh.cell_value(r, c)
-                        ws.cell(row=r + 1, column=c + 1, value=v)
+                        ws.cell(row=r + row_off, column=c + 1, value=v)
             else:
                 import shutil
                 import tempfile
@@ -1342,6 +2206,22 @@ def gerar_relatorio_xlsx(ncs: list[NcItem], lote_selecionado: str | None = None)
                     shutil.copy2(str(template_path), tmp_path)
                     wb = openpyxl.load_workbook(tmp_path)
                     ws = wb.active
+                    if insere_linha_lote:
+                        # Linha 1 nos templates XLSX costuma estar vazia; não usar insert_rows(1),
+                        # pois desloca merges (A2:V2, B3:B4…) e corrompe o cabeçalho no Excel.
+                        ult = min(max(ws.max_column or 21, 22), 25)
+                        for rng in list(ws.merged_cells.ranges):
+                            if rng.min_row <= 1 <= rng.max_row:
+                                ws.unmerge_cells(str(rng))
+                        if ult >= 2:
+                            ws.merge_cells(
+                                start_row=1, start_column=1, end_row=1, end_column=ult
+                            )
+                        ws.cell(
+                            row=1,
+                            column=1,
+                            value=f"Lote em análise: {rotulo_lote_analise.strip()}",
+                        )
                     while ws.max_row >= PRIMEIRA_LINHA_DADOS:
                         ws.delete_rows(ws.max_row, 1)
                 finally:
@@ -1364,6 +2244,12 @@ def gerar_relatorio_xlsx(ncs: list[NcItem], lote_selecionado: str | None = None)
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Relatório"
+        r0 = 1
+        if insere_linha_lote:
+            ws.cell(row=1, column=1, value=f"Lote em análise: {rotulo_lote_analise.strip()}")
+            r0 = 2
+            CABECALHO_FIM = 5
+            PRIMEIRA_LINHA_DADOS = 6
         for col, val in enumerate([
             "", "", "Cód. Fiscalização", "Data Fiscalização", "Horário da Fiscalização",
             "Rodovia", "Concessionária Lote", "Trecho", "", "", "", "Sentido",
@@ -1371,10 +2257,10 @@ def gerar_relatorio_xlsx(ncs: list[NcItem], lote_selecionado: str | None = None)
             "Atividade", "Data Envio", "Data Reparo", "EAF", "Responsável Técnico",
         ], start=1):
             if col <= 21 and val:
-                ws.cell(row=2, column=col, value=val)
+                ws.cell(row=r0 + 1, column=col, value=val)
         for col, val in enumerate(["", ""] + [""] * 5 + [" Km Inicial", "m", "Km Final", "m", ""] + [""] * 8 + ["Responsável Técnico"], start=1):
             if col <= 21 and val:
-                ws.cell(row=3, column=col, value=val)
+                ws.cell(row=r0 + 2, column=col, value=val)
 
     col_map = COLUNAS_TEMPLATE_SAIDA.copy()
     if wb is not None and ws is not None and hasattr(ws, "max_column"):
@@ -1397,27 +2283,64 @@ def gerar_relatorio_xlsx(ncs: list[NcItem], lote_selecionado: str | None = None)
         ws.cell(row=row_idx, column=col_map["km_ini_str"] + 1, value=km_ini_m)
         ws.cell(row=row_idx, column=col_map["km_fim_str"], value=km_fim_k)
         ws.cell(row=row_idx, column=col_map["km_fim_str"] + 1, value=km_fim_m)
-        ws.cell(row=row_idx, column=col_map["sentido"], value=(nc.sentido or "").strip())
+        sent_out = (nc.sentido or "").strip()
+        if preencher_colunas_artemig:
+            try:
+                from nc_artemig.sentido_kcor import sentido_artemig_para_kcor
+                sent_out = sentido_artemig_para_kcor(nc.rodovia or "", nc.sentido or "")
+            except Exception:
+                pass
+        ws.cell(row=row_idx, column=col_map["sentido"], value=sent_out)
         ws.cell(row=row_idx, column=13, value="")
         ws.cell(row=row_idx, column=14, value="")
         ws.cell(row=row_idx, column=col_map["tipo_atividade"], value=(nc.tipo_atividade or "").strip())
         ws.cell(row=row_idx, column=col_map["grupo_atividade"], value=(nc.grupo_atividade or "").strip())
         ws.cell(row=row_idx, column=col_map["atividade"], value=(nc.atividade or "").strip())
         ws.cell(row=row_idx, column=18, value=(nc.data_con or "").strip())
-        ws.cell(row=row_idx, column=col_map["prazo_str"], value=(nc.prazo_str or "").strip())
+        pz_out = (nc.prazo_str or "").strip()
+        if preencher_colunas_artemig:
+            pz_out = _prazo_str_valido_artemig(pz_out)
+        ws.cell(row=row_idx, column=col_map["prazo_str"], value=pz_out)
         ws.cell(row=row_idx, column=col_map["empresa"], value=(nc.empresa or "").strip())
         ws.cell(row=row_idx, column=col_map["nome_fiscal"], value=(nc.nome_fiscal or "").strip())
+        if preencher_colunas_artemig:
+            ws.cell(row=row_idx, column=1, value=(getattr(nc, "tipo_artemig", None) or "").strip())
+            ws.cell(row=row_idx, column=2, value=(getattr(nc, "sh_artemig", None) or "").strip())
+            ws.cell(row=row_idx, column=22, value=(nc.observacao or "").strip()[:500])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def _tabela_indicadores_rodovia(ncs: list[NcItem]) -> list[list[str]]:
+    conserv = [n for n in ncs if not getattr(n, "origem_ma", False)]
+    by_rod: dict[str, list[NcItem]] = {}
+    for n in conserv:
+        r = (n.rodovia or "").strip() or "(sem rodovia)"
+        by_rod.setdefault(r, []).append(n)
+    out: list[list[str]] = []
+    for r in sorted(by_rod.keys()):
+        lst = by_rod[r]
+        kms = [n.km_ini for n in lst if n.km_ini is not None]
+        k0, k1 = (min(kms), max(kms)) if kms else (None, None)
+        n_pan = sum(1 for n in lst if _is_panela_artemig_nc(n))
+        out.append([
+            r,
+            str(len(lst)),
+            _km_fmt(k0) if k0 is not None else "-",
+            _km_fmt(k1) if k1 is not None else "-",
+            str(n_pan),
+        ])
+    return out
 
 
 def gerar_relatorio_pdf(ncs: list[NcItem],
                         alertas_km: list[GapAlerta],
                         alertas_codigo: list[CodigoGapAlerta],
                         limiar_km: float = LIMIAR_GAP_KM,
-                        mapa_eaf: list | None = None) -> bytes:
-    """Resumo geral em PDF. mapa_eaf = mapa do lote (trechos por grupo); se None, usa config padrão."""
+                        mapa_eaf: list | None = None,
+                        rotulo_lote_analise: str = "") -> bytes:
+    """PDF de analise: mesmo layout ARTESP/Artemig; alertas de codigo so ARTESP."""
     if not REPORTLAB_OK:
         raise ImportError("reportlab não instalado: pip install reportlab")
     mapa_uso = (mapa_eaf or _MAPA_EAF_PADRAO)
@@ -1447,18 +2370,27 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
 
     res    = resumo_estatistico(ncs)
     emerg  = res.get("emergenciais", [])
-    rodovs = ", ".join(res.get("rodovias", [])) or "—"
+    pdf_artemig_50 = _pdf_eh_artemig_lote50(ncs)
+    regime_artesp = _pdf_regime_e_artesp(ncs)
+    rodovs = ", ".join(res.get("rodovias", [])) or "-"
     data_c = res.get("data_con", "")
+    n_panela = sum(
+        1 for n in ncs if not getattr(n, "origem_ma", False) and _is_panela_artemig_nc(n)
+    )
+    n_ma = sum(1 for n in ncs if getattr(n, "origem_ma", False))
     # Alerta de emergenciais (prazo 24 h) só vale para relatório do mesmo dia da constatação
     data_con_dt = _parse_data(data_c)
     data_con_date = data_con_dt.date() if data_con_dt else None
     relatorio_hoje = data_con_date is not None and data_relatorio == data_con_date
     lote   = res.get("lote", "")
 
-    # ── CAPA ────────────────────────────────────────────────────────────────
     story.append(Spacer(1, 4*mm))
-    story.append(Paragraph("ARTESP — Relatório de Análise de NCs", est["titulo"]))
-    story.append(Paragraph("Conservação de Rotina", est["subtitulo"]))
+    if pdf_artemig_50:
+        story.append(Paragraph("Artemig (MG) - Relatorio de analise de NCs", est["titulo"]))
+        story.append(Paragraph("Notificacao / CONSOL - Conservacao", est["subtitulo"]))
+    else:
+        story.append(Paragraph("ARTESP - Relatorio de analise de NCs", est["titulo"]))
+        story.append(Paragraph("Conservacao de Rotina", est["subtitulo"]))
     story.append(Spacer(1, 3*mm))
     story.append(HRFlowable(width="100%", thickness=2, color=COR_HEADER))
     story.append(Spacer(1, 3*mm))
@@ -1468,17 +2400,34 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
         style = ParagraphStyle("cel", parent=est["celula"], fontName="Helvetica-Bold" if bold else "Helvetica")
         t = _safe_latin1(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         return Paragraph(t, style)
-    meta = [
-        [_cel("Rodovia(s):", True), _cel(rodovs),   _cel("Lote:", True), _cel(lote)],
-        [_cel("Data Constatação:", True), _cel(data_c), _cel("Emitido em:", True), _cel(agora)],
+    meta = []
+    if (rotulo_lote_analise or "").strip():
+        meta.append(
+            [_cel("Lote em análise:", True), _cel(rotulo_lote_analise.strip(), False), _cel("", False), _cel("", False)]
+        )
+    meta.extend([
+        [_cel("Rodovia(s):", True), _cel(rodovs), _cel("Lote (PDF):", True), _cel(lote)],
+        [_cel("Data constatacao:", True), _cel(data_c), _cel("Emitido em:", True), _cel(agora)],
         [_cel("Total de NCs:", True), _cel(str(res.get("total", 0))),
-         _cel("Tipos únicos:", True), _cel(str(res.get("n_tipos", 0)))],
-        [_cel("NCs emergenciais (24 h):", True), _cel(str(len(emerg))),
-         _cel("Alertas de salto de km:", True), _cel(str(len(alertas_km)))],
-        [_cel("Gaps de km:", True),
-         _cel(str(sum(a.n_faltantes for a in alertas_codigo))),
-         _cel("Grupos com ocultação:", True), _cel(str(len(alertas_codigo)))],
-    ]
+         _cel("Tipos atividade:", True), _cel(str(res.get("n_tipos", 0)))],
+        [_cel("NCs emerg. (24h):", True), _cel(str(len(emerg))),
+         _cel("NCs buraco/panela:", True), _cel(str(n_panela))],
+        [_cel("Meio ambiente (se houver):", True), _cel(str(n_ma)),
+         _cel("Alertas gap KM:", True), _cel(str(len(alertas_km)))],
+    ])
+    if regime_artesp:
+        tot_cod = sum(a.n_faltantes for a in alertas_codigo)
+        meta.append([
+            _cel("Saltos codigo (poss. retidos):", True), _cel(str(tot_cod)),
+            _cel("Grupos c/ salto codigo:", True), _cel(str(len(alertas_codigo))),
+        ])
+    else:
+        n_qid = len({(getattr(n, "tipo_artemig", None) or "").strip() for n in ncs if not getattr(n, "origem_ma", False)})
+        n_sh = len({(getattr(n, "sh_artemig", None) or "").strip() for n in ncs if not getattr(n, "origem_ma", False)})
+        meta.append([
+            _cel("Regime relatorio:", True), _cel("Artemig (integral)"),
+            _cel("Tipos QID / SH dist.:", True), _cel(f"{n_qid} / {n_sh}"),
+        ])
     meta_t = Table(meta, colWidths=[48*mm, 48*mm, 38*mm, 38*mm],
         style=TableStyle([
             ("TOPPADDING",    (0, 0), (-1, -1), 3),
@@ -1494,8 +2443,10 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
     # Resumo por Grupo EAF (equipes por trecho km — Contatos EAFs)
     def _trecho_resumo(grupo_num: int) -> str:
         """Texto rodovia e trecho coberto para o grupo (ex.: SP 75 km 15 > 50)."""
+        if pdf_artemig_50 and grupo_num == _GRUPO_EAF_ARTEMIG_ANALISE:
+            return "MG-050 · BR-265 · BR-491"
         if grupo_num is None or grupo_num == -1 or grupo_num == 0 or grupo_num == 999:
-            return "—"
+            return "-"
         for entry in mapa_uso:
             if entry.get("grupo") == grupo_num:
                 partes = []
@@ -1507,8 +2458,8 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                         km_ini_int = int(ki) if ki == int(ki) else ki
                         km_fim_int = int(kf) if kf == int(kf) else kf
                         partes.append(f"{rod} km {km_ini_int} > {km_fim_int}")
-                return " | ".join(partes) if partes else "—"
-        return "—"
+                return " | ".join(partes) if partes else "-"
+        return "-"
 
     story.append(_banner("RESUMO POR GRUPO DE FISCALIZAÇÃO", COR_HEADER, est))
     story.append(Spacer(1, 2*mm))
@@ -1525,7 +2476,7 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                 label = "Não ident."
             # Escapar só < e > para Paragraph; não escapar & para não quebrar ">" (evita &amp;gt; no PDF)
             trecho_txt = _trecho_resumo(g_num).replace("<", "&lt;").replace(">", "&gt;")
-            emp = (g_info.get("empresa") or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            emp = (g_info.get("empresa") or "-").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             grp_dados.append([
                 Paragraph(label, est["celula"]),
                 Paragraph(trecho_txt, est["celula"]),
@@ -1534,7 +2485,7 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                 Paragraph(str(g_info.get("emergenciais", 0)) or "0", est["celula"]),
             ])
     else:
-        grp_dados.append([Paragraph("—", est["celula"]), Paragraph("—", est["celula"]),
+        grp_dados.append([Paragraph("-", est["celula"]), Paragraph("-", est["celula"]),
                           Paragraph("Nenhum grupo identificado", est["celula"]),
                           Paragraph("0", est["celula"]), Paragraph("0", est["celula"])])
     grp_t = Table(grp_dados, colWidths=[28*mm, 52*mm, 52*mm, 16*mm, 26*mm],
@@ -1555,9 +2506,10 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
     story.append(_banner("RESUMO POR TIPO DE NC", COR_HEADER, est))
     story.append(Spacer(1, 2*mm))
     tipos_sorted = sorted(res.get("tipos", {}).items(), key=lambda x: -x[1])
-    tipo_dados   = [[Paragraph("Atividade", est["tabcab"]), Paragraph("Qtd", est["tabcab"])]]
+    col_tipo = "Tipo (indicador/patologia)" if pdf_artemig_50 else "Atividade"
+    tipo_dados = [[Paragraph(_safe_latin1(col_tipo), est["tabcab"]), Paragraph("Qtd", est["tabcab"])]]
     for tipo, qtd in tipos_sorted:
-        t_esc = (tipo or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        t_esc = _safe_latin1((tipo or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
         tipo_dados.append([Paragraph(t_esc, est["celula"]), Paragraph(str(qtd), est["celula"])])
     tipo_t = Table(tipo_dados, colWidths=[142*mm, 22*mm],
         style=TableStyle([
@@ -1572,13 +2524,96 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
         ]))
     story.append(tipo_t)
 
-    # ── Alertas: só para relatório do mesmo dia da constatação; anteriores entram só no resumo ──
+    story.append(Spacer(1, 4 * mm))
+    story.append(_banner("INDICADORES POR RODOVIA (conservacao)", COR_HEADER, est))
+    story.append(Spacer(1, 2 * mm))
+    ind_rod = [["Rodovia", "NCs", "KM min", "KM max", "Buraco/panela"]]
+    ind_rod.extend(_tabela_indicadores_rodovia(ncs))
+    ind_linhas = [[Paragraph(_safe_latin1(c), est["tabcab"]) for c in ind_rod[0]]]
+    for row in ind_rod[1:]:
+        ind_linhas.append([Paragraph(_safe_latin1(x), est["celula"]) for x in row])
+    story.append(Table(
+        ind_linhas,
+        colWidths=[38 * mm, 18 * mm, 28 * mm, 28 * mm, 32 * mm],
+        style=TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), COR_LINHAR),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#bdc3c7")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            *[("BACKGROUND", (0, i), (-1, i), COR_LINHA_ALT) for i in range(2, len(ind_linhas), 2)],
+        ]),
+    ))
+
+    if pdf_artemig_50:
+        conserv = [n for n in ncs if not getattr(n, "origem_ma", False)]
+        c_tid = Counter()
+        c_sh = Counter()
+        for n in conserv:
+            t = (getattr(n, "tipo_artemig", None) or "").strip()
+            c_tid[t if t else "(sem tipo no PDF)"] += 1
+            s = (getattr(n, "sh_artemig", None) or "").strip()
+            c_sh[s if s else "(sem SH no PDF)"] += 1
+        story.append(Spacer(1, 4 * mm))
+        story.append(_banner("DISTRIBUICAO QID E SUBTRECHO (SH)", COR_HEADER, est))
+        story.append(Spacer(1, 2 * mm))
+        est_sub = ParagraphStyle(
+            "subdist", parent=est["corpo"], fontName="Helvetica-Bold", fontSize=9,
+        )
+        story.append(Paragraph(_safe_latin1("Por tipo (col. A template / PDF):"), est_sub))
+        qid_data = [("Tipo (QID)", "Qtd")] + [(k, str(v)) for k, v in c_tid.most_common()]
+        qid_rows = []
+        for i, (a, b) in enumerate(qid_data):
+            st = est["tabcab"] if i == 0 else est["tabcel"]
+            st_q = est["tabcab"] if i == 0 else est["tabcel_qtd"]
+            qid_rows.append([
+                Paragraph(_safe_latin1(str(a)), st),
+                Paragraph(_safe_latin1(str(b)), st_q),
+            ])
+        story.append(Table(
+            qid_rows,
+            colWidths=[118 * mm, 22 * mm],
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), COR_LINHAR),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+                *[("BACKGROUND", (0, i), (-1, i), COR_LINHA_ALT) for i in range(2, len(qid_rows), 2)],
+            ]),
+        ))
+        story.append(Spacer(1, 3 * mm))
+        story.append(Paragraph(_safe_latin1("Por subtrecho SH:"), est_sub))
+        sh_data = [("SH", "Qtd")] + [(k, str(v)) for k, v in c_sh.most_common()]
+        sh_rows = []
+        for i, (a, b) in enumerate(sh_data):
+            st = est["tabcab"] if i == 0 else est["tabcel"]
+            st_q = est["tabcab"] if i == 0 else est["tabcel_qtd"]
+            sh_rows.append([
+                Paragraph(_safe_latin1(str(a)), st),
+                Paragraph(_safe_latin1(str(b)), st_q),
+            ])
+        story.append(Table(
+            sh_rows,
+            colWidths=[118 * mm, 22 * mm],
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), COR_LINHAR),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+                *[("BACKGROUND", (0, i), (-1, i), COR_LINHA_ALT) for i in range(2, len(sh_rows), 2)],
+            ]),
+        ))
+
+    # Alertas: emergenciais e gap KM no mesmo dia; saltos de codigo so ARTESP (retidas).
     if relatorio_hoje:
-        # ── ALERTAS DE APONTAMENTOS NÃO ENTREGUES (gap de código) ──────────────────
-        if alertas_codigo:
+        if regime_artesp and alertas_codigo:
             story.append(Spacer(1, 6*mm))
             story.append(_banner(
-                f"🔴  APONTAMENTOS NÃO ENTREGUES — SALTO NA NUMERAÇÃO DO CÓDIGO",
+                "* APONTAMENTOS NAO ENTREGUES - SALTO NA NUMERACAO DO CODIGO",
                 COR_EMERG, est
             ))
             story.append(Spacer(1, 2*mm))
@@ -1586,8 +2621,8 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                 "O Código Fiscalização é atribuído <b>sequencialmente</b> pelo sistema ARTESP. "
                 "Um salto na sequência indica apontamentos que foram gerados mas "
                 "<b>NÃO foram entregues</b> à concessionária. "
-                "Somente <b>buracos/panelas na pista</b> são retidos (prazo 24 h) — "
-                "todos os demais tipos são sempre entregues.",
+                "Somente <b>buracos/panelas na pista</b> sao retidos (prazo 24 h) - "
+                "todos os demais tipos sao sempre entregues.",
                 est["corpo"]
             ))
             story.append(Spacer(1, 2*mm))
@@ -1601,7 +2636,7 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
             story.append(Spacer(1, 3*mm))
 
             for i, ca in enumerate(alertas_codigo, 1):
-                label_grp = f"Grupo {ca.grupo} — {ca.empresa}" if ca.grupo else "Grupo não identificado"
+                label_grp = f"Grupo {ca.grupo} - {ca.empresa}" if ca.grupo else "Grupo não identificado"
                 faltantes_str = ", ".join(ca.codigos_faltantes)
                 if ca.n_faltantes > 10:
                     faltantes_str += f" ... (+{ca.n_faltantes - 10} ocultos)"
@@ -1611,8 +2646,8 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                         est["emerg"]
                     ),
                     Paragraph(
-                        f"Último entregue: <b>{ca.codigo_antes}</b> → "
-                        f"Próximo entregue: <b>{ca.codigo_depois}</b> "
+                        f"Ultimo entregue: <b>{ca.codigo_antes}</b> -> "
+                        f"Proximo entregue: <b>{ca.codigo_depois}</b> "
                         f"<font color='#e74c3c'><b>({ca.n_faltantes} não entregue(s))</b></font>",
                         est["corpo"]
                     ),
@@ -1621,38 +2656,39 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                         est["corpo"]
                     ),
                     Paragraph(
-                        "⚠ Esses apontamentos são potencialmente BURACOS NA PISTA "
+                        "! Esses apontamentos sao potencialmente BURACOS NA PISTA "
                         "(único tipo com prazo de 24 h que pode ser retido).",
                         est["emerg"]
                     ),
                     Spacer(1, 4*mm),
                 ]))
 
-        # ── ALERTAS DE SALTO DE KM ──────────────────────────────────────────────
         if alertas_km:
             story.append(Spacer(1, 4*mm))
             story.append(_banner(
-                f"⚠  ALERTAS DE SALTO DE KM — TRECHO SEM APONTAMENTO (limiar: {limiar_km:.1f} km)",
+                f"! ALERTAS DE SALTO DE KM - TRECHO SEM APONTAMENTO (limiar: {limiar_km:.1f} km)",
                 COR_AVISO, est
             ))
             story.append(Spacer(1, 2*mm))
-            story.append(Paragraph(
-                "Os trechos abaixo, dentro de cada equipe de fiscalização, "
-                "apresentam intervalo superior ao limiar sem apontamentos. "
-                "Verifique se há buracos/panelas não registrados nesse intervalo.",
-                est["corpo"]
-            ))
+            txt_gap_km = (
+                "Os trechos abaixo apresentam intervalo superior ao limiar sem apontamentos. "
+                "Verifique se ha buracos/panelas nao registrados (ARTESP: possivel lacuna de entrega)."
+                if regime_artesp else
+                "Os trechos abaixo apresentam intervalo superior ao limiar sem apontamentos; "
+                "conferir cobertura da fiscalizacao no trecho (Artemig: todas as NCs do PDF constam no relatorio)."
+            )
+            story.append(Paragraph(_safe_latin1(txt_gap_km), est["corpo"]))
             story.append(Spacer(1, 2*mm))
 
             for i, ga in enumerate(alertas_km, 1):
-                label_grp = f"Grupo {ga.grupo} — {ga.empresa}" if ga.grupo else "Grupo não identificado"
+                label_grp = f"Grupo {ga.grupo} - {ga.empresa}" if ga.grupo else "Grupo não identificado"
                 story.append(KeepTogether([
                     Paragraph(
-                        f"<b>Alerta {i}</b> | {label_grp} | {ga.rodovia} — Sentido: {ga.sentido}",
+                        f"<b>Alerta {i}</b> | {label_grp} | {ga.rodovia} - Sentido: {ga.sentido}",
                         est["alerta"]
                     ),
                     Paragraph(
-                        f"Trecho sem NC: km <b>{_km_fmt(ga.km_antes)}</b> → "
+                        f"Trecho sem NC: km <b>{_km_fmt(ga.km_antes)}</b> -> "
                         f"km <b>{_km_fmt(ga.km_depois)}</b> "
                         f"<font color='#c0392b'><b>(gap: {ga.gap_km:.3f} km)</b></font>",
                         est["corpo"]
@@ -1664,10 +2700,9 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                     Spacer(1, 3*mm),
                 ]))
 
-        # ── NCs EMERGENCIAIS ────────────────────────────────────────────────────
         if emerg:
             story.append(Spacer(1, 4*mm))
-            story.append(_banner("🚨  NCs EMERGENCIAIS — PRAZO ≤ 24 h", COR_EMERG, est))
+            story.append(_banner("NCs EMERGENCIAIS - PRAZO <= 24 h", COR_EMERG, est))
             story.append(Spacer(1, 2*mm))
             story.append(Paragraph(
                 "As NCs abaixo têm prazo igual ou anterior a 1 dia após a constatação. "
@@ -1676,11 +2711,11 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
             ))
             story.append(Spacer(1, 2*mm))
             for nc in sorted(emerg, key=lambda n: (n.rodovia, n.km_ini)):
-                prazo_data_hora = f"{nc.prazo_str} 23:59" if nc.prazo_str else "—"
+                prazo_data_hora = f"{nc.prazo_str} 23:59" if nc.prazo_str else "-"
                 story.append(KeepTogether([
                     Paragraph(
                         f"<b>Cód. {nc.codigo}</b> | {nc.rodovia} | "
-                        f"km {_km_fmt(nc.km_ini)} → {_km_fmt(nc.km_fim)} | "
+                        f"km {_km_fmt(nc.km_ini)} -> {_km_fmt(nc.km_fim)} | "
                         f"Sentido: {nc.sentido}",
                         est["emerg"]
                     ),
@@ -1690,29 +2725,35 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
                     ),
                     Paragraph(
                         f"Prazo: <font color='#e74c3c'><b>{prazo_data_hora}</b></font> "
-                        f"(24 h após constatação — {'MESMO DIA' if nc.prazo_dias == 0 else str(nc.prazo_dias) + ' dia(s)'})",
+                        f"(24 h após constatação - {'MESMO DIA' if nc.prazo_dias == 0 else str(nc.prazo_dias) + ' dia(s)'})",
                         est["corpo"]
                     ),
                     *(
-                        [Paragraph(f"Obs: {nc.observacao}", est["corpo"])]
+                        [Paragraph(
+                            ("Nº da CONSOL: " if pdf_artemig_50 else "Obs: ")
+                            + (nc.observacao or ""),
+                            est["corpo"],
+                        )]
                         if nc.observacao else []
                     ),
                     Spacer(1, 3*mm),
                 ]))
 
-    # ── NCs POR GRUPO EAF → TIPO → KM (dados originais intactos) ───────────────
-    story.append(PageBreak())
+    if pdf_artemig_50:
+        story.append(Spacer(1, 5 * mm))
+    else:
+        story.append(PageBreak())
     story.append(_banner(
-        "NCs POR GRUPO DE FISCALIZAÇÃO — TIPO — KM  (dados originais)",
+        "NCs POR GRUPO / TIPO / KM (dados originais)",
         COR_HEADER, est
     ))
     story.append(Spacer(1, 2*mm))
-    story.append(Paragraph(
-        "Dados reproduzidos fielmente do PDF original, sem qualquer alteração. "
-        "Organizados por Grupo/EAF, depois por atividade "
-        "e ordenados por KM crescente.",
-        est["corpo"]
-    ))
+    nota_det = (
+        "Dados conforme PDF. Artemig: colunas Tipo e SH do layout de notificacao."
+        if pdf_artemig_50 else
+        "Dados conforme PDF ARTESP. Agrupamento por EAF, atividade e KM."
+    )
+    story.append(Paragraph(_safe_latin1(nota_det), est["corpo"]))
     story.append(Spacer(1, 4*mm))
 
     # Agrupar: Conservação por (grupo_num, empresa); Meio Ambiente em bloco à parte
@@ -1722,13 +2763,18 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
     meio_ambiente: dict[str, list[NcItem]] = {}
     for nc in ncs:
         if getattr(nc, "origem_ma", False):
-            meio_ambiente.setdefault(nc.atividade or "—", []).append(nc)
+            meio_ambiente.setdefault(nc.atividade or "SEM ATIVIDADE", []).append(nc)
         else:
             chave = (nc.grupo or 999, nc.empresa or "Sem EAF identificada")
             conservacao.setdefault(chave, {})
-            conservacao[chave].setdefault(nc.atividade or "—", []).append(nc)
+            tipo_k = (
+                _rotulo_tipo_resumo_artemig(nc)
+                if pdf_artemig_50
+                else ((nc.atividade or "").strip() or "SEM ATIVIDADE")
+            )
+            conservacao[chave].setdefault(tipo_k, []).append(nc)
     for (grupo_num, empresa), por_tipo in sorted(conservacao.items()):
-        label = f"GRUPO {grupo_num} — {empresa}" if grupo_num != 999 else "GRUPO NÃO IDENTIFICADO"
+        label = f"GRUPO {grupo_num} - {empresa}" if grupo_num != 999 else "GRUPO NAO IDENTIFICADO"
         blocos.append((label, grupo_num, por_tipo))
     if meio_ambiente:
         blocos.append(("MEIO AMBIENTE", None, meio_ambiente))
@@ -1752,51 +2798,55 @@ def gerar_relatorio_pdf(ncs: list[NcItem],
 
         # Trechos fiscalizados (só Conservação; Meio Ambiente não usa MAPA_EAF)
         if grupo_num is not None and grupo_num != 999:
+            mostrou = False
             for entry in mapa_uso:
                 if entry.get("grupo") == grupo_num:
                     partes = [
-                        f"{t['rodovia']} km {t['km_ini']:.3f}–{t['km_fim']:.3f}"
+                        f"{t['rodovia']} km {t['km_ini']:.3f}-{t['km_fim']:.3f}"
                         for t in entry.get("trechos", [])
                     ]
                     story.append(Paragraph(
                         "<b>Trechos fiscalizados:</b> " + " | ".join(partes),
                         est["corpo"]
                     ))
+                    mostrou = True
                     break
+            if not mostrou and pdf_artemig_50 and grupo_num == _GRUPO_EAF_ARTEMIG_ANALISE:
+                story.append(Paragraph(
+                    "<b>Trechos fiscalizados:</b> MG-050, BR-265, BR-491 (CONSOL).",
+                    est["corpo"]
+                ))
         story.append(Spacer(1, 2*mm))
 
         # NCs por tipo dentro do grupo
         for idx_t, (tipo, grupo_ncs) in enumerate(sorted(por_tipo.items()), 1):
             tem_emerg = any(n.emergencial for n in grupo_ncs)
             cor_tipo  = COR_EMERG if tem_emerg else COR_ALERTA
-            label_emg = "  🚨" if tem_emerg else ""
-            story.append(KeepTogether([
-                _banner(
-                    f"{idx_t}. {tipo.upper()}  —  {len(grupo_ncs)} NC(s){label_emg}",
-                    cor_tipo, est
-                ),
-                Spacer(1, 2*mm),
-                _tabela_ncs(grupo_ncs, est),
-                Spacer(1, 5*mm),
-            ]))
+            label_emg = "  [EMERG]" if tem_emerg else ""
+            tit_ban = re.sub(r"^[\s/\-]+", "", (tipo or "")).strip().upper()
+            story.append(_banner(
+                f"{idx_t}. {tit_ban} - {len(grupo_ncs)} NC(s){label_emg}",
+                cor_tipo, est,
+            ))
+            story.append(Spacer(1, 2 * mm))
+            story.append(_tabela_ncs(grupo_ncs, est))
+            story.append(Spacer(1, 5 * mm))
         story.append(Spacer(1, 4*mm))
 
     # Rodapé final
     story.append(Spacer(1, 4*mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
-    story.append(Paragraph(
-        f"Relatório gerado automaticamente pelo sistema ARTESP WEB em {agora}. "
-        "Dados extraídos do PDF original sem alteração.",
-        est["rodape"]
-    ))
+    rod = (
+        f"Gerado em {agora}. Fonte: PDF original. Regime: {'ARTESP' if regime_artesp else 'Artemig (MG)'}. "
+        "Desenvolvedor Ozeias Engler."
+    )
+    story.append(Paragraph(_safe_latin1(rod), est["rodape"]))
 
     doc.build(story)
     return buf.getvalue()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # PONTO DE ENTRADA PARA O ROUTER
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _montar_resumo_serializavel(ncs: list[NcItem],
                                 alertas_km: list[GapAlerta],
@@ -2197,23 +3247,52 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
         get_mapa_responsavel_tecnico = lambda l: _RT_PADRAO
     _lote_num = re.search(r"\d+", (lote or "").strip()) if lote else None
     lote_num = (_lote_num.group(0) if _lote_num else "").strip() or "13"
-    mapa_eaf_lote = get_mapa_eaf(lote_num) or _MAPA_EAF_PADRAO
+    mapa_eaf_lote = get_mapa_eaf(lote_num)
+    if lote_num == "50":
+        if not mapa_eaf_lote:
+            try:
+                from nc_artemig import config as _cfg_am
+                mapa_eaf_lote = list(_cfg_am.MAPA_EAF_POR_LOTE.get("50") or [])
+            except ImportError:
+                mapa_eaf_lote = []
+        if not mapa_eaf_lote:
+            mapa_eaf_lote = [
+                {
+                    "grupo": _GRUPO_EAF_ARTEMIG_ANALISE,
+                    "empresa": "CONSOL",
+                    "trechos": [
+                        {"rodovia": "MG 050", "km_ini": 57.6, "km_fim": 402.0},
+                        {"rodovia": "BR 265", "km_ini": 637.2, "km_fim": 659.5},
+                        {"rodovia": "BR 491", "km_ini": 0.0, "km_fim": 4.7},
+                    ],
+                }
+            ]
+    else:
+        mapa_eaf_lote = mapa_eaf_lote or _MAPA_EAF_PADRAO
     mapa_responsavel_lote = get_mapa_responsavel_tecnico(lote_num) or {}
 
-    # Limpeza automática: relatório usa somente os PDFs desta requisição.
     ncs_total: list[NcItem] = []
     pdfs_list = list(pdfs_bytes)
+    bloques: list[tuple[str, str, list[NcItem]]] = []
     for i, pdf_bytes in enumerate(pdfs_list):
         src = (nomes[i] if nomes and i < len(nomes) else f"PDF {i + 1}")
-        parcial = parse_pdf_nc(pdf_bytes)
+        texto_pdf = _extrair_texto_pdf(pdf_bytes) or ""
+        parcial: list[NcItem] = []
+        if lote_num == "50":
+            parcial = parse_pdf_artemig(pdf_bytes)
         if not parcial:
-            # Tentar como PDF de Meio Ambiente (grupo já atribuído em parse_pdf_ma)
+            parcial = parse_pdf_nc(pdf_bytes)
+        if not parcial:
             parcial_ma = parse_pdf_ma(pdf_bytes)
             if parcial_ma:
                 parcial = _ncs_ma_para_nc_items(parcial_ma)
         for nc in parcial:
             setattr(nc, "_origem", src)
+        bloques.append((src, texto_pdf, parcial))
         ncs_total.extend(parcial)
+
+    if bloques:
+        _validar_lotes_pdf_vs_selecionado(bloques, lote_num)
 
     # Atribui EAF/Grupo (para NCs de Conservação; MA já vem com grupo/empresa)
     for nc in ncs_total:
@@ -2346,31 +3425,10 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
             if tipo_inf and not (nc.tipo_atividade or "").strip():
                 nc.tipo_atividade = tipo_inf
 
-    # Impede gerar relatório de um lote com PDFs de outro: lote nos PDFs deve bater com o selecionado
-    if lote and ncs_total:
-        lote_sel = (lote or "").strip()
-        lotes_pdf = set()
-        for nc in ncs_total:
-            num = _lote_num_do_pdf(nc)
-            if num:
-                lotes_pdf.add(num)
-        if lotes_pdf:
-            if len(lotes_pdf) > 1:
-                raise ValueError(
-                    "Os PDFs contêm NCs de mais de um lote ({}). Use apenas PDFs do mesmo lote.".format(", ".join(sorted(lotes_pdf)))
-                )
-            unico = next(iter(lotes_pdf))
-            if unico != lote_sel:
-                from nc_artesp.config import _LOTE_CONCESSIONARIA
-                nome_pdf = _LOTE_CONCESSIONARIA.get(unico, "Lote " + unico)
-                nome_sel = _LOTE_CONCESSIONARIA.get(lote_sel, "Lote " + lote_sel)
-                raise ValueError(
-                    "Os PDFs são do {} (lote {}), mas você selecionou {} (lote {}). "
-                    "Corrija o lote no menu ou use PDFs do lote correto.".format(nome_pdf, unico, nome_sel, lote_sel)
-                )
-
-    alertas_km     = analisar_gaps(ncs_total, limiar_km=limiar_km, mapa_eaf=mapa_eaf_lote)
-    alertas_codigo = analisar_sequencia_codigos(ncs_total)
+    alertas_km = analisar_gaps(ncs_total, limiar_km=limiar_km, mapa_eaf=mapa_eaf_lote)
+    # Regra ARTESP: salto de código ~ apontamento não entregue. Artemig: relatório integral.
+    eh_artemig_50 = _pdf_eh_artemig_lote50(ncs_total)
+    alertas_codigo = [] if eh_artemig_50 else analisar_sequencia_codigos(ncs_total)
 
     res = _montar_resumo_serializavel(ncs_total, alertas_km, alertas_codigo)
     res["n_arquivos"] = len(pdfs_list)
@@ -2478,8 +3536,16 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
                 nc.empresa = ""
     except Exception:
         pass
-    pdf_rel = gerar_relatorio_pdf(ncs_total, alertas_km, alertas_codigo,
-                                  limiar_km=limiar_km, mapa_eaf=mapa_eaf_lote)
+    rotulo_lo, slug_zip = rotulo_e_slug_lote_para_saida(lote_num)
+    res["rotulo_lote_analise"] = rotulo_lo
+    res["slug_zip"] = slug_zip
+    pdf_rel = gerar_relatorio_pdf(
+        ncs_total, alertas_km, alertas_codigo,
+        limiar_km=limiar_km, mapa_eaf=mapa_eaf_lote,
+        rotulo_lote_analise=rotulo_lo,
+    )
     lote_ok = (lote or "").strip() or None
-    xlsx_bytes = gerar_relatorio_xlsx(ncs_total, lote_selecionado=lote_ok)
+    xlsx_bytes = gerar_relatorio_xlsx(
+        ncs_total, lote_selecionado=lote_ok, rotulo_lote_analise=rotulo_lo
+    )
     return pdf_rel, xlsx_bytes, res

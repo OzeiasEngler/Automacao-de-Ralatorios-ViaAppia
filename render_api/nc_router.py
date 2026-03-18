@@ -36,6 +36,7 @@ import json
 import logging
 import os
 import platform
+import re
 import secrets
 import shutil
 import sys
@@ -63,7 +64,6 @@ logger = logging.getLogger(__name__)
 MAX_MB = 200
 MAX_BYTES = MAX_MB * 1024 * 1024
 
-# ── Resolução dinâmica do caminho do projeto NC ───────────────────────────────
 # Tenta, em ordem:
 #   1. Variável de ambiente ARTESP_NC_PROJ (configurável no Render)
 #   2. Pasta nc_artesp/ dentro do próprio repositório (deploy Render)
@@ -92,9 +92,9 @@ _NC_PROJ   = _resolver_nc_proj()
 # Raiz do repositório (para importar nc_artesp como pacote)
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# ── Assets do nc_artesp (todos os templates em assets/templates) ────────────────
 # Sempre resolve pelo repositório, independente do caminho do projeto local.
 _NC_ASSETS = Path(__file__).resolve().parent.parent / "nc_artesp" / "assets" / "templates"
+_NC_ARTEMIG_TEMPLATES = Path(__file__).resolve().parent.parent / "nc_artemig" / "assets" / "Template"
 
 # ── Nomes de pastas dos relatórios (alinhados às macros nc_artesp/config.py) ───
 DIR_EXPORTAR = "Exportar"
@@ -109,7 +109,6 @@ DIR_ACUMULADO = "Acumulado"
 DIR_KCOR_CONSERVACAO = "Kcor Conservação"
 DIR_EXPORTAR_EAF = "Exportar_EAF"
 
-# ── Workspace NC por job (stateful pipeline, alinhado a /outputs) ─────────────
 # Estratégias: (1) workspace por job + descarte controlado (2) apagar stage1/2 após sucesso
 # (3) retenção por estado: running nunca, finished 72h, failed 24h (4) ZIP final único
 # Checklist: cada job tem pasta própria | stage intermediário descartável | retenção por estado
@@ -395,31 +394,39 @@ _NOME_MODELO_RESP = "Modelo.xlsx"
 _NOME_MODELO_KCOR = "_Planilha Modelo Kcor-Kria.XLSX"
 
 
-def _ler_asset(nome: str) -> bytes:
-    """Lê um template de nc_artesp/assets/templates/ ou assets/. Lança HTTP 503 se não encontrar."""
-    for pasta in (_NC_ASSETS, _NC_ASSETS.parent):  # templates, depois assets/
+def _ler_asset(nome: str, pasta_base: Path | None = None) -> bytes:
+    """Lê template de nc_artesp ou de pasta_base (ex.: Artemig). pasta_base=None → só nc_artesp."""
+    pastas = ([pasta_base] if pasta_base and pasta_base.is_dir() else []) + [_NC_ASSETS, _NC_ASSETS.parent]
+    for pasta in pastas:
+        if not pasta or not pasta.is_dir():
+            continue
         p = pasta / nome
         if p.is_file():
             return p.read_bytes()
         nome_lower = nome.lower()
-        if pasta.is_dir():
-            for f in pasta.iterdir():
-                if f.is_file() and f.name.lower() == nome_lower:
-                    return f.read_bytes()
+        for f in pasta.iterdir():
+            if f.is_file() and f.name.lower() == nome_lower:
+                return f.read_bytes()
     raise HTTPException(
         status_code=503,
         detail=f"Template '{nome}' não encontrado em nc_artesp/assets/templates/ ou assets/.",
     )
 
 
-def _carregar_modelo_kria() -> bytes:
+def _carregar_modelo_kria(lote: str | None = None) -> bytes:
+    if (lote or "").strip() == "50":
+        try:
+            return _ler_asset(_NOME_MODELO_KRIA, _NC_ARTEMIG_TEMPLATES)
+        except HTTPException:
+            pass
     return _ler_asset(_NOME_MODELO_KRIA)
 
-def _carregar_modelo_resp() -> bytes:
-    """Carrega modelo de Resposta; tenta nomes alternativos para garantir o segundo modelo no pipeline MA."""
+
+def _carregar_modelo_resp(lote: str | None = None) -> bytes:
+    pasta = _NC_ARTEMIG_TEMPLATES if (lote or "").strip() == "50" else None
     for nome in (_NOME_MODELO_RESP, "Modelo Resposta.xlsx", "Modelo_Resposta.xlsx"):
         try:
-            return _ler_asset(nome)
+            return _ler_asset(nome, pasta) if pasta and pasta.is_dir() else _ler_asset(nome)
         except HTTPException:
             continue
     raise HTTPException(
@@ -427,7 +434,13 @@ def _carregar_modelo_resp() -> bytes:
         detail=f"Template de Resposta não encontrado (tentou {_NOME_MODELO_RESP} e alternativas).",
     )
 
-def _carregar_modelo_kcor() -> bytes:
+
+def _carregar_modelo_kcor(lote: str | None = None) -> bytes:
+    if (lote or "").strip() == "50":
+        try:
+            return _ler_asset(_NOME_MODELO_KCOR, _NC_ARTEMIG_TEMPLATES)
+        except HTTPException:
+            pass
     return _ler_asset(_NOME_MODELO_KCOR)
 
 
@@ -515,7 +528,6 @@ def _importar_modulo(nome: str):
         raise HTTPException(503, f"Módulo '{nome}' não carregado: {e}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 router = APIRouter(prefix="/nc", tags=["NC Artesp"])
 
 
@@ -551,7 +563,6 @@ def _importar_pdf_extractor():
         )
 
 
-# ── Analisar PDF de NC Constatação ───────────────────────────────────────────
 @router.post(
     "/analisar-pdf",
     summary="Analisar sequência de KMs e tipos de NCs do PDF de Constatação",
@@ -561,7 +572,7 @@ async def nc_analisar_pdf(
     request: Request,
     pdfs: List[UploadFile] = File(..., description="Um ou mais PDFs de NC Constatação de Rotina Artesp"),
     limiar_km: float = Form(2.0, description="Gap mínimo de KM para gerar alerta (padrão 2 km)"),
-    lote: str = Form("13", description="Lote para o relatório (13, 21 ou 26). Define a concessionária no XLSX."),
+    lote: str = Form("", description="Lote para o relatório (13, 21, 26 ou 50 Artemig). Obrigatório."),
     excel: List[UploadFile] = File(default=[], description="Um ou mais Excels que acompanham os PDFs (mesmo layout do relatório). Preenchem col E, O, P."),
 ):
     """
@@ -570,6 +581,8 @@ async def nc_analisar_pdf(
     Retorna **ZIP** com PDF de análise e XLSX do relatório.
     """
     _check_auth(request)
+    if not (lote or "").strip():
+        raise HTTPException(400, "Selecione o lote.")
     mod = _importar_analisar_pdf()
     try:
         pdfs_bytes = []
@@ -603,22 +616,34 @@ async def nc_analisar_pdf(
                 "alertas não exibidos no PDF (Total NCs: %s)",
                 resumo.get("total", 0),
             )
+        # Nome do ZIP alinhado ao lote do formulário (evita slug 13 quando o cliente envia 50).
+        lote_slug = (lote or "").strip() or "13"
+        try:
+            _rotulo, slug = mod.rotulo_e_slug_lote_para_saida(lote_slug)
+        except Exception:
+            slug = (resumo.get("slug_zip") or "Lote13_Rodovias_Colinas").strip()
+        slug = "".join(c if c.isalnum() or c in "_-" else "_" for c in slug) or "Analise"
+        pasta = slug
+        nome_pdf = f"{pasta}/Analise_NCs_{slug}.pdf"
+        nome_xlsx = f"{pasta}/Relatorio_Fiscalizacao_{slug}.xlsx"
+        nome_zip = f"Relatorio_Analise_NCs_{slug}.zip"
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("Relatório de Análise de NCs.pdf", pdf_rel)
-            zf.writestr("Relatório de Fiscalização de Conservação de Rotina - Não Conformidades.xlsx", xlsx_bytes)
+            zf.writestr(nome_pdf.replace("\\", "/"), pdf_rel)
+            zf.writestr(nome_xlsx.replace("\\", "/"), xlsx_bytes)
         zip_bytes = buf.getvalue()
         return Response(
             content=zip_bytes,
             media_type="application/zip",
             headers={
-                "Content-Disposition": 'attachment; filename="Relatorio_Analise_NCs.zip"',
+                "Content-Disposition": f'attachment; filename="{nome_zip}"',
                 "X-NC-Total":           str(resumo.get("total", 0)),
                 "X-NC-Emergenciais":    str(n_emerg),
                 "X-NC-Alertas":         str(n_alertas),
                 "X-NC-Ocultos":         str(n_ocultos),
                 "X-NC-Arquivos":        str(n_arqs),
                 "X-NC-Relatorio-Dia":   "1" if relatorio_hoje else "0",
+                "X-NC-Zip-Slug":        slug,
             },
         )
     except HTTPException:
@@ -630,16 +655,16 @@ async def nc_analisar_pdf(
         raise HTTPException(500, str(e))
 
 
-# ── Extrair imagens do PDF de NC Constatação ─────────────────────────────────
 @router.post(
     "/extrair-pdf",
     summary="Extrair imagens do PDF de NC Constatação",
-    response_description="ZIP com nc(N).jpg (só foto) e PDF(N).jpg (texto+foto)",
+    response_description="ZIP: lote 50 = arquivos na raiz; outros lotes = nc/ e PDF/",
 )
 async def nc_extrair_pdf(
     request: Request,
     pdfs: List[UploadFile] = File(..., description="Um ou mais PDFs de NC Constatação Artesp"),
     dpi: int = Form(150, description="Resolução de extração (padrão 150)"),
+    lote: str = Form("", description="Número do lote (13, 21, 26, 50…). Obrigatório; entra no nome do ZIP."),
     nomear_por_indice_fiscalizacao: bool = Form(
         False,
         description="Se True, nomeia fotos por índice (00001, 00002...) em vez do código do PDF. Use para Meio Ambiente / Modelo Foto Kria.",
@@ -652,26 +677,42 @@ async def nc_extrair_pdf(
 
     Se nomear_por_indice_fiscalizacao=True, N = 00001, 00002... (índice = coluna V da EAF).
     Caso contrário, N = código extraído do PDF (ex.: 896643, HE.13.0111).
-    Retorna um **ZIP** com todos os arquivos gerados.
+    **Lote 50 (Artemig):** um único nível no ZIP — **Texto (COD).jpg**, **PDF (COD).jpg**, **nc (COD).jpg** na raiz.
+    Demais lotes: pastas **nc/** e **PDF/** como antes.
     """
     _check_auth(request)
+    if not (lote or "").strip():
+        raise HTTPException(400, "Selecione o lote.")
     extrator = _importar_pdf_extractor()
+    lote_m = re.search(r"\d+", (lote or "").strip() or "13")
+    pasta_unica_artemig = (lote_m.group(0) if lote_m else "") == "50"
     try:
         arquivos: dict[str, bytes] = {}
 
         for f in pdfs:
             pdf_bytes = _ler(f)
             zip_bytes_i, _ = extrator.extrair_pdf_para_zip(
-                pdf_bytes, dpi=dpi, nomear_por_indice_fiscalizacao=nomear_por_indice_fiscalizacao
+                pdf_bytes,
+                dpi=dpi,
+                nomear_por_indice_fiscalizacao=nomear_por_indice_fiscalizacao,
+                pasta_unica=pasta_unica_artemig,
             )
             with zipfile.ZipFile(io.BytesIO(zip_bytes_i)) as zf_i:
                 for name in zf_i.namelist():
-                    # Evita sobrescrever se o mesmo código aparecer em PDFs diferentes
-                    final = name
+                    if name.endswith("/") or not name.strip():
+                        continue
+                    final = name.replace("\\", "/")
                     n_col = 1
                     while final in arquivos:
-                        stem = Path(name).stem
-                        final = f"{stem}_{n_col}.jpg"
+                        pth = Path(name)
+                        stem, suf = pth.stem, (pth.suffix or ".jpg")
+                        par = pth.parent
+                        stem2 = f"{stem}_{n_col}"
+                        final = (
+                            f"{par.as_posix()}/{stem2}{suf}"
+                            if str(par) != "."
+                            else f"{stem2}{suf}"
+                        )
                         n_col += 1
                     arquivos[final] = zf_i.read(name)
 
@@ -681,8 +722,8 @@ async def nc_extrair_pdf(
                 zf_out.writestr(nome, data)
 
         n = len(pdfs)
-        nome_zip = (Path(pdfs[0].filename or "nc").stem if n == 1
-                    else f"lote_{n}_pdfs") + "_imagens.zip"
+        lote_num = lote_m.group(0) if lote_m else "13"
+        nome_zip = f"lote_{lote_num}_{n}_pdfs_imagens.zip"
         return _stream_zip(buf.getvalue(), nome_zip)
     except HTTPException:
         raise
@@ -691,7 +732,6 @@ async def nc_extrair_pdf(
         raise HTTPException(500, str(e))
 
 
-# ── M01 — Separar NC ──────────────────────────────────────────────────────────
 @router.post("/separar", summary="M01 — Separar NC da planilha EAF")
 async def nc_separar(
     request: Request,
@@ -765,7 +805,6 @@ async def nc_separar(
         raise HTTPException(500, str(e))
 
 
-# ── Criar E-mail (após M01, uso isolado no front) ─────────────────────────────
 @router.post("/criar-email", summary="Gerar e-mails .eml a partir do ZIP de XLS (saída Separar NC)")
 async def nc_criar_email_endpoint(
     request: Request,
@@ -826,7 +865,6 @@ async def nc_criar_email_endpoint(
         raise HTTPException(500, str(e))
 
 
-# ── M02 — Gerar Modelo Foto ───────────────────────────────────────────────────
 @router.post("/gerar-modelo-foto", summary="M02 — Gerar Kria + Resposta")
 async def nc_gerar_modelo_foto(
     request: Request,
@@ -836,6 +874,7 @@ async def nc_gerar_modelo_foto(
     fotos_pdf_zip: Optional[UploadFile] = File(None, description="ZIP com fotos PDF (N).jpg (opcional — saída do Extrair PDF)"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
+    lote: Optional[str] = Form(None, description="Lote 50 = ARTEMIG (templates em nc_artemig/assets/Template)"),
 ):
     """
     Etapa isolada: sem job_id → cria job, grava stage2/ e final/, marca finished.
@@ -843,6 +882,7 @@ async def nc_gerar_modelo_foto(
     """
     _check_auth(request)
     mod = _importar_modulo("gerar_modelo_foto")
+    lote_ok = (lote or "").strip() or None
     try:
         ws, created = resolve_workspace(job_id or None)
         work = ws.stage2 / "_work"
@@ -856,8 +896,8 @@ async def nc_gerar_modelo_foto(
 
         p_modelo_kria = work / "modelo_kria.xlsx"
         p_modelo_resp = work / "modelo_resp.xlsx"
-        p_modelo_kria.write_bytes(_ler(modelo_kria) if modelo_kria else _carregar_modelo_kria())
-        p_modelo_resp.write_bytes(_ler(modelo_resp) if modelo_resp else _carregar_modelo_resp())
+        p_modelo_kria.write_bytes(_ler(modelo_kria) if modelo_kria else _carregar_modelo_kria(lote_ok))
+        p_modelo_resp.write_bytes(_ler(modelo_resp) if modelo_resp else _carregar_modelo_resp(lote_ok))
 
         pasta_fotos_pdf = None
         pasta_fotos_nc = None
@@ -947,7 +987,6 @@ async def nc_gerar_modelo_foto(
         raise HTTPException(500, str(e))
 
 
-# ── M03 — Inserir NC Conservação ─────────────────────────────────────────────
 @router.post("/inserir-conservacao", summary="M03 — Kcor-Kria Conservação")
 async def nc_inserir_conservacao(
     request: Request,
@@ -956,12 +995,12 @@ async def nc_inserir_conservacao(
     fotos_zip: Optional[UploadFile] = File(None, description="ZIP fotos PDF (opcional)"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
+    lote: Optional[str] = Form(None, description="Lote 50 = ARTEMIG (template em nc_artemig/assets/Template)"),
 ):
     _check_auth(request)
-    return await _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo="conservacao", job_id=job_id, finalize=finalize)
+    return await _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo="conservacao", job_id=job_id, finalize=finalize, lote=lote)
 
 
-# ── M07 — Inserir NC Meio Ambiente ────────────────────────────────────────────
 @router.post("/inserir-meio-ambiente", summary="M07 — Kcor-Kria Meio Ambiente")
 async def nc_inserir_ma(
     request: Request,
@@ -969,9 +1008,10 @@ async def nc_inserir_ma(
     modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: assets/_Planilha Modelo Kcor-Kria.XLSX"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
+    lote: Optional[str] = Form(None, description="Lote 50 = ARTEMIG (template em nc_artemig/assets/Template)"),
 ):
     _check_auth(request)
-    return await _inserir_nc(request, kria_zip, modelo_kcor, None, modo="meio_ambiente", job_id=job_id, finalize=finalize)
+    return await _inserir_nc(request, kria_zip, modelo_kcor, None, modo="meio_ambiente", job_id=job_id, finalize=finalize, lote=lote)
 
 
 @router.post("/inserir-meio-ambiente-pdf", summary="M07 — Separar NC Meio Ambiente a partir de PDF(s)")
@@ -1053,8 +1093,8 @@ async def nc_inserir_ma_pdf(
             ws, "final" if is_final else "stage1",
             download_urls=download_urls,
             final_files=[nome_zip] if is_final else None,
-            step_label="Receber EAF",
-            next_step_label="Separar NC",
+            step_label="Meio Ambiente PDF",
+            next_step_label="Acumulado",
         ))
     except HTTPException:
         raise
@@ -1070,6 +1110,7 @@ async def nc_pipeline_ma_pdf(
     imagens_zip: Optional[UploadFile] = File(None, description="ZIP opcional com imagens extraídas (nc (N).jpg, PDF (N).jpg). Se enviado, é extraído no início e usado no M2."),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
+    lote: Optional[str] = Form(None, description="Lote 50 = ARTEMIG (templates em nc_artemig/assets/Template)"),
 ):
     """
     Executa o equivalente a M1, M2 e M3 a partir do PDF de Meio Ambiente:
@@ -1109,18 +1150,18 @@ async def nc_pipeline_ma_pdf(
                 logger.warning("Pipeline MA: falha ao extrair ZIP de imagens: %s", e_zip)
         pdf_bytes = await pdf.read()
         nome_origem = (pdf.filename or "PDF MA").replace(".pdf", "").replace(".PDF", "")[:50]
-        # Carregar modelos Kria e Resposta dos assets para o M2 gerar os dois (Kria + Resposta)
+        lote_ok = (lote or "").strip() or None
         p_kria = work / "modelo_kria_ma.xlsx"
         p_resp = work / "modelo_resp_ma.xlsx"
         modelo_kria_ma = None
         modelo_resp_ma = None
         try:
-            p_kria.write_bytes(_carregar_modelo_kria())
+            p_kria.write_bytes(_carregar_modelo_kria(lote_ok))
             modelo_kria_ma = p_kria
         except HTTPException:
             pass
         try:
-            p_resp.write_bytes(_carregar_modelo_resp())
+            p_resp.write_bytes(_carregar_modelo_resp(lote_ok))
             modelo_resp_ma = p_resp
         except HTTPException:
             # Fallback: usar o mesmo modelo do Kria para o Resposta e garantir que o segundo modelo seja gerado
@@ -1237,8 +1278,9 @@ async def nc_pipeline_ma_pdf(
         raise HTTPException(500, str(e))
 
 
-async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: Optional[str] = None, finalize: bool = False):
+async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: Optional[str] = None, finalize: bool = False, lote: Optional[str] = None):
     mod = _importar_modulo("inserir_nc_kria")
+    lote_ok = (lote or "").strip() or None
     try:
         ws, created = resolve_workspace(job_id or None)
         work = ws.stage2 / "_work"
@@ -1248,7 +1290,6 @@ async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: O
         pasta_kria.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(_ler(kria_zip))) as zf:
             zf.extractall(str(pasta_kria))
-        # M02 devolve ZIP com Kria/*.xlsx e Respostas Pendentes/*.xlsx; M03 usa só os Kria
         pasta_entrada = pasta_kria
         for sub in ("Kria", "kria"):
             cand = pasta_kria / sub
@@ -1259,7 +1300,7 @@ async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: O
             pasta_entrada = pasta_kria
 
         p_modelo = work / "modelo.xlsx"
-        p_modelo.write_bytes(_ler(modelo_kcor) if modelo_kcor else _carregar_modelo_kcor())
+        p_modelo.write_bytes(_ler(modelo_kcor) if modelo_kcor else _carregar_modelo_kcor(lote_ok))
 
         pasta_fotos = None
         if fotos_zip:
@@ -1273,16 +1314,28 @@ async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: O
         pasta_imagens.mkdir(parents=True, exist_ok=True)
         pasta_saida.mkdir(parents=True, exist_ok=True)
 
-        fn = mod.executar_conservacao if modo == "conservacao" else mod.executar_meio_ambiente
-        fn(
-            pasta_entrada=pasta_entrada,
-            pasta_imagens=pasta_imagens,
-            modelo_kcor=p_modelo,
-            pasta_saida=pasta_saida,
-            pasta_fotos_pdf=pasta_fotos,
-            pasta_fotos_nc=pasta_fotos if fotos_zip else None,
-            forcar_fallback=True,
-        )
+        regime_artemig = modo == "conservacao" and (lote_ok or "").strip() == "50"
+        if modo == "conservacao":
+            mod.executar_conservacao(
+                pasta_entrada=pasta_entrada,
+                pasta_imagens=pasta_imagens,
+                modelo_kcor=p_modelo,
+                pasta_saida=pasta_saida,
+                pasta_fotos_pdf=pasta_fotos,
+                pasta_fotos_nc=pasta_fotos if fotos_zip else None,
+                forcar_fallback=True,
+                regime_artemig=regime_artemig,
+            )
+        else:
+            mod.executar_meio_ambiente(
+                pasta_entrada=pasta_entrada,
+                pasta_imagens=pasta_imagens,
+                modelo_kcor=p_modelo,
+                pasta_saida=pasta_saida,
+                pasta_fotos_pdf=pasta_fotos,
+                pasta_fotos_nc=pasta_fotos if fotos_zip else None,
+                forcar_fallback=True,
+            )
 
         buf = io.BytesIO()
         pasta_zip_ma = "Kcor-Kria Meio Ambiente"  # pasta identificada dentro do ZIP de MA
@@ -1320,7 +1373,6 @@ async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: O
         raise HTTPException(500, str(e))
 
 
-# ── M04 — Juntar Arquivos ─────────────────────────────────────────────────────
 @router.post("/juntar", summary="M04 — Consolidar Acumulado")
 async def nc_juntar(
     request: Request,
@@ -1415,7 +1467,6 @@ async def nc_juntar(
         raise HTTPException(500, str(e))
 
 
-# ── M05 — Inserir Número Kria ─────────────────────────────────────────────────
 @router.post("/inserir-numero", summary="M05 — Inserir Nº Kria no Acumulado")
 async def nc_inserir_numero(
     request: Request,
@@ -1466,7 +1517,6 @@ async def nc_inserir_numero(
         raise HTTPException(500, str(e))
 
 
-# ── M06 — Exportar Calendário ─────────────────────────────────────────────────
 @router.post("/exportar-calendario", summary="M06 — Exportar eventos para iCalendar (.ics)")
 async def nc_exportar_calendario(
     request: Request,
@@ -1503,7 +1553,6 @@ async def nc_exportar_calendario(
         raise HTTPException(500, str(e))
 
 
-# ── M08 — Organizar Imagens ───────────────────────────────────────────────────
 @router.post("/organizar-imagens", summary="M08 — Organizar imagens por tipo de NC")
 async def nc_organizar_imagens(
     request: Request,
@@ -1543,7 +1592,6 @@ async def nc_organizar_imagens(
         raise HTTPException(500, str(e))
 
 
-# ── Workspace stateful (job por execução) ─────────────────────────────────────
 @router.post("/job", summary="Criar workspace por execução (job_id)")
 async def nc_job_create(request: Request):
     """
@@ -1609,7 +1657,6 @@ async def nc_job_status_touch(request: Request, job_id: str):
     return {"ok": True, "job": job}
 
 
-# ── Etapa 1: Upload único + extração (M01) ────────────────────────────────────
 @router.post("/start", summary="Etapa 1 — Upload único e extração (M01)")
 async def nc_start(
     request: Request,
@@ -1664,7 +1711,6 @@ class NCStage2Params(BaseModel):
     sufixo: str = "26"
 
 
-# ── Etapa 2: Processamento usando arquivos já salvos ──────────────────────────
 @router.post("/stage2", summary="Etapa 2 — Processamento (M02→M06) com upload opcional de imagens PDF")
 async def nc_stage2(
     request: Request,
@@ -1672,6 +1718,7 @@ async def nc_stage2(
     numero_inicial: int = Form(1, description="Número inicial para M04"),
     sufixo: str = Form("26", description="Sufixo para M04"),
     imagens_pdf_zip: Optional[UploadFile] = File(None, description="ZIP opcional com imagens PDF (N).jpg (saída do Extrair PDF). Se enviado, os e-mails embutirão as fotos."),
+    lote: Optional[str] = Form(None, description="Lote 50 = ARTEMIG (templates em nc_artemig/assets/Template)"),
 ):
     """
     Recebe job_id + parâmetros e, opcionalmente, um ZIP com imagens extraídas do PDF.
@@ -1729,17 +1776,17 @@ async def nc_stage2(
         except Exception as e_email:
             logger.warning("Módulo NC Email (após M01): %s", e_email)
 
+        lote_ok = (lote or "").strip() or None
         p_kria = work / "modelo_kria.xlsx"
         p_resp = work / "modelo_resp.xlsx"
-        p_kria.write_bytes(_carregar_modelo_kria())
-        p_resp.write_bytes(_carregar_modelo_resp())
+        p_kria.write_bytes(_carregar_modelo_kria(lote_ok))
+        p_resp.write_bytes(_carregar_modelo_resp(lote_ok))
 
         pasta_kria = work / DIR_KRIA
         pasta_resp = work / DIR_RESPOSTAS_PENDENTES
         pasta_kria.mkdir(exist_ok=True)
         pasta_resp.mkdir(exist_ok=True)
 
-        # M02 — Gerar modelo foto (grava em work/kria e work/resp)
         mod_modelo.executar(
             pasta_xls=pasta_xls,
             modelo_kria=p_kria,
@@ -1754,9 +1801,8 @@ async def nc_stage2(
             for f in pasta_kria.rglob("*.xlsx"):
                 zf.write(f, f.name)
 
-        # M03 — Inserir conservação
         p_modelo_kcor = work / "modelo_kcor.xlsx"
-        p_modelo_kcor.write_bytes(_carregar_modelo_kcor())
+        p_modelo_kcor.write_bytes(_carregar_modelo_kcor(lote_ok))
         pasta_saida = work / DIR_CONSERVACAO
         pasta_saida.mkdir(exist_ok=True)
         pasta_imagens = work / DIR_IMAGENS_CONSERVACAO
@@ -1768,6 +1814,7 @@ async def nc_stage2(
             pasta_saida=pasta_saida,
             pasta_fotos_pdf=None,
             forcar_fallback=True,
+            regime_artemig=(lote_ok or "").strip() == "50",
         )
         kcor_zip = ws.stage2 / "kcor.zip"
         with zipfile.ZipFile(kcor_zip, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -1867,7 +1914,6 @@ async def nc_stage2(
         raise HTTPException(500, str(e))
 
 
-# ── Status ────────────────────────────────────────────────────────────────────
 @router.get("/", summary="Status do módulo NC Artesp")
 async def nc_info():
     return {

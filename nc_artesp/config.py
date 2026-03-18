@@ -13,7 +13,6 @@ import os
 import re
 from pathlib import Path
 
-# ─── Helpers de leitura de env ──────────────────────────────────────────────
 
 def _env_str(key: str, default: str) -> str:
     return (os.environ.get(key) or "").strip() or default
@@ -25,7 +24,6 @@ def _env_int(key: str, default: int) -> int:
     except ValueError:
         return default
 
-# ─── Raiz do projeto (fallback local Windows) ────────────────────────────────
 _BASE = Path(_env_str("ARTESP_NC_BASE", r"C:\AUTOMAÇÃO_MACROS\Macros Kcor Ellen\artesp_nc_v2.0"))
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -41,13 +39,13 @@ _LOTE_CONCESSIONARIA = {
     "13": "Rodovias das Colinas",
     "21": "Rodovias do Tietê",
     "26": "SP Serra",
-    "50": "Nascentes das Gerais",
+    "50": "CONSOL",
 }
-# Menu de escolha no front (Análise PDF): apenas 13, 21, 26; Lote 50 fica fora do menu
 LOTES_MENU_ANALISE = [
     ("13", "Lote 13 — Rodovias das Colinas"),
     ("21", "Lote 21 — Rodovias do Tietê"),
     ("26", "Lote 26 — SP Serra"),
+    ("50", "Lote 50 — CONSOL (Artemig MG)"),
 ]
 _env_concessionaria    = (os.environ.get("ARTESP_CONCESSIONARIA_NOME") or "").strip()
 _lote_num              = re.search(r"\d+", M01_LOTE)
@@ -354,29 +352,154 @@ MAPA_EAF: list[dict] = [
 
 # Por lote (13, 21, 26): EAFs e responsáveis podem ser outros. Lote 13 = mapa acima (já em uso).
 # Preencher "21" e "26" quando houver dados (planilhas Excel de cada trecho). Fallback = Lote 13.
+# Lote 21 — Rodovias do Tietê (trechos fiscalizados). SP 300: Autoroutes G2 (158+650–240+999) e MMG (241+000–336+500).
+def _trechos_lote21_nep() -> list:
+    r = []
+    for rod in (
+        "SP 101",
+        "SP 113",
+        "SP 308",
+        "SPA 022/101",
+        "SPA 026/101",
+        "SPA 032/101",
+        "SPA 043/101",
+        "SPA 051/101",
+        "SPA 139/308",
+        "SPA 155/308",
+        "SPI 162/308",
+        "CPR 010/308",
+        "CPR 152/101",
+        "ESF 020/101",
+        "HRT 050/101",
+        "IDT 085/101",
+        "MOR 040/101",
+        "MOR 137/101",
+        "MOR 293/101",
+        "PFZ 080/101",
+        "PIR 030/308",
+        "RFR 154/101",
+        "RPD 015/308",
+        "RPD 020/308",
+    ):
+        r.append({"rodovia": rod, "km_ini": 0.0, "km_fim": 9999.0})
+    return r
+
+
+def _trechos_lote21_autoroutes_g2() -> list:
+    r = [
+        {"rodovia": "SP 300", "km_ini": 158.650, "km_fim": 240.999},
+    ]
+    for rod in (
+        "SPA 159/300",
+        "SPA 172/300",
+        "SPA 176/300",
+        "SPA 193/300",
+        "SPA 196/300",
+        "SPI 181/300",
+        "AHB 146/300",
+        "CHS 326/300",
+        "CHS 387/300",
+        "LRP 321/300",
+        "TIT 366/113",
+    ):
+        r.append({"rodovia": rod, "km_ini": 0.0, "km_fim": 9999.0})
+    return r
+
+
+def _trechos_lote21_mmg() -> list:
+    r = [
+        {"rodovia": "SP 209", "km_ini": 0.0, "km_fim": 9999.0},
+        {"rodovia": "SP 300", "km_ini": 241.000, "km_fim": 336.500},
+    ]
+    for rod in (
+        "SPA 007/209",
+        "SPA 231/300",
+        "SPA 251/300",
+        "SPA 270/300",
+        "SPA 283/300",
+        "SPA 241/300",
+        "BRE 005/300",
+        "BRE 232/300",
+        "BTC 055/300",
+        "BTC 260/209",
+        "BTC 353/300",
+        "BTC 040/209",
+        "ITN 313/209",
+        "LEP 030/300",
+        "LEP 119/300",
+        "LEP 148/300",
+        "LEP 321/300",
+        "LEP 347/300",
+        "LEP 357/300",
+        "LEP 363/300",
+        "LEP 374/300",
+        "MTB 070/300",
+        "MTB 148/300",
+        "MTB 195/300",
+        "PRD 010/300",
+        "SMN 040/300",
+        "SMN 373/300",
+    ):
+        r.append({"rodovia": rod, "km_ini": 0.0, "km_fim": 9999.0})
+    return r
+
+
 MAPA_EAF_POR_LOTE: dict[str, list] = {
     "13": MAPA_EAF,
-    "21": [],  # preencher trechos/EAFs do Lote 21 quando houver
+    "21": [
+        {
+            "grupo": 2,
+            "empresa": "NEP",
+            "email": "",
+            "trechos": _trechos_lote21_nep(),
+        },
+        {
+            "grupo": 3,
+            "empresa": "Autoroutes G2",
+            "email": "",
+            "trechos": _trechos_lote21_autoroutes_g2(),
+        },
+        {
+            "grupo": 3,
+            "empresa": "MMG",
+            "email": "",
+            "trechos": _trechos_lote21_mmg(),
+        },
+    ],
     "26": [],  # preencher trechos/EAFs do Lote 26 quando houver
 }
 MAPA_RESPONSAVEL_TECNICO_POR_LOTE: dict[str, dict] = {
     "13": MAPA_RESPONSAVEL_TECNICO,
-    "21": {},  # preencher quando houver (ex.: nomes dos fiscais nas planilhas do trecho)
+    "21": {
+        "NEP": "Vinicius Francalassi Nalesso",
+        "Autoroutes G2": "Ricardo Antonio Pacheco Machado Jr",
+        "MMG": "Guilherme Macedo",
+    },
     "26": {},
 }
 
 
 def get_mapa_eaf(lote: str) -> list:
-    """Retorna MAPA_EAF do lote (13, 21, 26). Se vazio ou inexistente, usa Lote 13 (mantém comportamento atual)."""
     num = (lote or "").strip()
     if not num:
         return MAPA_EAF
+    if num == "50":
+        try:
+            from nc_artemig import config as cfg_artemig
+            return cfg_artemig.MAPA_EAF_POR_LOTE.get("50") or []
+        except ImportError:
+            return []
     return MAPA_EAF_POR_LOTE.get(num) or MAPA_EAF
 
 
 def get_mapa_responsavel_tecnico(lote: str) -> dict:
-    """Retorna MAPA_RESPONSAVEL_TECNICO do lote. Se vazio ou inexistente, usa Lote 13."""
     num = (lote or "").strip()
     if not num:
         return MAPA_RESPONSAVEL_TECNICO
+    if num == "50":
+        try:
+            from nc_artemig import config as cfg_artemig
+            return cfg_artemig.MAPA_RESPONSAVEL_TECNICO_POR_LOTE.get("50") or {}
+        except ImportError:
+            return {}
     return MAPA_RESPONSAVEL_TECNICO_POR_LOTE.get(num) or MAPA_RESPONSAVEL_TECNICO

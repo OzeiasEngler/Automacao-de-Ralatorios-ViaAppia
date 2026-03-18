@@ -15,6 +15,24 @@
     #geojson-page .log-container { height: 240px; min-height: 200px; max-height: 38vh; }
     #geojson-page .upload-zone { padding: 24px 18px; }
     #geojson-page .upload-zone .icon { font-size: 2rem; margin-bottom: 10px; }
+    #geojson-page .upload-zone.geojson-sem-lote {
+      opacity: 0.55;
+      pointer-events: none;
+      position: relative;
+    }
+    #geojson-page .upload-zone.geojson-sem-lote::after {
+      content: 'Selecione o lote acima';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.3);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: inherit;
+    }
     #geojson-page .upload-zone h3 { font-size: .95rem; }
     #geojson-page .upload-zone p { font-size: .78rem; }
     #geojson-page .opcoes-relatorio { margin-top: 14px; padding-top: 12px; }
@@ -37,8 +55,6 @@
 </head>
 <body>
   <div id="upload-indicator" class="upload-indicator" role="status" aria-live="polite" aria-label="Enviando arquivos"></div>
-
-  <!-- ═══ LOGIN OVERLAY ═══ -->
   <div class="login-overlay" id="loginOverlay">
     <div class="login-card animate-in">
       <div class="logo">
@@ -62,8 +78,6 @@
       </form>
     </div>
   </div>
-
-  <!-- ═══ TOPBAR ═══ -->
   <header class="topbar">
     <div class="topbar-brand">
       <span class="icon">🛣️</span>
@@ -77,18 +91,14 @@
       <button class="btn-logout" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Sair</button>
     </div>
   </header>
-
-  <!-- ═══ NAVIGATION ═══ -->
   <nav class="topnav">
     <a href="/web"><span class="nav-icon"><i class="fas fa-home"></i></span> Início</a>
     <a href="/web/geojson" class="active"><span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> GeoJSON ARTESP</a>
     <a href="/web/fotos"><span class="nav-icon"><i class="fas fa-camera"></i></span> Fotos de Campo</a>
-    <a href="/web/nc"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP</a>
+    <a href="/web/nc"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP - SP / NC ARTEMIG - MG</a>
     <div class="topnav-spacer"></div>
     <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
   </nav>
-
-  <!-- ═══ PAGE CONTENT ═══ -->
   <div class="page-content" id="geojson-page">
 
     <div class="page-header animate-in">
@@ -109,22 +119,9 @@
           </div>
         </div>
         <div class="card-body">
-          <div class="upload-zone" id="uploadZone">
-            <input type="file" id="arquivoExcel" accept=".xlsx,.xls,.csv" style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;cursor:pointer;">
-            <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
-            <h3>Arraste o arquivo Excel aqui</h3>
-            <p>ou clique para selecionar · .xlsx, .xls, .csv</p>
-            <p style="font-size:0.7rem;color:var(--text-muted);margin-top:10px;max-width:340px;margin-left:auto;margin-right:auto;">Se o Edge ou Chrome não listar arquivos na pasta, navegue até a pasta e selecione o arquivo manualmente.</p>
-          </div>
-
-          <div class="file-info" id="fileInfo">
-            <i class="fas fa-file-excel"></i>
-            <span id="fileName">arquivo.xlsx</span>
-            <span style="margin-left:auto;color:var(--text-muted)" id="fileSize">0 KB</span>
-          </div>
-
-          <div class="opcoes-relatorio" id="opcoesRelatorio">
+          <div class="opcoes-relatorio" id="opcoesRelatorio" style="margin-bottom:18px">
             <div class="opcoes-title"><i class="fas fa-sliders-h"></i> Opções do relatório</div>
+            <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px">Escolha o <strong>lote</strong> primeiro; só depois anexe o Excel abaixo.</p>
             <div class="opcoes-grid">
               <div class="opcoes-item">
                 <label for="selLote">Lote</label>
@@ -151,6 +148,20 @@
               <label class="opcoes-check"><input type="checkbox" id="chkDashboard" checked> Gerar dashboard (HTML)</label>
               <label class="opcoes-check"><input type="checkbox" id="chkAssinar" checked> Assinar digitalmente</label>
             </div>
+          </div>
+
+          <div class="upload-zone geojson-sem-lote" id="uploadZone">
+            <input type="file" id="arquivoExcel" accept=".xlsx,.xls,.csv" style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;cursor:pointer;">
+            <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
+            <h3>Arraste o arquivo Excel aqui</h3>
+            <p>ou clique para selecionar · .xlsx, .xls, .csv</p>
+            <p style="font-size:0.7rem;color:var(--text-muted);margin-top:10px;max-width:340px;margin-left:auto;margin-right:auto;">Se o Edge ou Chrome não listar arquivos na pasta, navegue até a pasta e selecione o arquivo manualmente.</p>
+          </div>
+
+          <div class="file-info" id="fileInfo">
+            <i class="fas fa-file-excel"></i>
+            <span id="fileName">arquivo.xlsx</span>
+            <span style="margin-left:auto;color:var(--text-muted)" id="fileSize">0 KB</span>
           </div>
 
           <div class="progress-bar-container" id="progressContainer">
@@ -202,7 +213,6 @@
 
   <script src="/web-static/auth-primeiro-acesso.js"></script>
   <script>
-    /* ═══════ AUTH ═══════ */
     const loginOverlay = document.getElementById('loginOverlay');
     const token = localStorage.getItem('artesp_token');
     const userEmail = localStorage.getItem('artesp_user_email');
@@ -227,7 +237,15 @@
         const selAno = document.getElementById('selAno');
         const selMes = document.getElementById('selMes');
         if (selLote && cfg.lotes) {
-          selLote.innerHTML = cfg.lotes.map(function(o) { return '<option value="' + (o.key || o.sigla || '') + '">' + (o.label || o.sigla || o.key) + '</option>'; }).join('');
+          selLote.innerHTML = '<option value="">Selecione o lote…</option>' + cfg.lotes.map(function(o) { return '<option value="' + (o.key || o.sigla || '') + '">' + (o.label || o.sigla || o.key) + '</option>'; }).join('');
+          selLote.onchange = function() {
+            btnConverter.disabled = !(selectedFile && String(selLote.value || '').trim());
+            var uz = document.getElementById('uploadZone');
+            if (uz) uz.classList.toggle('geojson-sem-lote', !String(selLote.value || '').trim());
+          };
+          btnConverter.disabled = !(selectedFile && String(selLote.value || '').trim());
+          var uz0 = document.getElementById('uploadZone');
+          if (uz0) uz0.classList.toggle('geojson-sem-lote', !String(selLote.value || '').trim());
         }
         if (selModalidade && cfg.modalidades) {
           selModalidade.innerHTML = cfg.modalidades.map(function(o) { return '<option value="' + (o.key || '') + '">' + (o.label || o.chave || o.key) + '</option>'; }).join('');
@@ -308,8 +326,6 @@
       localStorage.removeItem('artesp_user_email');
       location.reload();
     });
-
-    /* ═══════ UPLOAD ═══════ */
     const uploadZone = document.getElementById('uploadZone');
     const inputFile = document.getElementById('arquivoExcel');
     const fileInfo = document.getElementById('fileInfo');
@@ -329,23 +345,31 @@
     }
 
     uploadZone.addEventListener('click', (e) => {
-      if (!e.target.closest('a') && !e.target.closest('button')) inputFile.click();
+      if (e.target.closest('a') || e.target.closest('button')) return;
+      var sl = document.getElementById('selLote');
+      if (!sl || !String(sl.value || '').trim()) { logMsg('Selecione o <strong>lote</strong> nas opções acima.', 'error'); return; }
+      inputFile.click();
     });
     uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
     uploadZone.addEventListener('dragleave', () => { uploadZone.classList.remove('dragover'); });
     uploadZone.addEventListener('drop', (e) => {
       e.preventDefault(); uploadZone.classList.remove('dragover');
+      var sl2 = document.getElementById('selLote');
+      if (!sl2 || !String(sl2.value || '').trim()) { logMsg('Selecione o lote antes de soltar o arquivo.', 'error'); return; }
       if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
     });
 
     inputFile.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
 
     function handleFile(file) {
+      var sl = document.getElementById('selLote');
+      if (!sl || !String(sl.value || '').trim()) return;
       selectedFile = file;
       document.getElementById('fileName').textContent = file.name;
       document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
       fileInfo.classList.add('show');
-      btnConverter.disabled = false;
+      var sl = document.getElementById('selLote');
+      btnConverter.disabled = !(sl && String(sl.value || '').trim());
       updateStatus('idle', 'Pronto');
       logMsg('Arquivo selecionado: <strong>' + file.name + '</strong>', 'info');
     }
@@ -361,6 +385,10 @@
       selectedFile = null;
       inputFile.value = '';
       fileInfo.classList.remove('show');
+      var sl = document.getElementById('selLote');
+      if (sl) sl.value = '';
+      var uz = document.getElementById('uploadZone');
+      if (uz) uz.classList.add('geojson-sem-lote');
       btnConverter.disabled = true;
       document.getElementById('resultArea').classList.remove('show');
       document.getElementById('progressContainer').classList.remove('show');
@@ -374,6 +402,8 @@
 
     btnConverter.addEventListener('click', async () => {
       if (!selectedFile) return;
+      var sl = document.getElementById('selLote');
+      if (!sl || !String(sl.value || '').trim()) { logMsg('Selecione o <strong>lote</strong> nas opções do relatório.', 'error'); return; }
       const tk = localStorage.getItem('artesp_token');
       if (!tk) { logMsg('Faça login primeiro.', 'error'); return; }
 
@@ -389,7 +419,7 @@
 
       const fd = new FormData();
       fd.append('arquivo_excel', selectedFile);
-      fd.append('lote', (document.getElementById('selLote') && document.getElementById('selLote').value) || '13');
+      fd.append('lote', String(document.getElementById('selLote').value).trim());
       fd.append('modalidade', (document.getElementById('selModalidade') && document.getElementById('selModalidade').value) || '1');
       fd.append('versao', (document.getElementById('selVersao') && document.getElementById('selVersao').value) || 'r0');
       fd.append('ano', (document.getElementById('selAno') && document.getElementById('selAno').value) || String(new Date().getFullYear()));

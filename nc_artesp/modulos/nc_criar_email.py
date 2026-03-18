@@ -272,8 +272,6 @@ def _responsavel_casa_com_remetente(responsavel: str, sender_email: str, sender_
     return False
 
 
-# ─── MÉTODO OUTLOOK COM ───────────────────────────────────────────────────────
-
 def _criar_via_outlook(pasta_xls: Path,
                         pasta_fotos_pdf: Path,
                         callback_progresso=None) -> int:
@@ -379,8 +377,6 @@ def _criar_via_outlook(pasta_xls: Path,
     return rascunhos
 
 
-# ─── MÉTODO ALTERNATIVO: gerar .eml ──────────────────────────────────────────
-
 def _criar_eml(pasta_xls: Path,
                pasta_fotos_pdf: Path,
                pasta_saida: Path,
@@ -424,7 +420,6 @@ def _criar_eml(pasta_xls: Path,
         if to_addr:
             msg["To"] = to_addr
 
-        # ── Montar HTML com CID ───────────────────────────────────────────────
         corpo_html = _html_saudacao()
         partes_img = []
 
@@ -460,8 +455,6 @@ def _criar_eml(pasta_xls: Path,
 
     return gerados
 
-
-# ─── INTERFACE PÚBLICA ────────────────────────────────────────────────────────
 
 def executar(pasta_xls: Path | None = None,
              pasta_fotos_pdf: Path | None = None,

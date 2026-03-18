@@ -189,7 +189,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="API Gerador ARTESP", lifespan=lifespan)
 
-# ── Router: Fotos de Campo ────────────────────────────────────────────────────
 try:
     from render_api.fotos_router import router as fotos_router
     app.include_router(fotos_router)
@@ -202,7 +201,6 @@ except ImportError:
     except ImportError as _e:
         logging.warning("Router /fotos não carregado: %s", _e)
 
-# ── Router: NC Artesp ─────────────────────────────────────────────────────────
 try:
     from render_api.nc_router import router as nc_router
     app.include_router(nc_router)
@@ -2918,6 +2916,8 @@ async def gerar_relatorio_excel(
         raise HTTPException(status_code=400, detail="Ano inválido.")
     if not (2020 <= ano_int <= 2035):
         raise HTTPException(status_code=400, detail="Ano fora do intervalo (2020–2035).")
+    if not (lote or "").strip():
+        raise HTTPException(status_code=400, detail="Selecione o lote.")
 
     mes_int = None
     if mes and mes.strip():
@@ -3120,6 +3120,8 @@ async def gerar_com_progresso(
         raise HTTPException(status_code=400, detail="Ano inválido.")
     if not (2020 <= ano_int <= 2035):
         raise HTTPException(status_code=400, detail="Ano fora do intervalo (2020–2035).")
+    if not (lote or "").strip():
+        raise HTTPException(status_code=400, detail="Selecione o lote.")
 
     mes_int = None
     if mes and mes.strip():

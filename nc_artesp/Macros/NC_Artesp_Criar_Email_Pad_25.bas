@@ -1,7 +1,7 @@
 Attribute VB_Name = "NC_Artesp_Criar_Email_Pad_25"
 Sub NC_Artesp_Criar_Email_Padrao_Rotina_Artesp_2025()
 
-'Criar Email Padrão para respostas dos Apontamentos da Artesp de Rotina
+'Criar Email Padrï¿½o para respostas dos Apontamentos da Artesp de Rotina
 
 
     Dim myText As String
@@ -23,15 +23,15 @@ Sub NC_Artesp_Criar_Email_Padrao_Rotina_Artesp_2025()
     Dim reply As MailItem 'object which will represent the reply email
 
 
-Dim Cod_fiscalização(1000), Data_fiscalização(1000), horario(1000), Rodovia(1000), concessionária(1000), Km_Inicial(1000), m_Inicial(1000) As String
+Dim Cod_fiscalizaï¿½ï¿½o(1000), Data_fiscalizaï¿½ï¿½o(1000), horario(1000), Rodovia(1000), concessionï¿½ria(1000), Km_Inicial(1000), m_Inicial(1000) As String
 Dim km_final(1000), m_Final(1000), Sentido(1000), Data_Retorno(1000), Status_Retorno(1000), Tipo_Atividade(1000), Grupo_Atividade(1000), Atividade(1000) As String
-Dim Número_notificação(1000), Data_Envio(1000), Data_Reparo(1000), Reponsável(1000), Foto(1000) As String
+Dim Nï¿½mero_notificaï¿½ï¿½o(1000), Data_Envio(1000), Data_Reparo(1000), Reponsï¿½vel(1000), Foto(1000) As String
 
 
 
   DisplayAlerts = False
 
-    Spath = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatório EAF - NC\Exportar\"
+    Spath = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatï¿½rio EAF - NC\Exportar\"
     sFile = Dir(Spath & "*.xls")
     
   Do While sFile <> ""
@@ -51,8 +51,8 @@ ultimalinha = ExWbk2.Sheets("Sheet0").Cells(65536, 3).End(xlUp).Row
 
 For i = 5 To ultimalinha
 
-Cod_fiscalização(x) = ExWbk2.Sheets("Sheet0").Range("C" & i).Value
-Data_fiscalização(x) = ExWbk2.Sheets("Sheet0").Range("D" & i).Value
+Cod_fiscalizaï¿½ï¿½o(x) = ExWbk2.Sheets("Sheet0").Range("C" & i).Value
+Data_fiscalizaï¿½ï¿½o(x) = ExWbk2.Sheets("Sheet0").Range("D" & i).Value
 horario(x) = ExWbk2.Sheets("Sheet0").Range("E" & i).Value
 Rodovia(x) = ExWbk2.Sheets("Sheet0").Range("F" & i).Value
     If Left(Rodovia(x), 6) = "SP 075" Then Rodovia(x) = "SP 075"
@@ -62,7 +62,7 @@ Rodovia(x) = ExWbk2.Sheets("Sheet0").Range("F" & i).Value
     If Left(Rodovia(x), 6) = "SPI 10" Then Rodovia(x) = "SPI 102/300"
 
 
-concessionária(x) = ExWbk2.Sheets("Sheet0").Range("G" & i).Value
+concessionï¿½ria(x) = ExWbk2.Sheets("Sheet0").Range("G" & i).Value
 Km_Inicial(x) = ExWbk2.Sheets("Sheet0").Range("H" & i).Value
 m_Inicial(x) = ExWbk2.Sheets("Sheet0").Range("I" & i).Value
 km_final(x) = ExWbk2.Sheets("Sheet0").Range("J" & i).Value
@@ -73,16 +73,15 @@ Status_Retorno(x) = ExWbk2.Sheets("Sheet0").Range("N" & i).Value
 Tipo_Atividade(x) = ExWbk2.Sheets("Sheet0").Range("O" & i).Value
 Grupo_Atividade(x) = ExWbk2.Sheets("Sheet0").Range("P" & i).Value
 Atividade(x) = ExWbk2.Sheets("Sheet0").Range("Q" & i).Value
-Número_notificação(x) = ExWbk2.Sheets("Sheet0").Range("R" & i).Value
+Nï¿½mero_notificaï¿½ï¿½o(x) = ExWbk2.Sheets("Sheet0").Range("R" & i).Value
 Data_Envio(x) = ExWbk2.Sheets("Sheet0").Range("S" & i).Value
 Data_Reparo(x) = ExWbk2.Sheets("Sheet0").Range("T" & i).Value
-Reponsável(x) = ExWbk2.Sheets("Sheet0").Range("U" & i).Value
+Reponsï¿½vel(x) = ExWbk2.Sheets("Sheet0").Range("U" & i).Value
 Foto(x) = ExWbk2.Sheets("Sheet0").Range("V" & i).Value
 x = x + 1
 Next
 
 
-'_________________
 Dim aOutlook As Object
 Dim aEmail As Object
 Dim obj As Object
@@ -98,7 +97,6 @@ Dim fColorBlue, fColorGreen, fColorRed, fDukeBlue1, fDukeBlue2, fAggieMaroon, fA
 Dim Greeting, emailContent As String
 Dim emailOpen, emailSig As String
 Const olFormatHTML As Long = 2
-'____________________
 
 
 For Each m In Application.ActiveExplorer.Selection
@@ -107,28 +105,27 @@ Set reply = m.ReplyAll
 
             Assunto1 = reply.Subject
             Assunto = Replace(Assunto1, " [Email Externo] ", "")
-            Assunto = Assunto & " - " & Rodovia(5) & " (" & Atividade(5) & ") - " & "Const: " & Data_fiscalização(5) & " - Prazo: " & Data_Reparo(5)
+            Assunto = Assunto & " - " & Rodovia(5) & " (" & Atividade(5) & ") - " & "Const: " & Data_fiscalizaï¿½ï¿½o(5) & " - Prazo: " & Data_Reparo(5)
             
 myText = ""
  
           myText = "Prezados," & "<BR><BR>" & _
-            "Seguem registros fotográficos das superações de não conformidade, dentro do prazo regulamentado." & "<BR><BR>"
+            "Seguem registros fotogrï¿½ficos das superaï¿½ï¿½es de nï¿½o conformidade, dentro do prazo regulamentado." & "<BR><BR>"
             
 
 
 mytext2 = ""
 For l = 5 To ultimalinha
 
-fname = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provisórias - PDF\pdf (" & Foto(l) & ").jpg"
+fname = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provisï¿½rias - PDF\pdf (" & Foto(l) & ").jpg"
 
-'____________________
 Set colAttach = reply.Attachments
 Set oAttach = colAttach.Add(fname)
 Set olkPA = oAttach.PropertyAccessor
 olkPA.SetProperty PR_ATTACH_CONTENT_ID, "pdf%20(" & Foto(l) & ").jpg"
 
 
-mytext2 = "<b><u>" & mytext2 & Rodovia(l) & " - km " & Km_Inicial(l) & "," & m_Inicial(l) & " " & Sentido(l) & " - Const: " & Data_fiscalização(l) & " - Prazo: " & Data_Reparo(l) & " - " & Atividade(l) & " - Cod. Fisc.: " & Cod_fiscalização(l) & "</u></b><BR><BR>" & _
+mytext2 = "<b><u>" & mytext2 & Rodovia(l) & " - km " & Km_Inicial(l) & "," & m_Inicial(l) & " " & Sentido(l) & " - Const: " & Data_fiscalizaï¿½ï¿½o(l) & " - Prazo: " & Data_Reparo(l) & " - " & Atividade(l) & " - Cod. Fisc.: " & Cod_fiscalizaï¿½ï¿½o(l) & "</u></b><BR><BR>" & _
 "<img src=""cid:pdf%20(" & Foto(l) & ").jpg""height=295 width=711>" & "<BR><BR><BR><BR>"
 
 
@@ -164,10 +161,10 @@ ExWbk2.Close SaveChanges:=False
 
 sFile = Dir()
 Loop
-MsgBox "Arquivos Lançados"
+MsgBox "Arquivos Lanï¿½ados"
 Exit Sub
 
-MsgBox "Arquivos Lançados"
+MsgBox "Arquivos Lanï¿½ados"
 
    
 

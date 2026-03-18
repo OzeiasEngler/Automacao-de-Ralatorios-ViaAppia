@@ -251,12 +251,10 @@ def executar(arquivo_acumulado: Path,
                 logger.warning(f"Imagem não encontrada: {origem}")
                 continue
 
-            # ── Normalizar rodovia ──────────────────────────────────────────────
             rod_arq = rodovia
             if rod_arq in ("SPI102/300", "SPI-102/300"):
                 rod_arq = "SP102"
 
-            # ── Montar nome do arquivo destino ──────────────────────────────────
             km_formatado = _km_para_virgula(km_i)
 
             dt_sol_obj = parse_data(dt_sol)
@@ -277,7 +275,6 @@ def executar(arquivo_acumulado: Path,
                 f"{rod_arq} - {sentido} - {km_formatado} - {data_sol_s} - {prazo_s} - {evento_s}.jpg"
             )
 
-            # ── Pasta por tipo ──────────────────────────────────────────────────
             pasta_tipo = pasta_destino / sanitizar_nome(tipo_pasta)
             garantir_pasta(pasta_tipo)
             destino = pasta_tipo / nome_destino
@@ -285,7 +282,6 @@ def executar(arquivo_acumulado: Path,
             if copiar_arquivo(origem, destino):
                 copiadas += 1
 
-            # ── Cópia extra para _Exportar (pavimento) ──────────────────────────
             if tipo in M08_TIPOS_EXPORTAR:
                 destino_exp = pasta_exportar / nome_destino
                 copiar_arquivo(origem, destino_exp)

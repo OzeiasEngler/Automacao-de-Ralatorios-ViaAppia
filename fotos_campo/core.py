@@ -34,7 +34,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-# ── openpyxl ──────────────────────────────────────────────────────────────────
 try:
     import openpyxl
     from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
@@ -48,7 +47,6 @@ try:
 except ImportError:
     OPENPYXL_OK = False
 
-# ── Pillow + piexif ────────────────────────────────────────────────────────────
 try:
     from PIL import Image as PILImage
     import piexif
@@ -70,9 +68,7 @@ def _log_draft_ram(ident: str, size_before: Tuple[int, int], size_after: Tuple[i
     saved = max(0.0, full_mb - after_mb)
     _log_draft.debug("[draft] %s: %dx%d → %dx%d | ~%.2f MB RAM economizados", ident, w0, h0, w1, h1, saved)
 
-# ─────────────────────────────────────────────────────────────────────────────
 # UTILITÁRIOS INTERNOS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _log(cb: _LogCb, msg: str) -> None:
     if cb:
@@ -88,9 +84,7 @@ def _sanitizar_nome(s: str) -> str:
     return s.strip()[:80]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # MÓDULO 1 – LISTAR ARQUIVOS + GPS EXIF
-# ─────────────────────────────────────────────────────────────────────────────
 
 EXTS_FOTO = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 
@@ -297,9 +291,7 @@ def listar_de_zip(zip_bytes: bytes, log_cb: _LogCb = None) -> Tuple[bytes, int]:
         return xlsx_path.read_bytes(), len(registros)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # MÓDULO 2 – COORDENADAS → RODOVIA / KM / SENTIDO
-# ─────────────────────────────────────────────────────────────────────────────
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Distância Haversine entre dois pontos GPS (em km)."""
@@ -440,9 +432,7 @@ def listar_rodovia_por_caminho(xlsx_listagem_km_bytes: bytes) -> List[Tuple[str,
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # MÓDULO 3 – COPIAR E RENOMEAR ARQUIVOS
-# ─────────────────────────────────────────────────────────────────────────────
 
 MODOS_DESCRICAO: Dict[int, str] = {
     1: "Pasta Original  →  Rodovia - Sentido - km.jpg",
@@ -549,7 +539,6 @@ def copiar_renomear_xlsx(planilha: str, modo: int,
     return stats
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # MÓDULO 4 – RELATÓRIO FOTOGRÁFICO 2 LADOS
 # Template: nc_artesp/assets/Planilha Modelo Conservação - Foto 2 Lados.xlsx
 # Estrutura validada no template (aba Relat_Foto_Cons):
@@ -806,7 +795,6 @@ def _escrever_em_celula_bloco(ws, row: int, col: int, value) -> None:
         _forcar_fonte_template(new_cell)
 
 
-
 def _fill_branco():
     # Branco sólido (sem canal alfa). '00FFFFFF' pode virar cinza em alguns Excel.
     return PatternFill(fill_type="solid", start_color="FFFFFF", end_color="FFFFFF")
@@ -886,7 +874,6 @@ def _copiar_estilo(src, dst):
         pass
 
 
-
 def _replicar_bloco(ws, linha_origem: int, linha_destino: int,
                     n_linhas: int = TAMANHO_BLOCO) -> None:
     """Replica um bloco completo do template, incluindo a área da FOTO (linhas acima do rótulo).
@@ -940,7 +927,6 @@ def _replicar_bloco(ws, linha_origem: int, linha_destino: int,
                 )
             except Exception:
                 pass
-
 
 
 def preparar_fotos_para_relatorio(planilha_dados: str, pasta_destino: str,
@@ -1319,9 +1305,8 @@ def relatorio_foto2lados_bytes(xlsx_dados_bytes: bytes, xlsx_modelo_bytes: bytes
         return buf.getvalue()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # MÓDULO 5 – EXPORTAR PARA KCOR-KRIA
-# ─────────────────────────────────────────────────────────────────────────────
+# Colunas espelho macro M03 (Art_031) / nc_artesp.modulos.inserir_nc_kria — conservação.
 
 MAPA_RODOVIAS: Dict[str, str] = {
     "SP 075": "SP075",  "SP 127": "SP127",  "SP 280": "SP280",
@@ -1329,14 +1314,63 @@ MAPA_RODOVIAS: Dict[str, str] = {
     "CP 147": "FORA",   "CP 308": "FORA",
 }
 
-CABECALHO_KCOR = [
-    "NumItem", "Origem", "Motivo", "Classificação", "Tipo",
-    "Rodovia", "KMi", "KMf", "Sentido", "Local",
-    "Gestor", "Executor", "Data Solicitação", "Data Suspensão",
-    "DtInicio_Prog", "DtFim_Prog", "DtInicio_Exec", "DtFim_Exec",
-    "Prazo", "ObsGestor", "Observações", "Diretório", "Arquivos",
-    "Indicador", "Unidade",
-]
+_K_A, _K_B, _K_C, _K_D, _K_E = 1, 2, 3, 4, 5
+_K_F, _K_G, _K_H, _K_I, _K_J = 6, 7, 8, 9, 10
+_K_K, _K_L, _K_M, _K_N, _K_O = 11, 12, 13, 14, 15
+_K_P, _K_Q, _K_R, _K_S, _K_T = 16, 17, 18, 19, 20
+_K_U, _K_V, _K_W, _K_X, _K_Y = 21, 22, 23, 24, 25
+
+_COLS_KCOR_M03 = tuple(range(1, 26))
+
+
+def _exif_dd_mm_yyyy(exif_full: str) -> str:
+    if not exif_full:
+        return ""
+    return str(exif_full).strip().split()[0]
+
+
+def _servico_para_kcor_m03(desc_serv: str) -> Tuple[str, str, str]:
+    """(tipo col E, classificacao D, executor L) como SERVICO_NC / default M03."""
+    d = (desc_serv or "").strip()
+    try:
+        from nc_artesp.config import SERVICO_NC
+        if d in SERVICO_NC:
+            sn, cl, ex = SERVICO_NC[d]
+            return (sn or "")[:120], cl, ex
+        dl = d.lower()
+        for k, (sn, cl, ex) in SERVICO_NC.items():
+            if k.lower() == dl or k.lower() in dl or dl in k.lower():
+                return (sn or "")[:120], cl, ex
+    except Exception:
+        pass
+    if d:
+        return d[:120], "Conservação Rotina", "Soluciona - Conserva"
+    return "", "Conservação Rotina", "Soluciona - Conserva"
+
+
+def _sentido_kcor_m03(sent: str) -> str:
+    try:
+        from nc_artesp.modulos.analisar_pdf_ma import _sentido_para_texto
+        return (_sentido_para_texto(sent or "") or "").strip()[:120]
+    except Exception:
+        return (sent or "").strip()[:120]
+
+
+def _kcor_unmerge_linha(ws, row: int, col_ini: int, col_fim: int) -> None:
+    try:
+        from openpyxl.utils.cell import range_boundaries
+    except ImportError:
+        return
+    for mc in list(ws.merged_cells.ranges):
+        try:
+            min_c, min_r, max_c, max_r = range_boundaries(str(mc))
+        except Exception:
+            continue
+        if min_r <= row <= max_r and not (col_fim < min_c or col_ini > max_c):
+            try:
+                ws.unmerge_cells(str(mc))
+            except Exception:
+                pass
 
 
 def exportar_kcor(planilha_dados: str, modelo_kcor: str,
@@ -1344,14 +1378,15 @@ def exportar_kcor(planilha_dados: str, modelo_kcor: str,
                   mapa_rodovias: Optional[dict] = None,
                   log_cb: _LogCb = None) -> str:
     """
-    Exporta dados da planilha (abas Fotos, Fotos_2…) para o modelo KCor-Kria.
-    Retorna caminho do XLSX gerado.
+    Exporta planilha Módulos 1–3 (Caminho col A…) para KCor-Kria.
+    Preenche A–Y como macro M03 conservação (inserir_nc_kria).
     """
-    if not OPENPYXL_OK: raise ImportError("pip install openpyxl")
+    if not OPENPYXL_OK:
+        raise ImportError("pip install openpyxl")
     mapa = mapa_rodovias or MAPA_RODOVIAS
 
     wb_d = openpyxl.load_workbook(planilha_dados, data_only=True)
-    todos_registros = []
+    todos_registros: List[dict] = []
 
     for nome_aba in wb_d.sheetnames:
         ws = wb_d[nome_aba]
@@ -1363,100 +1398,133 @@ def exportar_kcor(planilha_dados: str, modelo_kcor: str,
             caminho = ws.cell(row, 1).value
             if not caminho:
                 continue
-            rodov  = str(ws.cell(row, 7).value or "").strip()
-            km_i   = str(ws.cell(row, 8).value or "").strip()
-            sent   = str(ws.cell(row, 9).value or "").strip()
-            serv   = str(ws.cell(row, 12).value or "").strip()
+            caminho_s = str(caminho).strip()
+            rodov = str(ws.cell(row, 7).value or "").strip()
+            km_i = str(ws.cell(row, 8).value or "").strip()
+            sent = str(ws.cell(row, 9).value or "").strip()
+            serv = str(ws.cell(row, 12).value or "").strip()
             titulo = str(ws.cell(row, 16).value or "").strip()
-            data_e = exif_data_foto(str(caminho))
-            pasta  = str(ws.cell(row, 13).value or "").strip()
-            nome_simpl = str(ws.cell(row, 15).value or "").strip()
+            exif_f = exif_data_foto(caminho_s)
+            dt_str = _exif_dd_mm_yyyy(exif_f)
+            pasta13 = str(ws.cell(row, 13).value or "").strip()
+            nome15 = str(ws.cell(row, 15).value or "").strip()
+            col11 = ws.cell(row, 11).value
+            dest_renomeado = str(col11).strip() if col11 else ""
 
             rodov_kcor = mapa.get(rodov[:6], rodov)
+            if dest_renomeado and Path(dest_renomeado).is_file():
+                dir_v = str(Path(dest_renomeado).resolve().parent)
+                arq_w = Path(dest_renomeado).name
+            elif dest_renomeado and Path(dest_renomeado).is_dir():
+                dir_v = dest_renomeado.rstrip("\\/")
+                arq_w = nome15 or Path(caminho_s).name
+            else:
+                dir_v = pasta13 or (str(Path(caminho_s).parent) if caminho_s else "")
+                arq_w = nome15 or Path(caminho_s).name
+
+            serv_nc, classifica, executor = _servico_para_kcor_m03(serv)
 
             todos_registros.append({
-                "Caminho": str(caminho),
                 "Rodovia": rodov_kcor,
-                "KMi":     km_i,
-                "KMf":     km_i,
-                "Sentido": sent,
-                "Servico": serv,
-                "Titulo":  titulo,
-                "Data":    data_e,
-                "Pasta":   pasta,
-                "Arquivo": nome_simpl,
+                "KMi": km_i,
+                "KMf": km_i,
+                "Sentido": _sentido_kcor_m03(sent),
+                "serv_nc": serv_nc,
+                "classifica": classifica,
+                "executor": executor,
+                "dt_str": dt_str,
+                "titulo": titulo,
+                "dir_v": dir_v,
+                "arq_w": arq_w,
+                "serv_raw": serv,
             })
 
     if not todos_registros:
         raise ValueError("Nenhum registro encontrado na planilha.")
 
-    shutil.copy2(modelo_kcor, Path(pasta_saida) if Path(pasta_saida).is_dir()
-                 else Path(pasta_saida).parent)
     Path(pasta_saida).mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M")
     caminho_saida = str(Path(pasta_saida) / f"{ts} - {assunto}.xlsx")
 
     wb_k = openpyxl.load_workbook(modelo_kcor)
-    ws_k = wb_k.active
+    ws_k = None
+    for sheet in wb_k.worksheets:
+        a1 = sheet.cell(1, 1).value
+        if a1 is not None and "numitem" in str(a1).strip().lower():
+            ws_k = sheet
+            break
+    if ws_k is None:
+        ws_k = wb_k.active
 
-    # Garantir cabeçalho (linha 1)
-    for col_idx, cab in enumerate(CABECALHO_KCOR, 1):
-        if ws_k.cell(1, col_idx).value is None:
-            ws_k.cell(1, col_idx).value = cab
-
-    # Linha/estilo de referência para copiar bordas (evitar perder bordas ao inserir dados)
-    cols_kcor = (1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 20, 22, 23)
     def _tem_borda(cell) -> bool:
         b = getattr(cell, "border", None)
         if b is None:
             return False
         try:
-            return any(getattr(side, "style", None) is not None for side in (b.left, b.right, b.top, b.bottom))
+            return any(getattr(side, "style", None) is not None
+                       for side in (b.left, b.right, b.top, b.bottom))
         except Exception:
             return False
 
-    linha_ref_borda = 2 if ws_k.max_row >= 2 else 1
+    linha_ref = 2 if ws_k.max_row >= 2 else 1
     for rr in range(2, (ws_k.max_row or 2) + 1):
-        if any(_tem_borda(ws_k.cell(rr, cc)) for cc in cols_kcor):
-            linha_ref_borda = rr
+        if any(_tem_borda(ws_k.cell(rr, cc)) for cc in _COLS_KCOR_M03):
+            linha_ref = rr
             break
 
-    borda_ref_por_col = {}
-    for cc in cols_kcor:
-        ref_cell = ws_k.cell(linha_ref_borda, cc)
-        if getattr(ref_cell, "border", None) is not None:
+    borda_ref = {}
+    for cc in _COLS_KCOR_M03:
+        ref_cell = ws_k.cell(linha_ref, cc)
+        if getattr(ref_cell, "border", None):
             try:
-                borda_ref_por_col[cc] = copy_obj(ref_cell.border)
+                borda_ref[cc] = copy_obj(ref_cell.border)
             except Exception:
                 pass
 
     for seq, reg in enumerate(todos_registros, 1):
         r = seq + 1
-        ws_k.cell(r,  1).value = seq
-        ws_k.cell(r,  2).value = "Artesp"
-        ws_k.cell(r,  3).value = "2"
-        ws_k.cell(r,  4).value = "Conservação Rotina"
-        ws_k.cell(r,  5).value = reg["Servico"]
-        ws_k.cell(r,  6).value = reg["Rodovia"]
-        ws_k.cell(r,  7).value = reg["KMi"]
-        ws_k.cell(r,  8).value = reg["KMf"]
-        ws_k.cell(r,  9).value = reg["Sentido"]
-        ws_k.cell(r, 11).value = "Conservação"
-        ws_k.cell(r, 13).value = reg["Data"]
-        ws_k.cell(r, 20).value = reg["Titulo"]
-        ws_k.cell(r, 22).value = reg["Pasta"]
-        ws_k.cell(r, 23).value = reg["Arquivo"]
-        # Preservar bordas: copiar da linha de referência do template para não limpar
-        for col in cols_kcor:
-            dst_cell = ws_k.cell(r, col)
-            if col in borda_ref_por_col:
+        dt = reg["dt_str"]
+        obs_u = " ".join(x for x in (reg.get("serv_raw"), reg.get("titulo")) if x).strip()
+
+        _kcor_unmerge_linha(ws_k, r, _K_Q, _K_T)
+
+        ws_k.cell(r, _K_A).value = seq
+        ws_k.cell(r, _K_B).value = "Artesp"
+        ws_k.cell(r, _K_C).value = "2"
+        ws_k.cell(r, _K_D).value = reg["classifica"]
+        ws_k.cell(r, _K_E).value = reg["serv_nc"]
+        ws_k.cell(r, _K_F).value = reg["Rodovia"]
+        ws_k.cell(r, _K_G).value = reg["KMi"]
+        ws_k.cell(r, _K_H).value = reg["KMf"]
+        ws_k.cell(r, _K_I).value = reg["Sentido"]
+        ws_k.cell(r, _K_J).value = ""
+        ws_k.cell(r, _K_K).value = "Conservação"
+        ws_k.cell(r, _K_L).value = reg["executor"]
+        ws_k.cell(r, _K_M).value = dt
+        ws_k.cell(r, _K_N).value = ""
+        ws_k.cell(r, _K_O).value = dt
+        ws_k.cell(r, _K_P).value = dt
+        ws_k.cell(r, _K_Q).value = ""
+        ws_k.cell(r, _K_R).value = ""
+        ws_k.cell(r, _K_S).value = ""
+        ws_k.cell(r, _K_T).value = reg["titulo"]
+        ws_k.cell(r, _K_U).value = obs_u
+        ws_k.cell(r, _K_V).value = reg["dir_v"]
+        ws_k.cell(r, _K_W).value = reg["arq_w"]
+        ws_k.cell(r, _K_X).value = ""
+        ws_k.cell(r, _K_Y).value = ""
+
+        for col in _COLS_KCOR_M03:
+            dst = ws_k.cell(r, col)
+            if col in borda_ref:
                 try:
-                    dst_cell.border = copy_obj(borda_ref_por_col[col])
+                    dst.border = copy_obj(borda_ref[col])
                 except Exception:
                     pass
 
+    wb_k.active = ws_k
     wb_k.save(caminho_saida)
-    _log(log_cb, f"\n[OK] KCor salvo: {caminho_saida}  ({len(todos_registros)} registros)")
+    _log(log_cb, f"\n[OK] KCor-Kria (layout M03): {caminho_saida}  ({len(todos_registros)} registros)")
     return caminho_saida
 
 

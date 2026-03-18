@@ -93,10 +93,8 @@ _NC_NOME_ARQ = {
     "Notificação":      "NOT",
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
 # UTILITÁRIOS DE CAMINHO DE FOTO
 # Macro: antigo nc (1).jpg; atual nc (00001).jpg (número da NC, 5 dígitos).
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _codigo_estilo_ma(codigo: object) -> bool:
     """True se o código é no padrão MA (ex.: NC.13.1039, HE.13.0112). Só MA tem duas fotos por NC."""
@@ -182,9 +180,7 @@ _KRIA_FOTO_W_CM = 9.70
 _KRIA_FOTO_H_CM = 7.49
 _PX_PER_CM = 96 / 2.54
 
-# ─────────────────────────────────────────────────────────────────────────────
 # UTILITÁRIOS DE IMAGEM
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _col_px(ws, col_letter: str) -> float:
     dim = ws.column_dimensions.get(col_letter)
@@ -369,9 +365,7 @@ def _replicar_merged_cells(ws, row_ini_src: int, row_fim_src: int, row_ini_dst: 
         except Exception:
             pass
 
-# ─────────────────────────────────────────────────────────────────────────────
 # LEITURA DAS NCs
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _detectar_col_data_reparo(ws, fallback: int = _DR) -> int:
     for col in range(1, ws.max_column + 1):
@@ -465,9 +459,7 @@ def _ler_ncs(ws, linha_inicio: int = 5) -> list:
 
     return ncs
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SAÍDA A – Planilha Kria  →  foto: nc (N).jpg
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _gerar_kria(
     ncs: list, nome_base: str,
@@ -594,9 +586,7 @@ def _gerar_kria(
     return destino
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SAÍDA B – Relatório de Resposta à Artesp  →  foto: PDF (N).jpg
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _gerar_resposta(
     ncs: list, modelo: "Path | bytes",
@@ -664,7 +654,6 @@ def _gerar_resposta(
             f"{nc['sentido']} - {dr_} - {nc['tipo_nc']} - {nc['codigo']}"
         )
 
-    # ── NC 1: B1 vazio; B2 texto (atrás da imagem) ────────────────────────────
     ws.cell(row=1, column=2).value = ""
     ws.cell(row=2, column=2).value = _cabecalho_curto(nc1, dr_str, dc_str)
 
@@ -677,7 +666,6 @@ def _gerar_resposta(
     else:
         logger.warning(f"  [Resposta] Foto PDF não encontrada: PDF ({foto_id1}).jpg")
 
-    # ── NCs 2..N: duplicar bloco ABAIXO do anterior ───────────────────────────
     linha = 1  # ponteiro para o início do bloco atual
 
     for nc in ncs[1:]:
@@ -726,9 +714,7 @@ def _gerar_resposta(
     return destino
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # FUNÇÃO PRINCIPAL
-# ─────────────────────────────────────────────────────────────────────────────
 
 def executar(
     pasta_xls: "Path | None" = None,
@@ -811,7 +797,6 @@ def executar(
             nome_base = arq.stem
             relatorio = nome_base[:8]
 
-            # ── Saída A: Kria  →  nc (N).jpg ─────────────────────────────────
             modelo_kria_eff = modelo_kria_bytes if modelo_kria_bytes is not None else modelo_kria
             arq_kria = _gerar_kria(
                 ncs, nome_base,
@@ -823,7 +808,6 @@ def executar(
             if arq_kria:
                 resultados["kria"].append(arq_kria)
 
-            # ── Saída B: Resposta  →  PDF (N).jpg ────────────────────────────
             modelo_resp_eff = modelo_resp_bytes if modelo_resp_bytes is not None else modelo_resposta
             arq_resp = _gerar_resposta(
                 ncs,

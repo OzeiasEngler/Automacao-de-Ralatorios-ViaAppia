@@ -10,6 +10,9 @@ Equivalência fluxo (fotos_campo/core.py):
   3. Renomear        → copiar_renomear_xlsx (Módulo 3)
   4. Relatório 2 Lados → gerar_relatorio_foto2lados / relatorio_foto2lados_bytes (Módulo 4)
   5. Exportar KCor   → exportar_kcor / exportar_kcor_bytes (Módulo 5)
+     Mesmas colunas A–Y que a macro M03 conservação (Art_031 / inserir_nc_kria):
+     B/C/K fixos; D/E/L via SERVICO_NC; M/N/O/P datas (EXIF); Q/R/S vazios;
+     T título; U serviço+título; V/W pasta+ficheiro (col 11 renomeado se existir).
 
 Pastas de macros VBA (projeto):
   • nc_artesp/Macros/  — macros EAF/NC; as que envolvem modelo/foto e Kria:

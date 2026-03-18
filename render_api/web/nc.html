@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="artesp-api-base" content="">
-  <title>NC ARTESP — Não Conformidades</title>
+  <title>NC ARTESP - SP / NC ARTEMIG - MG — Não Conformidades</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="/web-static/bloco-padrao.css">
@@ -12,34 +12,42 @@
   <style>
     /* NC: ícone da página (destaque vermelho) */
     #nc-page .page-header .icon-box { background: linear-gradient(135deg, var(--danger), #dc2626); }
-    /* Formulário e log na mesma proporção (50% cada) */
     .step-panel-form-log .grid-2 {
-      grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+      grid-template-columns: 1fr 1fr;
       gap: 24px;
-      align-items: start;
+      align-items: stretch;
     }
     .step-panel-form-log .grid-2 .card:first-child {
       grid-column: 1;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .step-panel-form-log .grid-2 .card:first-child .card-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .step-panel-form-log .grid-2 .card:last-child {
       grid-column: 2;
-      position: sticky;
-      top: calc(var(--topbar-h) + var(--nav-h) + 12px);
-      max-height: calc(100vh - var(--topbar-h) - var(--nav-h) - 120px);
+      min-width: 0;
       display: flex;
       flex-direction: column;
+      align-self: stretch;
     }
     .step-panel-form-log .grid-2 .card:last-child .card-body {
       display: flex;
       flex-direction: column;
+      flex: 1;
       min-height: 0;
       overflow: hidden;
     }
     .step-panel-form-log .grid-2 .card:last-child .log-container {
-      flex: 1;
-      min-height: 160px;
-      max-height: 32vh;
+      flex: 1 1 auto;
+      min-height: 200px;
+      max-height: none;
+      overflow-y: auto;
     }
     /* Mobile: formulário acima do log */
     @media (max-width: 900px) {
@@ -57,10 +65,10 @@
       .step-panel-form-log .grid-2 .card:last-child {
         order: 2;
         position: static;
-        max-height: none;
       }
       .step-panel-form-log .grid-2 .card:last-child .log-container {
-        max-height: 260px;
+        min-height: 200px;
+        max-height: 40vh;
       }
       /* Botões visíveis no mobile: card não corta conteúdo */
       #nc-page .card { overflow: visible; width: 100%; min-width: 0; }
@@ -68,7 +76,29 @@
       #nc-page .step-panel-form-log .card:last-child .card-body { overflow: auto; }
     }
 
-    /* ── Step tabs ──────────────────────────────────────────────────────── */
+    .upload-zone.nc-anexo-sem-lote {
+      opacity: 0.55;
+      pointer-events: none;
+      position: relative;
+    }
+    .upload-zone.nc-anexo-sem-lote::after {
+      content: 'Selecione o lote acima';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.35);
+      color: var(--text, #e2e8f0);
+      font-size: 0.85rem;
+      font-weight: 600;
+      pointer-events: none;
+      border-radius: inherit;
+    }
+    input[type="file"]:disabled {
+      cursor: not-allowed;
+    }
+
     .step-tabs {
       display: flex; gap: 6px; flex-wrap: wrap;
       background: var(--bg-surface);
@@ -77,14 +107,13 @@
       padding: 8px;
     }
     .step-tab {
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 8px 14px; border-radius: var(--radius-sm);
+      display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 12px; border-radius: var(--radius-sm);
       font-size: .8rem; font-weight: 600;
       color: var(--text-secondary); cursor: pointer;
       border: 1px solid rgba(0,0,0,.15);
       background: var(--bg-surface-2);
       transition: transform .15s ease, box-shadow .15s ease;
-      white-space: nowrap;
       font-family: inherit;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 2px 4px rgba(0,0,0,.25), 0 3px 6px rgba(0,0,0,.15);
     }
@@ -115,6 +144,10 @@
       flex-shrink: 0;
     }
     .step-tab.active .step-num { background: var(--danger); color: #fff; }
+    .step-tab .step-tab-regime {
+      flex-basis: 100%; text-align: center; font-size: .6rem; margin-top: 3px;
+      opacity: .9; color: var(--text-muted); font-weight: 500; letter-spacing: .02em;
+    }
     /* Mobile: abas em múltiplas linhas para todos os botões visíveis (sem scroll) */
     @media (max-width: 900px) {
       .step-tabs {
@@ -127,14 +160,9 @@
       }
     }
 
-    /* ── Step panels ────────────────────────────────────────────────────── */
     .step-panel { display: none; }
     .step-panel.active { display: block; }
-
-    /* ── Upload zone ────────────────────────────────────────────────────── */
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-    /* ── Barra de sessão ────────────────────────────────────────────────── */
     .sessao-bar {
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
@@ -166,7 +194,6 @@
     }
     .sessao-aviso.show { display: flex; }
 
-    /* ── Botões 3D (NC) ─────────────────────────────────────────────────── */
     #nc-page .btn {
       box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 2px 4px rgba(0,0,0,.2), 0 3px 6px rgba(0,0,0,.12);
       border: 1px solid rgba(0,0,0,.1);
@@ -204,8 +231,6 @@
 </head>
 <body>
   <div id="upload-indicator" class="upload-indicator" role="status" aria-live="polite" aria-label="Enviando arquivos"></div>
-
-  <!-- ═══ LOGIN OVERLAY ═══ -->
   <div class="login-overlay" id="loginOverlay">
     <div class="login-card animate-in">
       <div class="logo">
@@ -229,8 +254,6 @@
       </form>
     </div>
   </div>
-
-  <!-- ═══ TOPBAR ═══ -->
   <header class="topbar">
     <div class="topbar-brand">
       <span class="icon">🛣️</span>
@@ -244,185 +267,76 @@
       <button class="btn-logout" id="btnLogout"><i class="fas fa-sign-out-alt"></i> Sair</button>
     </div>
   </header>
-
-  <!-- ═══ TOPNAV ═══ -->
   <nav class="topnav">
     <a href="/web"><span class="nav-icon"><i class="fas fa-home"></i></span> Início</a>
     <a href="/web/geojson"><span class="nav-icon"><i class="fas fa-map-marked-alt"></i></span> GeoJSON ARTESP</a>
     <a href="/web/fotos"><span class="nav-icon"><i class="fas fa-camera"></i></span> Fotos de Campo</a>
-    <a href="/web/nc" class="active"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP</a>
+    <a href="/web/nc" class="active"><span class="nav-icon"><i class="fas fa-clipboard-check"></i></span> NC ARTESP - SP / NC ARTEMIG - MG</a>
     <div class="topnav-spacer"></div>
     <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
   </nav>
-
-  <!-- ═══ PAGE CONTENT ═══ -->
   <div class="page-content" id="nc-page">
 
     <div class="page-header animate-in">
       <div class="icon-box"><i class="fas fa-clipboard-check"></i></div>
       <div>
-        <h1>NC ARTESP</h1>
-        <p>Pipeline de Não Conformidades — as EAFs entregam Excel + PDF; faça upload uma vez e use em todos os módulos</p>
+        <h1>NC ARTESP - SP / NC ARTEMIG - MG</h1>
+        <p>Pipeline de Não Conformidades — ARTESP (SP) e ARTEMIG (MG). Kria e templates compartilhados.</p>
       </div>
     </div>
-
-    <!-- ═══ BARRA DE SESSÃO ═══ -->
-    <div class="sessao-bar animate-in" id="sessaoBar" style="animation-delay:.05s">
-      <span class="sessao-label"><i class="fas fa-database"></i> Sessão:</span>
-      <span class="sessao-chip" id="sessaoChipEAF"><i class="fas fa-file-excel"></i> EAF: nenhum</span>
-      <span class="sessao-chip" id="sessaoChipPDF"><i class="fas fa-file-pdf"></i> PDFs: 0</span>
-      <span style="margin-left:auto;display:flex;gap:8px">
-        <button class="btn btn-outline" id="btnSessaoLimpar"
-                style="padding:3px 12px;font-size:.72rem;display:none">
-          <i class="fas fa-times"></i> Limpar sessão
-        </button>
-      </span>
-    </div>
-
-    <!-- ═══ STEP TABS ═══ -->
     <div class="step-tabs animate-in" style="animation-delay:.1s" id="stepTabs">
-      <button class="step-tab active" data-step="receber-eaf"
-              style="background:rgba(59,130,246,.15);color:var(--accent);border:1px solid rgba(59,130,246,.3)">
-        <span class="step-num" style="background:var(--accent);color:#fff">📋</span>
-        <i class="fas fa-inbox"></i> Receber EAF
-      </button>
-      <button class="step-tab" data-step="analisar-pdf" style="color:#e67e22">
+      <button class="step-tab active" data-step="analisar-pdf" style="color:#e67e22">
         <span class="step-num" style="background:#e67e22;color:#fff">⚡</span>
-        <i class="fas fa-search-location"></i> Análise PDF
+        <span class="step-tab-label"><i class="fas fa-search-location"></i> Análise PDF</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="extrair-pdf">
-        <span class="step-num">0</span> <i class="fas fa-file-pdf"></i> Extrair PDF
+        <span class="step-num">0</span>
+        <span class="step-tab-label"><i class="fas fa-file-pdf"></i> Extrair PDF</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="separar">
-        <span class="step-num">1</span> <i class="fas fa-cut"></i> Separar NC
+        <span class="step-num">1</span>
+        <span class="step-tab-label"><i class="fas fa-cut"></i> Separar NC</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="criar-email">
-        <span class="step-num">✉</span> <i class="fas fa-envelope"></i> E-mail
+        <span class="step-num">✉</span>
+        <span class="step-tab-label"><i class="fas fa-envelope"></i> E-mail</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="modelo-foto">
-        <span class="step-num">2</span> <i class="fas fa-images"></i> Modelo Foto
+        <span class="step-num">2</span>
+        <span class="step-tab-label"><i class="fas fa-images"></i> Modelo Foto</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="conservacao">
-        <span class="step-num">3</span> <i class="fas fa-road"></i> Conservação
+        <span class="step-num">3</span>
+        <span class="step-tab-label"><i class="fas fa-road"></i> Conservação</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="juntar">
-        <span class="step-num">4</span> <i class="fas fa-layer-group"></i> Acumulado
+        <span class="step-num">4</span>
+        <span class="step-tab-label"><i class="fas fa-layer-group"></i> Acumulado</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="inserir-numero">
-        <span class="step-num">5</span> <i class="fas fa-hashtag"></i> Inserir Nº
+        <span class="step-num">5</span>
+        <span class="step-tab-label"><i class="fas fa-hashtag"></i> Inserir Nº</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="exportar-calendario">
-        <span class="step-num">6</span> <i class="fas fa-calendar-alt"></i> Calendário
+        <span class="step-num">6</span>
+        <span class="step-tab-label"><i class="fas fa-calendar-alt"></i> Calendário</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
       <button class="step-tab" data-step="meio-ambiente">
-        <span class="step-num">7</span> <i class="fas fa-leaf"></i> Meio Ambiente
+        <span class="step-num">7</span>
+        <span class="step-tab-label"><i class="fas fa-leaf"></i> Meio Ambiente</span>
+        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         RECEBER EAF — Upload único de Excel + PDFs
-    ════════════════════════════════════════════════════════════════ -->
-    <div class="step-panel active animate-in" id="panel-receber-eaf" style="animation-delay:.15s">
-      <div class="card">
-        <div class="card-header" style="border-left:3px solid var(--accent)">
-          <i class="fas fa-inbox" style="color:var(--accent)"></i>
-          Receber arquivos da EAF — Excel + PDFs de apontamento
-        </div>
-        <div class="card-body">
-          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:16px">
-            As EAFs entregam <strong>um arquivo Excel</strong> (planilha EAF) e
-            <strong>um ou mais PDFs</strong> com imagens dos apontamentos.
-            Faça o upload aqui <b>uma única vez</b> — os arquivos ficam disponíveis
-            automaticamente em <em>Análise PDF</em>, <em>Extrair PDF</em> e <em>Separar NC</em>.
-          </p>
-          <div class="grid-2" style="gap:20px">
-            <!-- EAF Excel (múltiplos) -->
-            <div>
-              <label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">
-                <i class="fas fa-file-excel" style="color:var(--success)"></i>
-                Planilhas EAF (.xlsx ou .xls) — uma por empresa
-              </label>
-              <div class="upload-zone" id="zone-receber-eafs" style="padding:24px">
-                <input type="file" id="file-receber-eafs" accept=".xlsx,.xls" multiple>
-                <div class="icon" style="font-size:1.8rem;margin-bottom:8px"><i class="fas fa-file-excel" style="color:var(--success)"></i></div>
-                <h3 style="font-size:.9rem">Planilhas EAF</h3>
-                <p>Uma ou mais · toque ou Ctrl+clique para selecionar vários</p>
-              </div>
-              <div id="lista-receber-eafs" style="display:none;margin-top:8px"></div>
-            </div>
-
-            <!-- PDFs -->
-            <div>
-              <label style="display:block;font-size:.78rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px">
-                <i class="fas fa-file-pdf" style="color:var(--danger)"></i>
-                PDFs de NC Constatação (um ou mais)
-              </label>
-              <div class="upload-zone" id="zone-receber-pdfs" style="padding:24px">
-                <input type="file" id="file-receber-pdfs" accept=".pdf" multiple>
-                <div class="icon" style="font-size:1.8rem;margin-bottom:8px"><i class="fas fa-file-pdf" style="color:var(--danger)"></i></div>
-                <h3 style="font-size:.9rem">PDFs de apontamento</h3>
-                <p>Um ou mais PDFs · toque ou Ctrl+clique para selecionar vários</p>
-              </div>
-              <div id="lista-receber-pdfs" style="display:none;margin-top:8px"></div>
-            </div>
-          </div>
-
-          <div id="sessao-result" style="display:none;margin-top:16px;padding:14px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:var(--radius-sm)">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-              <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
-              <strong>Sessão iniciada — arquivos disponíveis em todos os módulos</strong>
-            </div>
-            <div id="sessao-result-info" style="font-size:.8rem;color:var(--text-secondary)"></div>
-            <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
-              <button class="btn btn-outline" onclick="irParaAba('analisar-pdf')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-search-location" style="color:#e67e22"></i> Ir para Análise PDF
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('extrair-pdf')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-file-pdf"></i> Ir para Extrair PDF
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('separar')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-cut"></i> Ir para Separar NC
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('criar-email')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-envelope"></i> Ir para E-mail
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('modelo-foto')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-images"></i> Ir para Gerar Kria e Resposta
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('conservacao')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-road"></i> Ir para Kcor-Kria Conservação
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('meio-ambiente')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-leaf"></i> Ir para Kcor-Kria Meio Ambiente
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('juntar')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-layer-group"></i> Ir para Acumulado
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('inserir-numero')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-hashtag"></i> Ir para Inserir número Kria
-              </button>
-              <button class="btn btn-outline" onclick="irParaAba('exportar-calendario')" style="padding:6px 14px;font-size:.78rem">
-                <i class="fas fa-calendar-alt"></i> Ir para Exportar calendário
-              </button>
-            </div>
-          </div>
-
-          <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn btn-primary" id="btn-receber-eaf" disabled>
-              <i class="fas fa-save"></i> Salvar na sessão
-            </button>
-            <button class="btn btn-outline" id="reset-receber-eaf">
-              <i class="fas fa-redo"></i> Limpar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         ANÁLISE PDF — Sequência de KM, Alertas, Emergenciais, Por Tipo
-    ════════════════════════════════════════════════════════════════ -->
-    <div class="step-panel step-panel-form-log" id="panel-analisar-pdf" style="animation-delay:.15s">
+    <div class="step-panel active step-panel-form-log" id="panel-analisar-pdf" style="animation-delay:.15s">
       <div class="grid-2">
         <div class="card">
           <div class="card-header" style="border-left:3px solid var(--warning)">
@@ -433,13 +347,32 @@
             </span>
           </div>
           <div class="card-body">
-            <div class="alert alert-warning" style="margin-bottom:14px;font-size:.8rem">
-              <i class="fas fa-info-circle"></i>
-              <strong>O que esta análise faz:</strong> Lê o PDF original sem alterar nada.
-              Verifica a sequência de KMs por rodovia/sentido, detecta
-              <strong>saltos de KM</strong> (possíveis panelas não apontadas — prazo 24 h),
-              identifica <strong>NCs emergenciais</strong> e devolve um PDF com as NCs
-              agrupadas por tipo em sequência de KM, dados intactos.
+            <div id="nc-aviso-mudanca-lote" style="display:none;margin-bottom:10px;padding:10px 14px;font-size:.78rem;border-radius:var(--radius-sm);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:var(--text-secondary)">
+              <i class="fas fa-exchange-alt"></i> <strong>Lote alterado.</strong> O encadeamento do pipeline foi reiniciado — execute de novo <strong>Separar NC</strong> (ou a 1ª etapa do fluxo) antes das demais.
+            </div>
+            <div class="form-group" style="margin-bottom:16px;padding:12px 14px;background:var(--bg-surface-3);border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,.06)">
+              <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 10px">
+                <i class="fas fa-map-marked-alt"></i> <strong>Primeiro escolha o lote</strong> — só então anexe PDFs e demais arquivos.
+              </p>
+              <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">
+                <div>
+                  <label style="display:block;margin-bottom:4px;font-size:.85rem">
+                    <i class="fas fa-map-marked-alt"></i> Lote
+                  </label>
+                  <select id="sel-lote-analise" class="form-input" style="min-width:220px">
+                    <option value="">Selecione o lote…</option>
+                    <option value="13">Lote 13 — Rodovias das Colinas</option>
+                    <option value="21">Lote 21 — Rodovias do Tietê</option>
+                    <option value="26">Lote 26 — SP Serra</option>
+                    <option value="50">Lote 50 — CONSOL (ARTEMIG - MG)</option>
+                  </select>
+                </div>
+                <div style="flex:1;min-width:200px">
+                  <label style="display:block;margin-bottom:4px;font-size:.85rem">Concessionária</label>
+                  <input type="text" id="campo-concessionaria-analise" class="form-input" readonly
+                         style="background:var(--bg-surface-3);cursor:default" value="">
+                </div>
+              </div>
             </div>
 
             <div class="upload-zone" id="zone-analisar-pdf"
@@ -472,7 +405,7 @@
               </ul>
             </div>
 
-            <div class="form-group" style="margin-top:12px">
+            <div id="wrap-excel-analise" class="form-group" style="margin-top:12px">
               <label style="display:block;margin-bottom:4px;font-size:.85rem">
                 <i class="fas fa-file-excel" style="color:var(--success)"></i> Excel(s) que acompanham os PDFs <span style="font-weight:400;color:var(--text-muted)">(opcional)</span>
               </label>
@@ -482,25 +415,10 @@
                 Um ou mais arquivos. Mesmo layout do relatório (cabeçalho 1–4, dados a partir da linha 5). Preenchem Horário (E), Tipo de Atividade (O) e Grupo de Atividade (P) por código fiscalização.
               </p>
             </div>
+            <p id="msg-artemig-somente-pdf" style="display:none;font-size:.8rem;color:var(--text-muted);margin-top:8px;padding:8px 12px;background:var(--bg-surface-3);border-radius:var(--radius-sm)">
+              <i class="fas fa-info-circle"></i> Artemig: somente PDF (não há planilha Excel).
+            </p>
 
-            <div class="form-group" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">
-              <div>
-                <label style="display:block;margin-bottom:4px;font-size:.85rem">
-                  <i class="fas fa-map-marked-alt"></i> Lote
-                </label>
-                <select id="sel-lote-analise" class="form-input" style="min-width:220px">
-                  <option value="13">Lote 13 — Rodovias das Colinas</option>
-                  <option value="21">Lote 21 — Rodovias do Tietê</option>
-                  <option value="26">Lote 26 — SP Serra</option>
-                </select>
-                <p style="font-size:.7rem;color:var(--text-muted);margin-top:2px">Lote 50 (Nascentes das Gerais) não aparece no menu; use outro fluxo se necessário.</p>
-              </div>
-              <div style="flex:1;min-width:200px">
-                <label style="display:block;margin-bottom:4px;font-size:.85rem">Concessionária</label>
-                <input type="text" id="campo-concessionaria-analise" class="form-input" readonly
-                       style="background:var(--bg-surface-3);cursor:default" value="Lote 13 Rodovias das Colinas">
-              </div>
-            </div>
             <div class="form-group" style="margin-top:14px">
               <label>
                 <i class="fas fa-ruler-horizontal"></i>
@@ -556,10 +474,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Extrair PDF
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-extrair-pdf">
       <div class="grid-2">
         <div class="card">
@@ -571,9 +485,23 @@
           </div>
           <div class="card-body">
             <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
-              Gera <strong>nc(N).jpg</strong> (só foto) e <strong>PDF(N).jpg</strong> (texto + foto) por NC.
+              Pastas no ZIP: <strong>nc/</strong> (só foto) e <strong>PDF/</strong> (imagem da página com texto + foto).
               Com múltiplos PDFs a numeração é sequencial global.
             </p>
+
+            <div class="form-group" style="margin-bottom:16px;padding:12px 14px;background:var(--bg-surface-3);border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,.06)">
+              <label style="display:block;margin-bottom:6px;font-size:.85rem">
+                <i class="fas fa-map-marked-alt"></i> Lote <span style="font-weight:400;color:var(--text-muted)">(igual ao da Análise PDF)</span>
+              </label>
+              <select id="sel-lote-extrair-pdf" class="form-input" style="min-width:220px;max-width:100%">
+                <option value="">Selecione o lote…</option>
+                <option value="13">Lote 13 — Rodovias das Colinas</option>
+                <option value="21">Lote 21 — Rodovias do Tietê</option>
+                <option value="26">Lote 26 — SP Serra</option>
+                <option value="50">Lote 50 — CONSOL (ARTEMIG - MG)</option>
+              </select>
+              <p style="font-size:.72rem;color:var(--text-muted);margin:8px 0 0">Escolha o lote antes de anexar PDFs. O valor sincroniza com a aba <strong>Análise PDF</strong>.</p>
+            </div>
 
             <div class="upload-zone" id="zone-extrair-pdf">
               <input type="file" id="file-extrair-pdf" accept=".pdf" multiple>
@@ -583,6 +511,9 @@
             </div>
             <div id="lista-multi-extrair-pdf" style="display:none;margin-top:10px"></div>
 
+            <p style="font-size:.75rem;color:var(--text-muted);margin:10px 0 0">
+              Nome do ZIP: <code>lote_&lt;nº lote&gt;_&lt;qtd PDFs&gt;_pdfs_imagens.zip</code> (ex.: <code>lote_50_12_pdfs_imagens.zip</code>) conforme o lote acima.
+            </p>
             <div class="form-group" style="margin-top:14px">
               <label>DPI de extração</label>
               <input type="number" id="dpi-extrair-pdf" class="form-input" value="150" min="72" max="300" style="width:120px">
@@ -609,6 +540,7 @@
               <button class="btn btn-success" id="download-extrair-pdf">
                 <i class="fas fa-download"></i> Baixar ZIP de imagens
               </button>
+              <p class="form-hint" style="margin-top:10px">Lote <strong>50</strong> (Artemig): tudo na raiz do ZIP (<code>Texto</code>, <code>PDF</code>, <code>nc</code>). Outros lotes: <code>PDF/</code> + <code>nc/</code>.</p>
             </div>
           </div>
         </div>
@@ -627,10 +559,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Separar constatações da planilha EAF
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-separar">
       <div class="grid-2">
         <div class="card">
@@ -693,10 +621,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         E-mail — Gerar rascunhos .eml (resposta NC)
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-criar-email">
       <div class="grid-2">
         <div class="card">
@@ -775,10 +699,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Gerar Kria e Resposta (modelo foto)
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-modelo-foto">
       <div class="grid-2">
         <div class="card">
@@ -866,10 +786,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Inserir NC na planilha Kcor-Kria Conservação
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-conservacao">
       <div class="grid-2">
         <div class="card">
@@ -955,10 +871,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Inserir NC na planilha Kcor-Kria Meio Ambiente
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-meio-ambiente">
       <div class="grid-2">
         <div class="card">
@@ -1047,10 +959,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Juntar arquivos — Planilha acumulada para exportar Kria
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-juntar">
       <div class="grid-2">
         <div class="card">
@@ -1138,10 +1046,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Inserir numeração Kria no acumulado
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-inserir-numero">
       <div class="grid-2">
         <div class="card">
@@ -1231,10 +1135,6 @@
         </div>
       </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════════════
-         Exportar calendário (.ics)
-    ════════════════════════════════════════════════════════════════ -->
     <div class="step-panel step-panel-form-log" id="panel-exportar-calendario">
       <div class="grid-2">
         <div class="card">
@@ -1309,9 +1209,6 @@
 
   <script src="/web-static/auth-primeiro-acesso.js"></script>
   <script>
-  /* ════════════════════════════════════════════════════════════════
-     AUTH
-  ════════════════════════════════════════════════════════════════ */
   const loginOverlay = document.getElementById('loginOverlay');
   const token = localStorage.getItem('artesp_token');
   const userEmail = localStorage.getItem('artesp_user_email');
@@ -1376,18 +1273,41 @@
     return tk ? { 'Authorization': 'Bearer ' + tk } : {};
   }
 
-  /* ════════════════════════════════════════════════════════════════
-     CONTRATO NC — job_id (ver CONTRATO_FRONTEND_NC.md)
-     localStorage persiste entre recarregamentos; usar nas etapas de pipeline.
-  ════════════════════════════════════════════════════════════════ */
   const NC_JOB_KEY = 'artesp_nc_job_id';
+  const NC_JOB_LOTE_KEY = 'artesp_nc_job_lote';
   function getNcJobId() { return localStorage.getItem(NC_JOB_KEY) || ''; }
-  function setNcJobId(id) { if (id) localStorage.setItem(NC_JOB_KEY, id); else localStorage.removeItem(NC_JOB_KEY); }
-  function clearNcJobId() { localStorage.removeItem(NC_JOB_KEY); }
+  function getNcJobLote() { return localStorage.getItem(NC_JOB_LOTE_KEY) || ''; }
+  function setNcJobId(id) {
+    if (id) {
+      localStorage.setItem(NC_JOB_KEY, id);
+      localStorage.setItem(NC_JOB_LOTE_KEY, (ncLoteValor() || '').trim());
+    } else {
+      localStorage.removeItem(NC_JOB_KEY);
+      localStorage.removeItem(NC_JOB_LOTE_KEY);
+    }
+  }
+  function clearNcJobId() {
+    localStorage.removeItem(NC_JOB_KEY);
+    localStorage.removeItem(NC_JOB_LOTE_KEY);
+  }
+  /** Reutiliza job só se estiver amarrado ao lote atual (jobs sem lote gravado são ignorados). */
+  function ncJobIdParaPipeline() {
+    var j = getNcJobId();
+    if (!j) return '';
+    var bound = (getNcJobLote() || '').trim();
+    var cur = (ncLoteValor() || '').trim();
+    if (!bound) {
+      clearNcJobId();
+      return '';
+    }
+    if (cur && bound !== cur) {
+      clearNcJobId();
+      return '';
+    }
+    return j;
+  }
 
-  /* Nomes das etapas = texto dos botões/abas (para "Saída para:" e "Use arquivo da etapa:") */
   const STEP_NAMES = {
-    'receber-eaf': 'Receber EAF',
     'analisar-pdf': 'Análise PDF',
     'extrair-pdf': 'Extrair PDF',
     'separar': 'Separar NC',
@@ -1413,15 +1333,10 @@
   };
   function getNextStepLabel(stepId) { return NEXT_STEP_LABEL[stepId] || '—'; }
   function getStepName(stepId) { return STEP_NAMES[stepId] || stepId; }
-
-  /* ════════════════════════════════════════════════════════════════
-     SESSÃO COMPARTILHADA
-     _sessao.eaf  → File (Excel EAF) disponível para Separar NC
-     _sessao.pdfs → File[] (PDFs) disponível para Análise + Extrair PDF
-  ════════════════════════════════════════════════════════════════ */
-  const _sessao   = { eafs: [], pdfs: [] };  // eafs: array de File Excel (um por EAF/empresa)
-  const _gestores = {};                       // gestores de múltiplos arquivos por aba
-  const _fileKeyToBtnState = {};              // key (ex: m04-kcor) -> { btnId, requiredIds } para updateBtnState após clearFile
+  // EAFs/PDFs compartilhados entre abas; _fileKeyToBtnState: input id -> botão a revalidar após clear.
+  const _sessao = { eafs: [], pdfs: [] };
+  const _gestores = {};
+  const _fileKeyToBtnState = {};
 
   function _sessaoAtualizar() {
     const chipEAF = document.getElementById('sessaoChipEAF');
@@ -1441,7 +1356,6 @@
     }
     if (btnLimpar) btnLimpar.style.display = temAlgo ? 'inline-flex' : 'none';
 
-    // Dots nas abas que têm dados de sessão disponíveis
     _sessaoAtualizarDots();
   }
 
@@ -1470,16 +1384,16 @@
   }
 
   function _sessaoCarregarPDFsEmTab(gestorId) {
-    // Carrega PDFs da sessão no gestor da aba (se não tiver arquivos próprios)
     const gestor = _gestores[gestorId];
     if (!gestor || _sessao.pdfs.length === 0) return false;
-    if (gestor.getFiles().length > 0) return false;  // já tem arquivos próprios
+    if (gestor.getFiles().length > 0) return false;
     const nomes = new Set(gestor.getFiles().map(f => f.name));
     _sessao.pdfs.forEach(f => { if (!nomes.has(f.name)) gestor._addExterno(f); });
     return true;
   }
 
-  document.getElementById('btnSessaoLimpar').addEventListener('click', () => {
+  const btnSessaoLimpar = document.getElementById('btnSessaoLimpar');
+  if (btnSessaoLimpar) btnSessaoLimpar.addEventListener('click', () => {
     _sessao.eafs = [];
     _sessao.pdfs = [];
     _sessaoAtualizar();
@@ -1500,9 +1414,6 @@
   }
 
   function _sessaoOferecer(step) {
-    // Sincroniza sessão com os arquivos já selecionados em Receber EAF (dispensa clicar em "Salvar na sessão")
-    if (typeof _sessaoSyncDesdeReceberEAF === 'function') _sessaoSyncDesdeReceberEAF();
-    // Quando a aba abrir, mostra aviso de sessão se aplicável
     if ((step === 'analisar-pdf' || step === 'extrair-pdf') && _sessao.pdfs.length > 0) {
       const gestorId = step === 'extrair-pdf' ? 'file-extrair-pdf' : null;
       if (gestorId && _gestores[gestorId]) {
@@ -1524,10 +1435,6 @@
       }
     }
   }
-
-  /* ════════════════════════════════════════════════════════════════
-     STEP TABS
-  ════════════════════════════════════════════════════════════════ */
   const _stepBtnState = {
     'criar-email': { btnId: 'btn-criar-email', requiredIds: ['file-email-xls'] },
     'juntar': { btnId: 'btn-juntar', requiredIds: ['file-m04-kcor', 'file-m04-acum'] },
@@ -1550,10 +1457,6 @@
     if (btnState) updateBtnState(btnState.btnId, btnState.requiredIds);
     atualizarBotoesSessao();
   });
-
-  /* ════════════════════════════════════════════════════════════════
-     UTILITÁRIOS
-  ════════════════════════════════════════════════════════════════ */
   function _msgErroRede(err) {
     const m = (err && err.message) ? String(err.message).trim() : '';
     if (!m) return 'Falha na conexão.';
@@ -1566,13 +1469,129 @@
     return m;
   }
 
-  // Padrão GeoJSON (referência: PADRAO_GEOJSON_REFERENCIA.md). Ao alterar logMsg ou limparLog,
-  // verificar TODOS os usos no arquivo (buscar por logMsg( e limparLog()).
-  // IDs de log NC: log-analisar-pdf, log-extrair-pdf, log-separar, log-modelo-foto, log-conservacao,
-  // log-meio-ambiente, log-juntar, log-inserir-numero, log-exportar-calendario, log-organizar-imagens.
+  // Ao mudar logMsg/limparLog, buscar usos no arquivo; IDs em PADRAO_GEOJSON_REFERENCIA.md.
   function limparLog(id) {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = '<div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>';
+    if (!el) return;
+    el.classList.remove('nc-log-active');
+    el.innerHTML = '<div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>';
+  }
+
+  var NC_PIPELINE_STEPS = {
+    'analisar-pdf': [
+      'Validando PDFs, lote e Excel opcional',
+      'Extraindo texto e blocos por página',
+      'Identificando NCs, códigos e rodovias',
+      'Cruzando com MAPA EAF / regras Artemig',
+      'Analisando gaps de KM e sequência de códigos',
+      'Classificando emergenciais e alertas',
+      'Gerando PDF de análise (ReportLab)',
+      'Preenchendo planilha Relatório de Fiscalização',
+      'Montando ZIP (PDF + XLSX)'
+    ],
+    'extrair-pdf': [
+      'Lendo binário do(s) PDF(s)',
+      'Localizando imagens embutidas por página',
+      'Recortando região texto + fotos',
+      'Gerando Texto (N).jpg, PDF (N).jpg e nc (N).jpg',
+      'Empacotando ZIP final'
+    ],
+    'separar': [
+      'Abrindo planilha(s) EAF',
+      'Lendo grupos, rodovias e NCs',
+      'Gerando arquivos por fiscalização',
+      'Gravando workspace / job',
+      'Compactando nc_separados.zip'
+    ],
+    'criar-email': [
+      'Extraindo planilhas do ZIP',
+      'Lendo colunas C, U, V e corpo do e-mail',
+      'Montando HTML por NC',
+      'Incorporando imagens PDF (se enviadas)',
+      'Gerando arquivos .eml'
+    ],
+    'modelo-foto': [
+      'Lendo ZIP da EAF separada',
+      'Por NC: carregando template Kria',
+      'Preenchendo células e textos',
+      'Inserindo fotos PDF nos modelos',
+      'Montando ZIP de saída'
+    ],
+    'conservacao': [
+      'Abrindo ZIP modelo Kria',
+      'Preenchendo planilhas Kcor conservação',
+      'Anexando evidências fotográficas',
+      'Validando colunas e formatos',
+      'Gerando kcor_conservacao.zip'
+    ],
+    'meio-ambiente': [
+      'Processando PDF MA ou ZIP Kria',
+      'Extraindo / mapeando campos MA',
+      'Preenchendo Kcor Meio Ambiente',
+      'Gerando arquivos de saída'
+    ],
+    'juntar': [
+      'Lendo ZIP(s) Kcor',
+      'Mesclando com acumulado (se houver)',
+      'Consolidando linhas e colunas',
+      'Gravando planilha acumulada'
+    ],
+    'inserir-numero': [
+      'Abrindo planilha acumulada',
+      'Calculando numeração Kria inicial',
+      'Aplicando sufixo e colunas',
+      'Gravando XLSX numerado'
+    ],
+    'exportar-calendario': [
+      'Lendo prazos e datas na planilha',
+      'Montando eventos iCalendar',
+      'Serializando arquivo .ics'
+    ],
+    '_default': ['Autenticando requisição', 'Processando no servidor', 'Finalizando saída']
+  };
+
+  function _ncStartLivePipelineLog(logId, stepId) {
+    var steps = NC_PIPELINE_STEPS[stepId] || NC_PIPELINE_STEPS._default;
+    var box = document.getElementById(logId);
+    if (box) box.classList.add('nc-log-active');
+    var bar = document.createElement('div');
+    bar.className = 'log-live-bar';
+    bar.innerHTML = '<span class="log-live-dot"></span><span class="log-live-text"></span>';
+    var txt = bar.querySelector('.log-live-text');
+    var i = 0;
+    function tick() { if (txt) txt.textContent = 'Em execução: ' + steps[i % steps.length]; i++; }
+    tick();
+    var t = setInterval(tick, 1250);
+    var done = false;
+    if (box) box.appendChild(bar);
+    return function () {
+      if (done) return;
+      done = true;
+      clearInterval(t);
+      if (box) box.classList.remove('nc-log-active');
+      if (bar && bar.parentNode) bar.remove();
+    };
+  }
+
+  function _ncReplayPipelineSteps(logId, stepId, cb) {
+    var steps = NC_PIPELINE_STEPS[stepId] || NC_PIPELINE_STEPS._default;
+    var box = document.getElementById(logId);
+    if (!box || !steps.length) { if (cb) cb(); return; }
+    var empty = box.querySelector('.log-empty');
+    if (empty) empty.remove();
+    var idx = 0;
+    function next() {
+      if (idx >= steps.length) { if (cb) cb(); return; }
+      var now = new Date().toLocaleTimeString('pt-BR');
+      var div = document.createElement('div');
+      div.className = 'log-line log-step success log-line-appear';
+      div.innerHTML = '<span class="time">[' + now + ']</span> ✓ ' + steps[idx];
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+      idx++;
+      setTimeout(next, 55);
+    }
+    next();
   }
 
   function logMsg(logId, text, type) {
@@ -1582,7 +1601,7 @@
     if (empty) empty.remove();
     const now = new Date().toLocaleTimeString('pt-BR');
     const div = document.createElement('div');
-    div.className = 'log-line ' + (type || '');
+    div.className = 'log-line log-line-appear ' + (type || '');
     div.innerHTML = '<span class="time">[' + now + ']</span> ' + text;
     box.appendChild(div);
     box.scrollTop = box.scrollHeight;
@@ -1617,7 +1636,6 @@
     if (el) el.classList.toggle('show', show);
   }
 
-  /* ── Upload de arquivo único ── */
   function bindFile(inputId, infoId, infotextId, btnId, requiredInputs) {
     const input = document.getElementById(inputId);
     if (!input) return;
@@ -1638,7 +1656,6 @@
     });
   }
 
-  /* ── Upload múltiplos arquivos (ex.: vários PDFs) ── */
   function bindFileMultiple(inputId, infoId, infotextId, btnId, requiredInputs, onUpdate) {
     const input = document.getElementById(inputId);
     if (!input) return;
@@ -1688,7 +1705,6 @@
     btn.disabled = !ok;
   }
 
-  /* ── Download de blob: enquanto não baixar, próxima fase segue sem upload (usa blob). Depois do download, exige upload do arquivo baixado. ── */
   const _blobs = {};
   /** True quando o usuário clicou em "Baixar" — a partir daí a próxima etapa exige upload do arquivo baixado (não usa mais o blob). */
   const _downloadFeito = {};
@@ -1725,6 +1741,14 @@
     _blobs[key] = { url, filename, data, mimeType };
     atualizarBotoesSessao();
   }
+  function nomeArquivoDoContentDisposition(cd, fallback) {
+    if (!cd || typeof cd !== 'string') return fallback;
+    let m = cd.match(/filename\*=UTF-8''([^;\n]+)/i);
+    if (m && m[1]) try { return decodeURIComponent(m[1].trim()); } catch (e) {}
+    m = cd.match(/filename="([^"]+)"/i) || cd.match(/filename=([^;\n]+)/i);
+    if (m && m[1]) return m[1].replace(/^["']|["']$/g, '').trim();
+    return fallback;
+  }
 
   async function triggerDownload(key) {
     const b = _blobs[key];
@@ -1754,19 +1778,63 @@
     a.click();
   }
 
-  /* ── Chamada POST multipart e download ── */
+  function ncLoteObrigatorio(logId, stepId) {
+    if (!ncLoteValor()) {
+      if (logId) {
+        var msg = (stepId === 'extrair-pdf') ? 'Selecione o lote acima.' : 'Selecione o lote (Análise PDF ou Extrair PDF).';
+        logMsg(logId, msg, 'error');
+      }
+      if (stepId) showFeedback(stepId, '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione o <strong>lote</strong> no topo da página antes de continuar.</div>');
+      return false;
+    }
+    return true;
+  }
+  function ncLoteValor() {
+    var s = document.getElementById('sel-lote-analise');
+    var e = document.getElementById('sel-lote-extrair-pdf');
+    var va = (s && String(s.value || '').trim()) ? String(s.value).trim() : '';
+    var ve = (e && String(e.value || '').trim()) ? String(e.value).trim() : '';
+    return va || ve;
+  }
+
+  var NC_FILE_INPUT_IDS = [
+    'file-analisar-pdf', 'file-excel-analise', 'file-extrair-pdf', 'file-separar',
+    'file-email-xls', 'file-email-fotos', 'file-m02-xls', 'file-m02-fotos',
+    'file-m03-kria', 'file-m03-fotos', 'file-m07-pdf', 'file-m07-kria',
+    'file-m04-kcor', 'file-m04-acum', 'file-m05-acum', 'file-m06-acum',
+  ];
+  var NC_ZONE_IDS = [
+    'zone-analisar-pdf', 'zone-extrair-pdf', 'zone-separar',
+    'zone-email-xls', 'zone-email-fotos', 'zone-m02-xls', 'zone-m02-fotos',
+    'zone-m03-kria', 'zone-m03-fotos', 'zone-m07-pdf', 'zone-m07-kria',
+    'zone-m04-kcor', 'zone-m04-acum', 'zone-m05-acum', 'zone-m06-acum',
+  ];
+  function ncAtualizarAnexosHabilitados() {
+    var ok = !!ncLoteValor();
+    NC_FILE_INPUT_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = !ok;
+    });
+    NC_ZONE_IDS.forEach(function (id) {
+      var z = document.getElementById(id);
+      if (z) z.classList.toggle('nc-anexo-sem-lote', !ok);
+    });
+  }
+
   async function executarModulo({ stepId, endpoint, buildFormData, filename, mimeType, logId, timeoutMs }) {
     const tk = localStorage.getItem('artesp_token');
     if (!tk) { showLogin('Faça login para continuar.'); return; }
+    if (!ncLoteObrigatorio(logId, stepId)) return;
 
     const btn = document.getElementById('btn-' + stepId);
     if (btn) btn.disabled = true;
+    var stopLive = null;
     setStatus(stepId, 'processing', 'Processando...');
     setProgress(stepId, 10, true);
     showResult(stepId, false);
     showFeedback(stepId, '');
+    stopLive = _ncStartLivePipelineLog(logId, stepId);
     logMsg(logId, 'Enviando arquivos para o servidor...', 'info');
-    logMsg(logId, 'Processando no servidor... (aguarde, pode levar alguns minutos)', 'info');
     _uploadIndicatorShow();
 
     let abortController = null;
@@ -1790,6 +1858,7 @@
       setProgress(stepId, 70, true);
 
       if (r.status === 401) {
+        if (stopLive) stopLive();
         localStorage.removeItem('artesp_token');
         localStorage.removeItem('artesp_user_email');
         showLogin('Sessão expirada. Faça login novamente.');
@@ -1798,6 +1867,7 @@
         return;
       }
       if (!r.ok) {
+        if (stopLive) stopLive();
         const data = await r.json().catch(() => ({}));
         let msg = (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) || r.statusText;
         if (r.status === 404 && (msg.includes('Workspace não encontrado') || msg.includes('primeira etapa'))) {
@@ -1811,16 +1881,16 @@
         return;
       }
 
-      logMsg(logId, 'Recebendo resultado do servidor...', 'info');
+      if (stopLive) { stopLive(); stopLive = null; }
+      logMsg(logId, 'Baixando resposta do servidor...', 'info');
       const buffer = await r.arrayBuffer();
-      setProgress(stepId, 100, true);
+      setProgress(stepId, 85, true);
 
       const cd = r.headers.get('Content-Disposition') || '';
       let nome = filename;
       const m = cd.match(/filename="?([^";]+)"?/);
       if (m && m[1]) nome = m[1];
 
-      // ZIP vazio ou resposta de erro vinda como 200 (servidor antigo): tamanho mínimo ~100 bytes
       if (buffer.byteLength < 100 && (nome.endsWith('.zip') || (mimeType && mimeType.includes('zip')))) {
         let msg = 'O servidor devolveu um ZIP vazio. Verifique: 1) O ZIP de entrada tem planilhas .xlsx/.xls com coluna C (Código) preenchida; 2) Confira os logs do servidor.';
         try {
@@ -1837,6 +1907,8 @@
         return;
       }
 
+      await new Promise(function (res) { _ncReplayPipelineSteps(logId, stepId, res); });
+      setProgress(stepId, 100, true);
       storeBlobForDownload(stepId, buffer, nome, mimeType);
       const jobIdHeader = r.headers.get('X-NC-Job-Id');
       if (jobIdHeader) setNcJobId(jobIdHeader);
@@ -1846,6 +1918,7 @@
       showResult(stepId, true);
 
     } catch (err) {
+      if (stopLive) stopLive();
       const msg = err.name === 'AbortError'
         ? 'Tempo esgotado. A operação demorou mais do que o limite. Tente com menos arquivos ou execute em lotes.'
         : _msgErroRede(err);
@@ -1854,14 +1927,11 @@
       setStatus(stepId, 'error', 'Erro');
       setProgress(stepId, 0, false);
     } finally {
+      if (stopLive) stopLive();
       _uploadIndicatorHide();
       if (btn) updateBtnState('btn-' + stepId, []);
     }
   }
-
-  /* ════════════════════════════════════════════════════════════════
-     ANÁLISE PDF — múltiplos arquivos
-  ════════════════════════════════════════════════════════════════ */
   let _pdfsAnalise = [];  // Array de File objects
 
   function _renderListaPdfs() {
@@ -1900,22 +1970,20 @@
     }
   }
 
-  // Input change — acumula arquivos (não substitui) e sincroniza com sessão
   document.getElementById('file-analisar-pdf').addEventListener('change', function () {
+    if (!ncLoteValor()) { this.value = ''; return; }
     if (!this.files || !this.files.length) return;
     const novos = Array.from(this.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
     const nomesAtuais = new Set(_pdfsAnalise.map(f => f.name));
     novos.forEach(f => { if (!nomesAtuais.has(f.name)) _pdfsAnalise.push(f); });
     this.value = '';
     _renderListaPdfs();
-    // Sync com sessão
     const nomesS = new Set(_sessao.pdfs.map(f => f.name));
     novos.forEach(f => { if (!nomesS.has(f.name)) _sessao.pdfs.push(f); });
     _sessaoAtualizar();
     if (novos.length) logMsg('log-analisar-pdf', novos.length + ' arquivo(s) adicionado(s).', 'info');
   });
 
-  // Drag & drop na upload zone
   (function () {
     const zone = document.getElementById('zone-analisar-pdf');
     if (!zone) return;
@@ -1924,6 +1992,7 @@
     zone.addEventListener('drop', e => {
       e.preventDefault();
       zone.classList.remove('dragover');
+      if (!ncLoteValor()) return;
       const files = e.dataTransfer && e.dataTransfer.files;
       if (!files || !files.length) return;
       const novos = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
@@ -1935,13 +2004,58 @@
   })();
 
   (function () {
-    var LOTES_CONCESSIONARIA = { '13': 'Lote 13 Rodovias das Colinas', '21': 'Lote 21 Rodovias do Tietê', '26': 'Lote 26 SP Serra' };
+    var LOTES_CONCESSIONARIA = { '13': 'Lote 13 Rodovias das Colinas', '21': 'Lote 21 Rodovias do Tietê', '26': 'Lote 26 SP Serra', '50': 'CONSOL' };
     var sel = document.getElementById('sel-lote-analise');
+    var selExt = document.getElementById('sel-lote-extrair-pdf');
     var campo = document.getElementById('campo-concessionaria-analise');
+    var wrapExcel = document.getElementById('wrap-excel-analise');
+    var msgArtemig = document.getElementById('msg-artemig-somente-pdf');
+    var _ncLoteRegistrado = '';
+    function _ncTratarMudancaLote() {
+      var agora = (ncLoteValor() || '').trim();
+      var antes = _ncLoteRegistrado;
+      if (antes === agora) return;
+      if (antes && agora && antes !== agora) {
+        clearNcJobId();
+        var el = document.getElementById('nc-aviso-mudanca-lote');
+        if (el) {
+          el.style.display = 'block';
+          if (el._ncT) clearTimeout(el._ncT);
+          el._ncT = setTimeout(function () { el.style.display = 'none'; }, 14000);
+        }
+      } else if (antes && !agora) {
+        clearNcJobId();
+      }
+      _ncLoteRegistrado = agora;
+    }
+    function syncAnaliseParaExtrair() {
+      if (sel && selExt && sel.value !== selExt.value) selExt.value = sel.value;
+    }
     function atualizarConcessionaria() {
       if (campo && sel) campo.value = LOTES_CONCESSIONARIA[sel.value] || '';
+      var isArtemig = (sel && sel.value === '50');
+      if (wrapExcel) wrapExcel.style.display = isArtemig ? 'none' : '';
+      if (msgArtemig) msgArtemig.style.display = isArtemig ? 'block' : 'none';
+      if (isArtemig) {
+        var fileExcel = document.getElementById('file-excel-analise');
+        if (fileExcel) fileExcel.value = '';
+      }
+      ncAtualizarAnexosHabilitados();
+      syncAnaliseParaExtrair();
+      _ncTratarMudancaLote();
     }
     if (sel) sel.addEventListener('change', atualizarConcessionaria);
+    if (selExt) {
+      selExt.addEventListener('change', function () {
+        if (!sel) return;
+        if (sel.value !== selExt.value) {
+          sel.value = selExt.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          ncAtualizarAnexosHabilitados();
+        }
+      });
+    }
     atualizarConcessionaria();
   })();
 
@@ -1972,6 +2086,7 @@
 
   document.getElementById('btn-analisar-pdf').addEventListener('click', async () => {
     if (_pdfsAnalise.length === 0) return;
+    if (!ncLoteObrigatorio('log-analisar-pdf', 'analisar-pdf')) return;
     const limiar = parseFloat(document.getElementById('limiar-analisar-pdf').value) || 2.0;
     const tk = localStorage.getItem('artesp_token');
     if (!tk) { showLogin('Faça login para continuar.'); return; }
@@ -1985,13 +2100,13 @@
 
     const plural = _pdfsAnalise.length > 1 ? _pdfsAnalise.length + ' PDFs' : '"' + _pdfsAnalise[0].name + '"';
     logMsg('log-analisar-pdf', 'Enviando ' + plural + ' para análise...', 'info');
+    var stopLiveAn = _ncStartLivePipelineLog('log-analisar-pdf', 'analisar-pdf');
     _uploadIndicatorShow();
     try {
       const fd = new FormData();
       _pdfsAnalise.forEach(f => fd.append('pdfs', f));
       fd.append('limiar_km', limiar);
-      var selLote = document.getElementById('sel-lote-analise');
-      fd.append('lote', (selLote && selLote.value) ? String(selLote.value).trim() : '13');
+      fd.append('lote', ncLoteValor());
       var fileExcel = document.getElementById('file-excel-analise');
       if (fileExcel && fileExcel.files && fileExcel.files.length > 0)
         for (var i = 0; i < fileExcel.files.length; i++) fd.append('excel', fileExcel.files[i]);
@@ -2006,6 +2121,7 @@
       setProgress('analisar-pdf', 75, true);
 
       if (r.status === 401) {
+        stopLiveAn();
         localStorage.removeItem('artesp_token');
         localStorage.removeItem('artesp_user_email');
         showLogin('Sessão expirada.');
@@ -2015,6 +2131,7 @@
         return;
       }
       if (!r.ok) {
+        stopLiveAn();
         const data = await r.json().catch(() => ({}));
         const msg = (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) || r.statusText;
         logMsg('log-analisar-pdf', 'Erro: ' + msg, 'error');
@@ -2025,6 +2142,8 @@
         return;
       }
 
+      stopLiveAn();
+      logMsg('log-analisar-pdf', 'Baixando ZIP de análise...', 'info');
       const total   = r.headers.get('X-NC-Total')        || '?';
       const emerg   = r.headers.get('X-NC-Emergenciais') || '0';
       const gaps    = r.headers.get('X-NC-Alertas')      || '0';
@@ -2032,13 +2151,22 @@
       const narqs   = r.headers.get('X-NC-Arquivos')     || String(_pdfsAnalise.length);
 
       const buffer  = await r.arrayBuffer();
+      setProgress('analisar-pdf', 95, true);
+      await new Promise(function (res) { _ncReplayPipelineSteps('log-analisar-pdf', 'analisar-pdf', res); });
       setProgress('analisar-pdf', 100, true);
-      storeBlobForDownload('analisar-pdf', buffer, 'Relatorio_Analise_NCs.zip', 'application/zip');
+      const zipSlug = r.headers.get('X-NC-Zip-Slug') || '';
+      const zipNome = nomeArquivoDoContentDisposition(
+        r.headers.get('Content-Disposition'),
+        zipSlug ? ('Relatorio_Analise_NCs_' + zipSlug + '.zip') : 'Relatorio_Analise_NCs.zip');
+      storeBlobForDownload('analisar-pdf', buffer, zipNome, 'application/zip');
 
       const resumoEl = document.getElementById('resumo-analisar-pdf');
       if (resumoEl) {
         resumoEl.innerHTML =
           '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">' +
+          (zipSlug
+            ? '<span><i class="fas fa-folder" style="color:var(--accent)"></i> Pasta no ZIP: <b>' + zipSlug + '</b></span>'
+            : '') +
           '<span><i class="fas fa-file-archive" style="color:var(--accent)"></i> ZIP: PDF + XLSX</span>' +
           '<span><i class="fas fa-file-pdf" style="color:var(--warning)"></i> <b>' + narqs + '</b> PDF(s) enviado(s)</span>' +
           '<span><i class="fas fa-clipboard-list" style="color:var(--accent)"></i> <b>' + total + '</b> NCs</span>' +
@@ -2059,109 +2187,24 @@
       if (parseInt(emerg) > 0)
         logMsg('log-analisar-pdf', '🚨 NC(s) com prazo emergencial (≤ 24 h)!', 'error');
       logMsg('log-analisar-pdf', '────────────────────────────────────', 'info');
-      logMsg('log-analisar-pdf', 'ZIP (PDF de análise + XLSX template) pronto para download.', 'success');
+      logMsg('log-analisar-pdf', 'Arquivo: ' + zipNome + (zipSlug ? ' (pasta ' + zipSlug + ')' : '') + '.', 'success');
       setStatus('analisar-pdf', 'done', 'Concluído');
       showResult('analisar-pdf', true);
 
     } catch (err) {
+      if (typeof stopLiveAn === 'function') stopLiveAn();
       logMsg('log-analisar-pdf', 'Erro: ' + _msgErroRede(err), 'error');
       showFeedback('analisar-pdf', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
       setStatus('analisar-pdf', 'error', 'Erro');
       setProgress('analisar-pdf', 0, false);
     } finally {
+      if (typeof stopLiveAn === 'function') stopLiveAn();
       _uploadIndicatorHide();
     }
     btn.disabled = _pdfsAnalise.length === 0;
   });
 
   document.getElementById('download-analisar-pdf').addEventListener('click', () => triggerDownload('analisar-pdf'));
-
-  /* ════════════════════════════════════════════════════════════════
-     RECEBER EAF — upload combinado Excel + PDFs
-  ════════════════════════════════════════════════════════════════ */
-
-  // EAF Excels (múltiplos)
-  _gestores['file-receber-eafs'] = criarGestorMulti({
-    inputId: 'file-receber-eafs', zoneId: 'zone-receber-eafs',
-    listaId: 'lista-receber-eafs', btnId: null,
-    accept: '.xlsx,.xls', iconCls: 'fas fa-file-excel', cor: 'var(--success)',
-  });
-  const _gestorReceberEAFs = _gestores['file-receber-eafs'];
-
-  // Habilitar btn quando qualquer arquivo é adicionado
-  function _receberAtualizarBtn() {
-    document.getElementById('btn-receber-eaf').disabled =
-      _gestorReceberEAFs.getFiles().length === 0 && _gestorReceberPDFs.getFiles().length === 0;
-  }
-  document.getElementById('file-receber-eafs').addEventListener('change', () => setTimeout(_receberAtualizarBtn, 50));
-
-  // PDFs (multi)
-  _gestores['file-receber-pdfs'] = criarGestorMulti({
-    inputId: 'file-receber-pdfs', zoneId: 'zone-receber-pdfs',
-    listaId: 'lista-receber-pdfs', btnId: null,
-    accept: '.pdf', iconCls: 'fas fa-file-pdf', cor: 'var(--danger)',
-  });
-  const _gestorReceberPDFs = _gestores['file-receber-pdfs'];
-
-  /** Sincroniza _sessao com os arquivos atualmente selecionados em Receber EAF.
-   *  Assim, ao trocar para Analisar PDF / Extrair PDF / Separar, os arquivos já aparecem
-   *  sem precisar clicar em "Salvar na sessão". */
-  function _sessaoSyncDesdeReceberEAF() {
-    if (_gestorReceberEAFs) {
-      const fEAFs = _gestorReceberEAFs.getFiles();
-      const nomes = new Set(_sessao.eafs.map(f => f.name));
-      fEAFs.forEach(f => { if (!nomes.has(f.name)) _sessao.eafs.push(f); });
-    }
-    if (_gestorReceberPDFs) {
-      const fPDFs = _gestorReceberPDFs.getFiles();
-      const nomes = new Set(_sessao.pdfs.map(f => f.name));
-      fPDFs.forEach(f => { if (!nomes.has(f.name)) _sessao.pdfs.push(f); });
-    }
-    _sessaoAtualizar();
-  }
-
-  document.getElementById('file-receber-pdfs').addEventListener('change', () => setTimeout(_receberAtualizarBtn, 50));
-
-  document.getElementById('btn-receber-eaf').addEventListener('click', () => {
-    const fEAFs = _gestorReceberEAFs.getFiles();
-    const fPDFs = _gestorReceberPDFs.getFiles();
-
-    if (fEAFs.length > 0) {
-      const nomes = new Set(_sessao.eafs.map(f => f.name));
-      fEAFs.forEach(f => { if (!nomes.has(f.name)) _sessao.eafs.push(f); });
-    }
-    if (fPDFs.length > 0) {
-      const nomes = new Set(_sessao.pdfs.map(f => f.name));
-      fPDFs.forEach(f => { if (!nomes.has(f.name)) _sessao.pdfs.push(f); });
-    }
-    _sessaoAtualizar();
-
-    const sr   = document.getElementById('sessao-result');
-    const info = document.getElementById('sessao-result-info');
-    if (sr) sr.style.display = 'block';
-    if (info) {
-      info.innerHTML =
-        (fEAFs.length > 0
-          ? '<span style="margin-right:16px"><i class="fas fa-file-excel" style="color:var(--success)"></i> <b>' + fEAFs.length + '</b> Excel(s) → disponível em Separar NC</span>'
-          : '') +
-        (fPDFs.length > 0
-          ? '<span><i class="fas fa-file-pdf" style="color:var(--danger)"></i> <b>' + fPDFs.length + '</b> PDF(s) → disponíveis em Análise PDF e Extrair PDF</span>'
-          : '');
-    }
-  });
-
-  document.getElementById('reset-receber-eaf').addEventListener('click', () => {
-    _gestorReceberEAFs.reset();
-    _gestorReceberPDFs.reset();
-    document.getElementById('btn-receber-eaf').disabled = true;
-    const sr = document.getElementById('sessao-result');
-    if (sr) sr.style.display = 'none';
-  });
-
-  /* ════════════════════════════════════════════════════════════════
-     GESTOR GENÉRICO DE MÚLTIPLOS ARQUIVOS
-     criarGestorMulti(cfg) → { getFiles, reset }
-  ════════════════════════════════════════════════════════════════ */
   function criarGestorMulti({ inputId, zoneId, listaId, btnId, accept, iconCls, cor }) {
     let _arquivos = [];
     const input  = document.getElementById(inputId);
@@ -2220,11 +2263,16 @@
       }
     }
     if (zone) {
-      zone.addEventListener('click', function (e) { if (input && !e.target.closest('button')) input.click(); });
+      zone.addEventListener('click', function (e) {
+        if (e.target.closest('button')) return;
+        if (!ncLoteValor()) return;
+        if (input && !input.disabled) input.click();
+      });
       zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
       zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
       zone.addEventListener('drop', e => {
         e.preventDefault(); zone.classList.remove('dragover');
+        if (!ncLoteValor()) return;
         if (e.dataTransfer && e.dataTransfer.files) _add(e.dataTransfer.files);
       });
     }
@@ -2241,10 +2289,6 @@
   }
 
   // (declaração movida para o início — ver linha logo abaixo de _sessao)
-
-  /* ════════════════════════════════════════════════════════════════
-     Extrair PDF (múltiplos)
-  ════════════════════════════════════════════════════════════════ */
   _gestores['file-extrair-pdf'] = criarGestorMulti({
     inputId: 'file-extrair-pdf', zoneId: 'zone-extrair-pdf',
     listaId: 'lista-multi-extrair-pdf', btnId: 'btn-extrair-pdf',
@@ -2263,9 +2307,13 @@
   document.getElementById('btn-extrair-pdf').addEventListener('click', async () => {
     const files = _gestores['file-extrair-pdf'].getFiles();
     if (!files.length) return;
+    if (!ncLoteObrigatorio('log-extrair-pdf', 'extrair-pdf')) return;
     const dpi   = parseInt(document.getElementById('dpi-extrair-pdf').value) || 150;
     const n     = files.length;
-    const nome  = (n === 1 ? files[0].name.replace(/\.pdf$/i, '') : `lote_${n}_pdfs`) + '_imagens.zip';
+    const loteM = ncLoteValor().match(/\d+/);
+    const loteNum = loteM ? loteM[0] : '';
+    if (!loteNum) { logMsg('log-extrair-pdf', 'Selecione o lote.', 'error'); return; }
+    const nome  = `lote_${loteNum}_${n}_pdfs_imagens.zip`;
     const logId = 'log-extrair-pdf';
     const tk    = localStorage.getItem('artesp_token');
     if (!tk) { showLogin('Faça login para continuar.'); return; }
@@ -2277,15 +2325,18 @@
     showResult('extrair-pdf', false);
     showFeedback('extrair-pdf', '');
     logMsg(logId, `Enviando ${n} PDF(s) para extração...`, 'info');
+    var stopLiveEx = _ncStartLivePipelineLog(logId, 'extrair-pdf');
     _uploadIndicatorShow();
     try {
       const fd = new FormData();
       files.forEach(f => fd.append('pdfs', f));
       fd.append('dpi', dpi);
+      fd.append('lote', loteNum);
       setProgress('extrair-pdf', 30, true);
       const r = await fetch('/nc/extrair-pdf', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
       setProgress('extrair-pdf', 80, true);
       if (!r.ok) {
+        stopLiveEx();
         const d = await r.json().catch(() => ({}));
         const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
         logMsg(logId, 'Erro: ' + msg, 'error');
@@ -2294,28 +2345,30 @@
         setProgress('extrair-pdf', 0, false);
         btn.disabled = false; return;
       }
+      stopLiveEx();
+      logMsg(logId, 'Baixando ZIP de imagens...', 'info');
       const buf = await r.arrayBuffer();
+      setProgress('extrair-pdf', 95, true);
+      await new Promise(function (res) { _ncReplayPipelineSteps(logId, 'extrair-pdf', res); });
       setProgress('extrair-pdf', 100, true);
       storeBlobForDownload('extrair-pdf', buf, nome, 'application/zip');
       logMsg(logId, `${n} PDF(s) extraído(s) → ${nome}`, 'success');
       setStatus('extrair-pdf', 'done', 'Concluído');
       showResult('extrair-pdf', true);
     } catch (err) {
+      if (typeof stopLiveEx === 'function') stopLiveEx();
       logMsg(logId, 'Erro: ' + _msgErroRede(err), 'error');
       showFeedback('extrair-pdf', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
       setStatus('extrair-pdf', 'error', 'Erro');
       setProgress('extrair-pdf', 0, false);
     } finally {
+      if (typeof stopLiveEx === 'function') stopLiveEx();
       _uploadIndicatorHide();
     }
     btn.disabled = _gestores['file-extrair-pdf'].getFiles().length === 0;
   });
 
   document.getElementById('download-extrair-pdf').addEventListener('click', () => triggerDownload('extrair-pdf'));
-
-  /* ════════════════════════════════════════════════════════════════
-     Separar NC (múltiplos)
-  ════════════════════════════════════════════════════════════════ */
   _gestores['file-separar'] = criarGestorMulti({
     inputId: 'file-separar', zoneId: 'zone-separar',
     listaId: 'lista-multi-separar', btnId: 'btn-separar',
@@ -2345,6 +2398,7 @@
   document.getElementById('btn-separar').addEventListener('click', async () => {
     const files = _gestores['file-separar'].getFiles();
     if (!files.length) return;
+    if (!ncLoteObrigatorio('log-separar', 'separar')) return;
     const n     = files.length;
     const logId = 'log-separar';
     const tk    = localStorage.getItem('artesp_token');
@@ -2357,6 +2411,7 @@
     showResult('separar', false);
     showFeedback('separar', '');
     logMsg(logId, `Enviando ${n} planilha(s) EAF para separação...`, 'info');
+    var stopLiveSep = _ncStartLivePipelineLog(logId, 'separar');
     _uploadIndicatorShow();
     try {
       const fd = new FormData();
@@ -2366,6 +2421,7 @@
       const r = await fetch('/nc/separar', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
       setProgress('separar', 80, true);
       if (!r.ok) {
+        stopLiveSep();
         const d = await r.json().catch(() => ({}));
         const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
         logMsg(logId, 'Erro: ' + msg, 'error');
@@ -2374,9 +2430,13 @@
         setProgress('separar', 0, false);
         btn.disabled = false; return;
       }
+      stopLiveSep();
+      logMsg(logId, 'Baixando nc_separados.zip...', 'info');
       const buf = await r.arrayBuffer();
       const jobIdHeader = r.headers.get('X-NC-Job-Id');
       if (jobIdHeader) setNcJobId(jobIdHeader);
+      setProgress('separar', 95, true);
+      await new Promise(function (res) { _ncReplayPipelineSteps(logId, 'separar', res); });
       setProgress('separar', 100, true);
       storeBlobForDownload('separar', buf, 'nc_separados.zip', 'application/zip');
       logMsg(logId, `${n} EAF(s) processada(s) → nc_separados.zip`, 'success');
@@ -2384,21 +2444,19 @@
       setStatus('separar', 'done', 'Concluído');
       showResult('separar', true);
     } catch (err) {
+      if (typeof stopLiveSep === 'function') stopLiveSep();
       logMsg(logId, 'Erro: ' + _msgErroRede(err), 'error');
       showFeedback('separar', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
       setStatus('separar', 'error', 'Erro');
       setProgress('separar', 0, false);
     } finally {
+      if (typeof stopLiveSep === 'function') stopLiveSep();
       _uploadIndicatorHide();
     }
     btn.disabled = _gestores['file-separar'].getFiles().length === 0;
   });
 
   document.getElementById('download-separar').addEventListener('click', () => triggerDownload('separar'));
-
-  /* ════════════════════════════════════════════════════════════════
-     E-mail — Gerar .eml
-  ════════════════════════════════════════════════════════════════ */
   bindFile('file-email-xls', 'info-email-xls', 'infotext-email-xls', 'btn-criar-email', ['file-email-xls']);
   bindFile('file-email-fotos', 'info-email-fotos', 'infotext-email-fotos', null, []);
   document.getElementById('file-email-xls').addEventListener('change', atualizarBotoesSessao);
@@ -2438,10 +2496,6 @@
   });
 
   document.getElementById('download-criar-email').addEventListener('click', () => triggerDownload('criar-email'));
-
-  /* ════════════════════════════════════════════════════════════════
-     Gerar Kria e Resposta (modelo foto)
-  ════════════════════════════════════════════════════════════════ */
   // Os inputs usam onchange no HTML + updateBtnState — nada extra necessário aqui
 
   bindFile('file-m02-xls',  'info-m02-xls',  'infotext-m02-xls',  'btn-modelo-foto', ['file-m02-xls']);
@@ -2474,7 +2528,8 @@
         const fd = new FormData();
         fd.append('xls_zip', getFileFromInputOrBlob('file-m02-xls', 'separar'));
         if (fFotos) fd.append('fotos_pdf_zip', fFotos);
-        const j = getNcJobId();
+        fd.append('lote', ncLoteValor());
+        const j = ncJobIdParaPipeline();
         if (j) fd.append('job_id', j);
         return fd;
       },
@@ -2486,10 +2541,6 @@
   });
 
   document.getElementById('download-modelo-foto').addEventListener('click', () => triggerDownload('modelo-foto'));
-
-  /* ════════════════════════════════════════════════════════════════
-     Kcor-Kria Conservação
-  ════════════════════════════════════════════════════════════════ */
   ['m03-kria', 'm03-fotos'].forEach(key => {
     bindFile('file-' + key, 'info-' + key, 'infotext-' + key, 'btn-conservacao', ['file-m03-kria']);
   });
@@ -2521,7 +2572,8 @@
         const fd = new FormData();
         fd.append('kria_zip', getFileFromInputOrBlob('file-m03-kria', 'modelo-foto'));
         if (fFotos) fd.append('fotos_zip', fFotos);
-        const j = getNcJobId();
+        fd.append('lote', ncLoteValor());
+        const j = ncJobIdParaPipeline();
         if (j) fd.append('job_id', j);
         return fd;
       },
@@ -2532,10 +2584,6 @@
   });
 
   document.getElementById('download-conservacao').addEventListener('click', () => triggerDownload('conservacao'));
-
-  /* ════════════════════════════════════════════════════════════════
-     Kcor-Kria Meio Ambiente (PDF ou ZIP Kria)
-  ════════════════════════════════════════════════════════════════ */
   function updateBtnMeioAmbiente() {
     const fKria = document.getElementById('file-m07-kria').files[0];
     const pdfFiles = document.getElementById('file-m07-pdf').files;
@@ -2570,7 +2618,8 @@
         buildFormData: () => {
           const fd = new FormData();
           for (let i = 0; i < pdfFiles.length; i++) fd.append('pdf', pdfFiles[i]);
-          const j = getNcJobId();
+          fd.append('lote', ncLoteValor());
+          const j = ncJobIdParaPipeline();
           if (j) fd.append('job_id', j);
           return fd;
         },
@@ -2585,7 +2634,8 @@
         buildFormData: () => {
           const fd = new FormData();
           fd.append('kria_zip', fKria);
-          const j = getNcJobId();
+          fd.append('lote', ncLoteValor());
+          const j = ncJobIdParaPipeline();
           if (j) fd.append('job_id', j);
           return fd;
         },
@@ -2599,10 +2649,6 @@
   });
 
   document.getElementById('download-meio-ambiente').addEventListener('click', () => triggerDownload('meio-ambiente'));
-
-  /* ════════════════════════════════════════════════════════════════
-     Acumulado (juntar arquivos)
-  ════════════════════════════════════════════════════════════════ */
   ['m04-kcor', 'm04-acum'].forEach(key => {
     bindFile('file-' + key, 'info-' + key, 'infotext-' + key, 'btn-juntar', ['file-m04-kcor', 'file-m04-acum']);
   });
@@ -2642,7 +2688,8 @@
         if (fAcum) fd.append('acumulado', fAcum);
         if (nomeArquivoJuntar) fd.append('nome_arquivo', nomeArquivoJuntar);
         fd.append('finalize', '1');
-        const j = getNcJobId();
+        fd.append('lote', ncLoteValor());
+        const j = ncJobIdParaPipeline();
         if (j) fd.append('job_id', j);
         return fd;
       },
@@ -2653,10 +2700,6 @@
   });
 
   document.getElementById('download-juntar').addEventListener('click', () => triggerDownload('juntar'));
-
-  /* ════════════════════════════════════════════════════════════════
-     Inserir número Kria
-  ════════════════════════════════════════════════════════════════ */
   bindFile('file-m05-acum', 'info-m05-acum', 'infotext-m05-acum', 'btn-inserir-numero', ['file-m05-acum']);
   document.getElementById('file-m05-acum').addEventListener('change', atualizarBotoesSessao);
 
@@ -2691,7 +2734,7 @@
         fd.append('numero_inicial', String(num));
         fd.append('sufixo', suf);
         fd.append('finalize', '1');
-        const j = getNcJobId();
+        const j = ncJobIdParaPipeline();
         if (j) fd.append('job_id', j);
         return fd;
       },
@@ -2702,10 +2745,6 @@
   });
 
   document.getElementById('download-inserir-numero').addEventListener('click', () => triggerDownload('inserir-numero'));
-
-  /* ════════════════════════════════════════════════════════════════
-     Exportar calendário (.ics)
-  ════════════════════════════════════════════════════════════════ */
   bindFile('file-m06-acum', 'info-m06-acum', 'infotext-m06-acum', 'btn-exportar-calendario', ['file-m06-acum']);
   document.getElementById('file-m06-acum').addEventListener('change', atualizarBotoesSessao);
 
@@ -2742,6 +2781,7 @@
     showResult('exportar-calendario', false);
     showFeedback('exportar-calendario', '');
     logMsg('log-exportar-calendario', 'Gerando arquivo iCalendar...', 'info');
+    var stopLiveCal = _ncStartLivePipelineLog('log-exportar-calendario', 'exportar-calendario');
     _uploadIndicatorShow();
     try {
       const fd = new FormData();
@@ -2749,6 +2789,7 @@
       const r = await fetch('/nc/exportar-calendario', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
       setProgress('exportar-calendario', 80, true);
       if (!r.ok) {
+        stopLiveCal();
         const d = await r.json().catch(() => ({}));
         const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
         logMsg('log-exportar-calendario', 'Erro: ' + msg, 'error');
@@ -2757,8 +2798,12 @@
         setProgress('exportar-calendario', 0, false);
         btn.disabled = false; return;
       }
+      stopLiveCal();
+      logMsg('log-exportar-calendario', 'Baixando .ics...', 'info');
       const nEventos = r.headers.get('X-NC-Eventos') || '?';
       const buf = await r.arrayBuffer();
+      setProgress('exportar-calendario', 95, true);
+      await new Promise(function (res) { _ncReplayPipelineSteps('log-exportar-calendario', 'exportar-calendario', res); });
       setProgress('exportar-calendario', 100, true);
       storeBlobForDownload('exportar-calendario', buf, stem + '_eventos.ics', 'text/calendar');
       const info = document.getElementById('info-eventos-calendario');
@@ -2767,11 +2812,13 @@
       setStatus('exportar-calendario', 'done', 'Concluído');
       showResult('exportar-calendario', true);
     } catch (err) {
+      if (typeof stopLiveCal === 'function') stopLiveCal();
       logMsg('log-exportar-calendario', 'Erro: ' + _msgErroRede(err), 'error');
       showFeedback('exportar-calendario', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
       setStatus('exportar-calendario', 'error', 'Erro');
       setProgress('exportar-calendario', 0, false);
     } finally {
+      if (typeof stopLiveCal === 'function') stopLiveCal();
       _uploadIndicatorHide();
     }
     btn.disabled = false;
@@ -2780,8 +2827,6 @@
   document.getElementById('download-exportar-calendario').addEventListener('click', () => triggerDownload('exportar-calendario'));
 
   /* Organizar Imagens (M08) removido — era usado só em macros VBA */
-
-  /* ── Inserir número Kria: puxar relatório para inserção no sistema Kria ── */
   function updatePuxarRelatorioButton() {
     const hint = document.getElementById('puxar-relatorio-hint');
     const temJuntar = _blobs['juntar'];
@@ -2807,7 +2852,7 @@
   if (panelInserirNumero) panelInserirNumero.addEventListener('focusin', updatePuxarRelatorioButton);
   updatePuxarRelatorioButton();
 
-  // ── (Pipeline completo removido) ────────────────────────────────────────────
+  ncAtualizarAnexosHabilitados();
 
   </script>
 

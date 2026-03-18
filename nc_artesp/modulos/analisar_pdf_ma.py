@@ -101,8 +101,6 @@ def _km_para_float(s: str) -> float:
     return 0.0
 
 
-# ─── Extração de texto (fallback / debug) ────────────────────────────────────
-
 def extrair_texto_pdf(pdf_bytes: bytes) -> str:
     if not FITZ_OK:
         return ""
@@ -141,8 +139,6 @@ def extrair_texto_pdf_pdfplumber(pdf_bytes: bytes) -> str:
     except Exception:
         return ""
 
-
-# ─── Coleta principal (1 PDF = 1 registro) ────────────────────────────────────
 
 def extrair_dados_ma(pdf_bytes: bytes) -> Optional[dict]:
     """
