@@ -664,6 +664,8 @@ def extrair_imagens_pdf(pdf_path: str,
                     if not pagina_continuacao and fotos_unicas:
                         clip_txt = _rect_texto_acima_fotos(page, fotos_unicas)
                     if (
+                        pasta_unica
+                        and
                         clip_txt
                         and not pdf_imagem_ja_escrita_esta_pagina
                         and clip_txt.get_area() > 400
