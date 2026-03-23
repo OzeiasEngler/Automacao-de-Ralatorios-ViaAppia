@@ -746,14 +746,16 @@ async def nc_extrair_pdf(
                         n_col += 1
                     arquivos[final] = zf_i.read(name)
 
+        n = len(pdfs)
+        lote_num = lote_m.group(0) if lote_m else "13"
+        pasta_zip = f"lote_{lote_num}_{n}_pdfs_imagens"
+        nome_zip = f"{pasta_zip}.zip"
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
             for nome, data in arquivos.items():
-                zf_out.writestr(nome, data)
+                arc = f"{pasta_zip}/{nome}".replace("\\", "/")
+                zf_out.writestr(arc, data)
 
-        n = len(pdfs)
-        lote_num = lote_m.group(0) if lote_m else "13"
-        nome_zip = f"lote_{lote_num}_{n}_pdfs_imagens.zip"
         return _stream_zip(buf.getvalue(), nome_zip)
     except HTTPException:
         raise
