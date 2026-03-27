@@ -158,78 +158,28 @@ def _criar_via_ical(arquivo_acumulado: Path,
                     pasta_saida: Path,
                     callback_progresso=None) -> Path:
     """
-    Alternativa sem Outlook: gera arquivo .ics (iCalendar) para importação manual.
-    Requer: pip install icalendar
+    Gera .ics sem Outlook, usando o mesmo motor que ``gerar_ics_bytes`` (RFC 5545, sem icalendar).
+    Evita falhas no Render quando o pacote opcional ``icalendar`` falta ou incompatibilidade de versão.
     """
-    try:
-        from icalendar import Calendar, Event
-        from datetime import datetime, date
-    except ImportError:
-        raise ImportError("icalendar não instalado. Execute: pip install icalendar")
-
-    wb = load_workbook(str_caminho_io_windows(arquivo_acumulado), data_only=True)
-    ws = wb.active
-
-    ultima = ws.max_row
-    for r in range(ultima, 1, -1):
-        if ws.cell(row=r, column=1).value is not None:
-            ultima = r
-            break
-
-    cal = Calendar()
-    cal.add("prodid", "-//ARTESP NC//artesp_nc//PT")
-    cal.add("version", "2.0")
-    cal.add("calscale", "GREGORIAN")
-
-    total = ultima - 1
-    adicionados = 0
-
-    for idx, r in enumerate(range(2, ultima + 1)):
-        tipo_nc   = _cell(ws, r, _E)
-        rodovia   = _cell(ws, r, _F)
-        km_i      = _cell(ws, r, _G)
-        sentido   = _cell(ws, r, _I)
-        dt_sol    = _cell(ws, r, _M)
-        obs_gest  = _cell(ws, r, _T)
-        obs_geral = _cell(ws, r, _U)
-        num_kria  = _cell(ws, r, _Y)
-
-        if callback_progresso:
-            callback_progresso(idx + 1, total, f"Gerando .ics {idx+1}/{total}...")
-
-        if not tipo_nc:
-            continue
-
-        assunto      = f"{tipo_nc} - {rodovia} {km_i} {sentido} - Kria: {num_kria}"
-        data_con_str = dt_sol[:10] if len(dt_sol) >= 10 else dt_sol
-        corpo        = f"{obs_gest}\n\n - Data Constatação: {data_con_str}\n\n{obs_geral}"
-        data_inicio_s = _data_inicio(obs_geral)
-
-        evt = Event()
-        evt.add("summary", assunto)
-        evt.add("description", corpo)
-
-        try:
-            from utils.helpers import parse_data
-            dt = parse_data(data_inicio_s)
-            if dt:
-                evt.add("dtstart", dt.date())
-                evt.add("dtend",   dt.date())
-        except Exception:
-            pass
-
-        import uuid
-        evt.add("uid", str(uuid.uuid4()))
-        cal.add_component(evt)
-        adicionados += 1
-
-    wb.close()
-
+    pio = str_caminho_io_windows(arquivo_acumulado)
+    with open(pio, "rb") as f:
+        raw = f.read()
+    if not raw:
+        raise ValueError("Acumulado.xlsx está vazio.")
+    if raw.startswith(b"version https://git-lfs"):
+        raise ValueError(
+            "Acumulado.xlsx no disco é ponteiro Git LFS (bytes insuficientes). "
+            "Garanta Git LFS no build ou regenere o ficheiro no servidor."
+        )
+    if callback_progresso:
+        callback_progresso(1, 1, "Gerando .ics (RFC 5545)...")
+    ics_bytes, adicionados = gerar_ics_bytes(raw)
     garantir_pasta(pasta_saida)
     from utils.helpers import timestamp_agora
+
     destino = pasta_saida / f"{timestamp_agora()} - eventos_kria.ics"
-    escrever_bytes_caminho(destino, cal.to_ical())
-    logger.info(f"  .ics gerado: {destino.name} ({adicionados} evento(s))")
+    escrever_bytes_caminho(destino, ics_bytes)
+    logger.info("  .ics gerado: %s (%s evento(s))", destino.name, adicionados)
     return destino
 
 

@@ -2921,9 +2921,11 @@ def _nc_executar_pipeline_stage2_interno(
                 executar_mod08=False,
             )
         except Exception as e_m06:
-            logger.warning("M06 (exportar calendário .ics): %s", e_m06)
+            logger.exception("M06 (exportar calendário .ics): %s", e_m06)
             (p05 / "README.txt").write_text(
-                "Falha ao gerar o .ics a partir do Acumulado.xlsx. Instale o pacote `icalendar` no servidor, se necessário.",
+                "Falha ao gerar o .ics a partir do Acumulado.xlsx.\n"
+                f"Erro: {type(e_m06).__name__}: {e_m06}\n"
+                "Verifique se o Acumulado é um .xlsx válido (não ponteiro Git LFS) e se há linhas com tipo NC (col E).\n",
                 encoding="utf-8",
             )
     else:
