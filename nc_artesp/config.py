@@ -267,20 +267,22 @@ M04_ENTRADA    = _BASE / "Arquivos" / "Conservação"   # pasta com os Kcor-Kria
 M04_ACUMULADO  = _BASE / "Acumulado" / "Kcor_Acumulado.xlsx"  # arquivo acumulado (rede)
 M04_SAIDA      = _BASE / "Arquivos" / "Conservação" / "Acumulado"  # igual à macro
 M04_NOME_SAIDA = "Eventos Acumulado Artesp para Exportar Kria.xlsx"  # nome exato do relatório (macro)
-M04_MODELO_ACUMULADO = _nc_root / "assets" / "templates" / "Eventos Acumulado Artesp para Exportar Kria.xlsx"  # template padrão
+# Planilha-base vazia do acumulado (layout Kcor-Kria): ficheiro dedicado em templates/
+M04_TEMPLATE_ACUMULADO = _nc_root / "assets" / "templates" / "Acumulado.xlsx"
+M04_MODELO_ACUMULADO = _nc_root / "assets" / "templates" / "Eventos Acumulado Artesp para Exportar Kria.xlsx"  # fallback macro
 
 
 def resolver_template_acumulado_kcor_kria() -> Path | None:
     """
     Planilha-base do acumulado no layout Kcor-Kria (A1 = NumItem), independente do Kartado.
-    Ordem: env ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA → M03_MODELO_KCOR → M04_MODELO_ACUMULADO
-    → glob *Kcor*Kria* em assets/templates/.
+    Ordem: env ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA → Acumulado.xlsx → M03_MODELO_KCOR
+    → Eventos Acumulado… → glob *Kcor*Kria* em assets/templates/.
     """
     envp = _env_str("ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA", "").strip().strip('"').strip("'")
     if envp:
         p = Path(envp)
         return p if p.is_file() else None
-    for p in (M03_MODELO_KCOR, M04_MODELO_ACUMULADO):
+    for p in (M04_TEMPLATE_ACUMULADO, M03_MODELO_KCOR, M04_MODELO_ACUMULADO):
         if p.is_file():
             return p
     td = _nc_root / "assets" / "templates"

@@ -28,8 +28,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # No Render, ative Git LFS para os .xlsx serem ficheiros reais no build.
 COPY . .
 
-# Diagnóstico (não falha o build): M04/M06 precisam de «_Planilha Modelo Kcor-Kria» real em templates/ — sem Git LFS o clone traz só ponteiro ~130 B.
-RUN python -c "import sys; from pathlib import Path; p=Path('nc_artesp/assets/templates'); xs=[f for f in p.glob('_Planilha Modelo Kcor-Kria*') if f.is_file()] if p.is_dir() else []; mx=max((f.stat().st_size for f in xs), default=0); print('Kcor-Kria (build):', [(f.name, f.stat().st_size) for f in xs] or 'pasta ou ficheiro em falta', file=sys.stderr); (mx<=2048) and print('WARNING: modelo Kcor-Kria ausente ou <2 KiB (típico ponteiro LFS). Ative Git LFS no Render e garanta o .xlsx em nc_artesp/assets/templates/ — senão Acumulado/.ics falham em runtime.', file=sys.stderr)"
+# Diagnóstico (não falha o build): M04 usa Acumulado.xlsx ou modelo Kcor-Kria em templates/ — ficheiros <2 KiB costumam ser ponteiro LFS.
+RUN python -c "import sys; from pathlib import Path; p=Path('nc_artesp/assets/templates'); xs=(([f for f in p.glob('_Planilha Modelo Kcor-Kria*') if f.is_file()] + ([p/'Acumulado.xlsx'] if (p/'Acumulado.xlsx').is_file() else [])) if p.is_dir() else []); mx=max((f.stat().st_size for f in xs), default=0); print('M04 templates (build):', [(f.name, f.stat().st_size) for f in xs] or 'nenhum', file=sys.stderr); (mx<=2048) and print('WARNING: Acumulado.xlsx ou Kcor-Kria ausente ou <2 KiB (LFS?).', file=sys.stderr)"
 
 # Não declarar VOLUME /data: o Render gerencia o disco persistente pelo painel.
 # Declarar VOLUME no Dockerfile pode causar shadowing e esconder os dados reais.

@@ -183,6 +183,7 @@ _M01_EXCLUIR_NOME_XLSX_NORM: frozenset[str] = frozenset(
         "Modelo Abertura Evento Kria Conserva Rotina.xlsx",
         "Modelo.xlsx",
         "_Planilha Modelo Kcor-Kria.xlsx",
+        "Acumulado.xlsx",
         "Eventos Acumulado Artesp para Exportar Kria.xlsx",
     )
 )

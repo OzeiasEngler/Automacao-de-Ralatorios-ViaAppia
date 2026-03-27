@@ -823,7 +823,7 @@ def _nc_gerar_acumulado_xlsx(
     pasta_fallback: Optional[Path] = None,
 ) -> bool:
     """
-    Gera «Acumulado.xlsx» no **layout Kcor-Kria** (template ``_Planilha Modelo Kcor-Kria``),
+    Gera «Acumulado.xlsx» no **layout Kcor-Kria** (template ``Acumulado.xlsx`` ou ``_Planilha Modelo Kcor-Kria``),
     a partir de EAF em ``input/``. Se não houver linhas úteis, tenta ``pasta_fallback`` (ex. Exportar
     extraído do ZIP do M01 — ficheiros Kartado com dados na linha 2).
     """
@@ -2894,7 +2894,7 @@ def _nc_executar_pipeline_stage2_interno(
     if not _nc_gerar_acumulado_xlsx(ws.input, acum_path, pasta_fallback=pasta_xls):
         (p04 / "README.txt").write_text(
             "Não foi possível gerar o Acumulado.xlsx.\n"
-            "Verifique: (1) ficheiro _Planilha Modelo Kcor-Kria.xlsx em nc_artesp/assets/templates/ "
+            "Verifique: (1) ficheiro Acumulado.xlsx ou _Planilha Modelo Kcor-Kria.xlsx em nc_artesp/assets/templates/ "
             "(ou variável ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA no servidor);\n"
             "(2) EAF com código na coluna C a partir da linha 5, ou saída M01 Kartado com código na linha 2;\n"
             "(3) logs do serviço com mensagens «Acumulado Kcor-Kria».\n",

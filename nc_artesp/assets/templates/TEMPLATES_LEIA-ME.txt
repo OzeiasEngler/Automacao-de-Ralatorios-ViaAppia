@@ -23,7 +23,8 @@
     Nome saída:   yyyymmdd-hhmm - {cco}.xlsx
 
   M04 — JUNTAR ARQUIVOS (Acumulado para exportar Kria)
-    Template:     Eventos Acumulado Artesp para Exportar Kria.xlsx  (padrão; opcional)
+    Template:     Acumulado.xlsx  (preferido; layout Kcor-Kria vazio)
+                  ou _Planilha Modelo Kcor-Kria.xlsx / Eventos Acumulado Artesp para Exportar Kria.xlsx
     Pasta saída:  Arquivos/Conservação/Acumulado
     Nome saída:   yyyymmdd - hhmmss - Eventos Acumulado Artesp para Exportar Kria.xlsx
 
@@ -41,6 +42,7 @@
   • Modelo Abertura Evento Kria Conserva Rotina.xlsx
   • Modelo.xlsx
   • _Planilha Modelo Kcor-Kria.xlsx
-  • Eventos Acumulado Artesp para Exportar Kria.xlsx  (M04 — template padrão do acumulado)
+  • Acumulado.xlsx  (M04 — planilha-base do acumulado, se existir)
+  • Eventos Acumulado Artesp para Exportar Kria.xlsx  (M04 — fallback)
 
 ═══════════════════════════════════════════════════════════════════════════════

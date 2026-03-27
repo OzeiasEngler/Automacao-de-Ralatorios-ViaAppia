@@ -588,7 +588,8 @@ def gerar_acumulado_kcor_kria_desde_pasta_eaf(
     if tpl is None or not tpl.is_file():
         logger.warning(
             "Template acumulado Kcor-Kria não encontrado. "
-            "Coloque _Planilha Modelo Kcor-Kria.xlsx em nc_artesp/assets/templates/ ou defina ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA."
+            "Coloque Acumulado.xlsx ou _Planilha Modelo Kcor-Kria.xlsx em nc_artesp/assets/templates/ "
+            "ou defina ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA."
         )
         return False
     if _ficheiro_e_ponteiro_git_lfs(tpl):
