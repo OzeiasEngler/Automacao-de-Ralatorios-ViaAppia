@@ -52,6 +52,7 @@ from config import (
     M02_PENDENTES,
     M02_FOTO_W, M02_FOTO_H,
     M02_FOTO_PDF_W, M02_FOTO_PDF_H,
+    KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO,
     PRAZO_DIAS_APOS_ENVIO,
     RODOVIAS,
 )
@@ -714,6 +715,7 @@ def _gerar_kria(
       j:   D=rodovia,  F=sentido,  G=tipo_nc
       j+1: D=km_i,  F=km_f,  H=codigo,  L=num_foto
       j+2: C="Vencimento",  D=data_reparo,  F=data_con,  H=relatorio,  L=prazo
+      j+1: V=KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO (rede, macro Art_03), W=«jpg»;«pdf (ref).jpg»
     """
     if isinstance(modelo, Path):
         if not Path(str_caminho_io_windows(modelo)).exists():
@@ -821,6 +823,21 @@ def _gerar_kria(
                 "  [Kria] Foto não encontrada (tentado %s): nc/PDF por identificador",
                 ", ".join(repr(c) for c in _candidatos_identificador_foto(nc)) or "(vazio)",
             )
+
+        # V/W — padrão Kcor-Kria / Art_03 (Diretório + Arquivos), linha dos km/código/foto
+        ws.cell(row=j + 1, column=22).value = KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO
+        foto_ref_w = nc.get("foto_id", nc.get("num_foto"))
+        pdf_part = (
+            f"pdf ({foto_ref_w}).jpg"
+            if foto_ref_w not in (None, "", 0)
+            else ""
+        )
+        arq_part = foto_path.name if foto_path.is_file() else ""
+        if arq_part and pdf_part:
+            w_val = f"{arq_part};{pdf_part}"
+        else:
+            w_val = arq_part or pdf_part
+        ws.cell(row=j + 1, column=23).value = w_val
 
     wb.save(str_caminho_io_windows(destino))
     wb.close()

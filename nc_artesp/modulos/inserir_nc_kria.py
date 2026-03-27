@@ -19,6 +19,8 @@ from config import (
     M03_ENTRADA, M03_IMAGENS, M03_MODELO_KCOR, M03_SAIDA,
     M03_LINHA_INICIO, M03_BLOCO,
     M07_ENTRADA, M07_IMAGENS, M07_MODELO_KCOR, M07_SAIDA,
+    KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO,
+    KCOR_KRIA_DIRETORIO_TEXTO_MEIO_AMBIENTE,
     M02_FOTOS_NC, M02_FOTOS_PDF,
     PRAZO_DIAS_APOS_ENVIO,
     SERVICO_NC, RODOVIAS,
@@ -394,7 +396,7 @@ def _processar_pdf_meio_ambiente(
     wb_kcor.active = ws_out
     col_data_envio, col_data_reparo = _detectar_colunas_data_kcor(ws_out)
 
-    diretorio_relatorio_macro = str(M07_IMAGENS)
+    diretorio_relatorio_macro = KCOR_KRIA_DIRETORIO_TEXTO_MEIO_AMBIENTE
     for seq, (reg, nome_arq) in enumerate(zip(registros, nomes_arquivo), start=1):
         r = seq + 1
         dt = reg["dt"]
@@ -908,7 +910,11 @@ def _processar_arquivo(arq_path: Path,
     col_data_envio, col_data_reparo = _detectar_colunas_data_kcor(ws_out)
     logger.debug(f"Kcor-Kria: col Data Envio={col_data_envio}, col Data Reparo={col_data_reparo}")
 
-    diretorio_relatorio_macro = str(M03_IMAGENS if eh_conservacao else M07_IMAGENS)
+    diretorio_relatorio_macro = (
+        KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO
+        if eh_conservacao
+        else KCOR_KRIA_DIRETORIO_TEXTO_MEIO_AMBIENTE
+    )
     for seq, (reg, nome_arq) in enumerate(zip(registros, nomes_arquivo), start=1):
         r = seq + 1  # linha de saída (linha 2 em diante)
 

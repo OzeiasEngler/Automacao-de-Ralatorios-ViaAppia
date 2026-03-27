@@ -16,6 +16,7 @@ from openpyxl.styles import Border, Side
 
 from config import (
     M01_LINHA_INICIO,
+    KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO,
     M04_ACUMULADO,
     M04_ENTRADA,
     M04_NOME_SAIDA,
@@ -27,7 +28,9 @@ from config import (
     resolver_template_acumulado_kcor_kria,
 )
 from utils.helpers import (
+    formatar_numero,
     garantir_pasta,
+    km_formato_arquivo,
     km_mais_metros,
     parse_data,
     resolver_path_ficheiro_ci,
@@ -469,7 +472,10 @@ def _eaf_linha_para_registro_kcor(
 ) -> list | None:
     """
     Uma linha da planilha-mãe EAF → 25 valores (ordem CABECALHO_KCOR_KRIA).
-    Coluna A do acumulado é sequencial no M04; V/W aqui ficam vazios (só o M03 preenche com ficheiros reais).
+    Coluna A do acumulado é sequencial no M04.
+    V/W seguem o padrão Art_03: Diretório = KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO (rede, não Path local);
+    Arquivos = «jpg gerado»;«pdf (ref).jpg»
+    (ref = col V da EAF numérica, senão texto da célula; nome JPG como _nome_arquivo_jpg).
     """
     from . import inserir_nc_kria as ink
     from .analisar_pdf_ma import _sentido_para_texto
@@ -527,15 +533,45 @@ def _eaf_linha_para_registro_kcor(
 
     comp_cell = sn._cell(ws, row, sn.COL_SEQ_FOTO)
     complemento = ""
+    foto_ref_pdf = None
     try:
-        float(str(comp_cell).replace(",", ".").strip())
+        foto_ref_pdf = int(float(str(comp_cell).replace(",", ".").strip()))
     except (ValueError, TypeError):
         complemento = _str_eaf(comp_cell)
+        if complemento:
+            foto_ref_pdf = complemento
 
     codigo = _str_eaf(sn._cell(ws, row, sn.COL_CODIGO))
     relatorio = ""
     obs_gestor_txt = ink._obs_gestor(relatorio, codigo)
     observacoes_u = ink._observacoes(desc_s, complemento, str(emb_raw) if emb_raw is not None else "")
+
+    # V/W — alinhado a inserir_nc_kria._processar_arquivo (macro Art_03)
+    data_raw_str = _str_eaf(sn._cell(ws, row, sn.COL_DATA_CON))
+    num_roti = (
+        foto_ref_pdf
+        if isinstance(foto_ref_pdf, int) and foto_ref_pdf > 0
+        else 1
+    )
+    numero_6 = formatar_numero(num_roti, 6)
+    nome_jpg = ink._nome_arquivo_jpg(
+        data_raw_str,
+        _n,
+        numero_6,
+        rod_tag,
+        km_formato_arquivo(kmi),
+        _str_eaf(sentido_raw),
+        nome_origem="",
+    )
+    if foto_ref_pdf not in (None, ""):
+        pdf_nome = f"pdf ({foto_ref_pdf}).jpg"
+    else:
+        pdf_nome = ""
+    if nome_jpg and pdf_nome:
+        arquivos_w = f"{nome_jpg};{pdf_nome}"
+    else:
+        arquivos_w = nome_jpg or pdf_nome
+    diretorio_v = KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO
 
     linha = [None] * NUM_COLUNAS
     linha[0] = None
@@ -559,8 +595,8 @@ def _eaf_linha_para_registro_kcor(
     linha[18] = ink._prazo_para_numero(prazo_val)
     linha[19] = obs_gestor_txt
     linha[20] = observacoes_u
-    linha[21] = ""
-    linha[22] = ""
+    linha[21] = diretorio_v
+    linha[22] = arquivos_w or ""
     linha[23] = ""
     linha[24] = ""
     return linha

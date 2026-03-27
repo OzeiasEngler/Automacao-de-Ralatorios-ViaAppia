@@ -325,6 +325,17 @@ CABECALHO_KCOR_KRIA = [
 ]
 NUM_COLUNAS_KCOR_KRIA = 25  # A–Y
 
+# Coluna V «Diretório» no Kcor-Kria: texto de rede das macros (Art_03 / Kria2), não o Path local
+# (M03_IMAGENS / M07_IMAGENS) da máquina que gera o Excel (API, Render, PC do técnico).
+_KCOR_V_DIR_CONS = r"L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Imagens\Conservação"
+_KCOR_V_DIR_MA = r"L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Imagens\Meio Ambiente"
+KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO = _env_str(
+    "ARTESP_KCOR_DIRETORIO_TEXTO_CONSERVACAO", _KCOR_V_DIR_CONS
+).rstrip("\\/")
+KCOR_KRIA_DIRETORIO_TEXTO_MEIO_AMBIENTE = _env_str(
+    "ARTESP_KCOR_DIRETORIO_TEXTO_MEIO_AMBIENTE", _KCOR_V_DIR_MA
+).rstrip("\\/")
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MÓDULO 05 — INSERIR NÚMERO KRIA
 # ═══════════════════════════════════════════════════════════════════════════

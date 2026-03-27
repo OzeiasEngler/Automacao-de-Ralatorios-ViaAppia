@@ -37,13 +37,19 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 14px; height: 100%; }
+html {
+  font-size: 14px;
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 body {
   font-family: 'Inter', system-ui, sans-serif;
   background: var(--bg-body);
   color: var(--text-primary);
   height: 100vh;
   min-height: 0;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -211,6 +217,9 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   padding: 0 24px;
   gap: 2px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
 }
 .topnav a {
   display: flex;
@@ -312,6 +321,15 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   gap: 24px;
 }
 @media (max-width: 768px) {
+  /* Safari iOS: altura útil com barra de URL / entalhe. */
+  html {
+    height: -webkit-fill-available;
+  }
+  body {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    min-height: 100dvh;
+  }
   .grid-2 { grid-template-columns: 1fr; }
   .page-content { padding: 16px 12px; }
   /* Topbar compacta só nas páginas antigas; app-topbar mantém altura automática e ícone grande. */
@@ -908,9 +926,20 @@ select.pipeline-select {
   inset: 0;
   z-index: 999;
   background: var(--bg-body);
+  /* iOS/Android: centro vertical cortava o cartão ou impedia rolar com teclado — rolar o overlay inteiro. */
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: max(16px, env(safe-area-inset-top, 0px))
+           max(16px, env(safe-area-inset-right, 0px))
+           max(24px, env(safe-area-inset-bottom, 0px))
+           max(16px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
 }
 .login-card {
   background: var(--bg-surface);
@@ -922,6 +951,13 @@ select.pipeline-select {
   width: 100%;
   max-width: 420px;
   padding: 40px 36px;
+  flex-shrink: 0;
+  margin: auto 0;
+}
+@media (max-width: 480px) {
+  .login-card {
+    padding: 28px 22px;
+  }
 }
 .login-card .logo { text-align: center; margin-bottom: 28px; }
 .login-card .logo .icon {
