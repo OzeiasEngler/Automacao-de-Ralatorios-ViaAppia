@@ -4,6 +4,7 @@ uvicorn
 slowapi
 gunicorn
 python-multipart
+jinja2
 
 # Processamento Geoespacial e Dados
 pandas
