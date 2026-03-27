@@ -7,125 +7,120 @@
   <title>NC ARTESP - SP / NC ARTEMIG - MG — Não Conformidades</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css?v=10">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    /* NC: ícone da página (destaque vermelho) */
-    #nc-page .page-header .icon-box { background: linear-gradient(135deg, var(--danger), #dc2626); }
-    .step-panel-form-log .grid-2 {
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      align-items: stretch;
-    }
-    .step-panel-form-log .grid-2 .card:first-child {
-      grid-column: 1;
-      min-width: 0;
+    /*
+      Altura dos cartões: herda clamp do bloco-padrao, com reserva maior (abas + lote).
+      Painel ativo em flex: sem barra na página; rolagem só em .card-body / .log-container.
+    */
+    body.nc-skin { --pipeline-mobile-chrome: 352px; }
+    .nc-skin #nc-page {
+      --pipeline-chrome-reserve: 296px;
+      --pipeline-painel-altura: clamp(260px, calc(55vh + 80px), calc(100dvh - var(--pipeline-chrome-reserve)));
       display: flex;
       flex-direction: column;
-    }
-    .step-panel-form-log .grid-2 .card:first-child .card-body {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
+      flex: 1 1 0;
       min-height: 0;
+      overflow: hidden;
+      padding: 6px 20px 14px;
+      gap: 8px;
     }
-    .step-panel-form-log .grid-2 .card:last-child {
-      grid-column: 2;
-      min-width: 0;
+    .nc-skin #nc-page .step-tabs {
+      padding: 5px;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .nc-skin #nc-page #nc-aviso-mudanca-lote {
+      flex-shrink: 0;
+      margin-bottom: 8px !important;
+    }
+    .nc-skin #nc-page .step-panel.active {
       display: flex;
       flex-direction: column;
-      align-self: stretch;
-    }
-    .step-panel-form-log .grid-2 .card:last-child .card-body {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
+      flex: 1 1 0;
       min-height: 0;
       overflow: hidden;
     }
-    .step-panel-form-log .grid-2 .card:last-child .log-container {
-      flex: 1 1 auto;
-      min-height: 200px;
-      max-height: none;
-      overflow-y: auto;
+    .nc-skin #nc-page .step-panel.active .pipeline-grid-2 {
+      flex: 1 1 0;
+      min-height: 0;
+      align-self: stretch;
     }
-    /* Mobile: formulário acima do log */
+    .nc-skin #nc-page .pipeline-grid-2 {
+      gap: 16px;
+    }
     @media (max-width: 900px) {
-      .step-panel-form-log .grid-2 {
-        grid-template-columns: 1fr;
-        align-items: stretch;
+      .nc-skin #nc-page {
+        padding: 6px 12px 12px;
       }
-      .step-panel-form-log .grid-2 .card:first-child,
-      .step-panel-form-log .grid-2 .card:last-child {
-        grid-column: 1;
-      }
-      .step-panel-form-log .grid-2 .card:first-child {
-        order: 1;
-      }
-      .step-panel-form-log .grid-2 .card:last-child {
-        order: 2;
-        position: static;
-      }
-      .step-panel-form-log .grid-2 .card:last-child .log-container {
-        min-height: 200px;
-        max-height: 40vh;
-      }
-      /* Botões visíveis no mobile: card não corta conteúdo */
-      #nc-page .card { overflow: visible; width: 100%; min-width: 0; }
-      #nc-page .card-body { overflow: visible; min-width: 0; }
-      #nc-page .step-panel-form-log .card:last-child .card-body { overflow: auto; }
     }
-
+    /* Lote continua obrigatório ao *executar* cada etapa (ncLoteObrigatorio); uploads ficam sempre clicáveis. */
     .upload-zone.nc-anexo-sem-lote {
-      opacity: 0.55;
-      pointer-events: none;
-      position: relative;
-    }
-    .upload-zone.nc-anexo-sem-lote::after {
-      content: 'Selecione o lote acima';
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,.35);
-      color: var(--text, #e2e8f0);
-      font-size: 0.85rem;
-      font-weight: 600;
-      pointer-events: none;
+      box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
       border-radius: inherit;
     }
     input[type="file"]:disabled {
       cursor: not-allowed;
     }
 
+    /* 11 células iguais, uma única linha — evita página alta e barras por causa das abas. */
     .step-tabs {
-      display: flex; gap: 6px; flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(11, minmax(0, 1fr));
+      gap: 5px;
+      align-items: stretch;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
       border-radius: var(--radius);
-      padding: 8px;
+      padding: 6px;
     }
     .step-tab {
-      display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px;
-      padding: 8px 12px; border-radius: var(--radius-sm);
-      font-size: .8rem; font-weight: 600;
-      color: var(--text-secondary); cursor: pointer;
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      box-sizing: border-box;
+      padding: 6px 3px;
+      border-radius: var(--radius-sm);
+      font-size: .65rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
       border: 1px solid rgba(0,0,0,.15);
       background: var(--bg-surface-2);
-      transition: transform .15s ease, box-shadow .15s ease;
+      transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
       font-family: inherit;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 2px 4px rgba(0,0,0,.25), 0 3px 6px rgba(0,0,0,.15);
+      text-align: center;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 1px 3px rgba(0,0,0,.2);
+    }
+    .step-tab .step-tab-label {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+      line-height: 1.15;
+      width: 100%;
+      min-width: 0;
+      max-height: 2.35em;
+      word-break: break-word;
+      text-align: center;
     }
     .step-tab:hover {
       background: var(--bg-surface-3);
       color: var(--text-primary);
-      transform: translateY(-1px);
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 8px rgba(0,0,0,.3), 0 6px 12px rgba(0,0,0,.2);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 6px rgba(0,0,0,.25);
     }
     .step-tab:active {
-      transform: translateY(1px);
-      box-shadow: inset 0 2px 4px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.2);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,.2);
     }
     .step-tab.active {
       background: rgba(239,68,68,.2);
@@ -145,26 +140,166 @@
     }
     .step-tab.active .step-num { background: var(--danger); color: #fff; }
     .step-tab .step-tab-regime {
-      flex-basis: 100%; text-align: center; font-size: .6rem; margin-top: 3px;
-      opacity: .9; color: var(--text-muted); font-weight: 500; letter-spacing: .02em;
+      width: 100%;
+      margin-top: auto;
+      padding-top: 3px;
+      border-top: 1px solid rgba(255,255,255,.07);
+      text-align: center;
+      font-size: .5rem;
+      line-height: 1.15;
+      opacity: .9;
+      color: var(--text-muted);
+      font-weight: 500;
+      letter-spacing: .02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    /* Mobile: abas em múltiplas linhas para todos os botões visíveis (sem scroll) */
+    .step-tab.step-tab-disabled,
+    .step-tab:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      filter: grayscale(0.45);
+      pointer-events: none;
+    }
+    .step-tab.step-tab-disabled:hover,
+    .step-tab:disabled:hover {
+      background: var(--bg-surface-2);
+      color: var(--text-secondary);
+    }
+    .step-tab.step-tab-disabled .step-tab-label,
+    .step-tab:disabled .step-tab-label {
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+      max-height: 3.6em;
+      font-size: 0.58rem;
+    }
+    .nc-step-tab-lote {
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: center;
+      gap: 4px;
+      box-sizing: border-box;
+      padding: 6px 3px;
+      border-radius: var(--radius-sm);
+      font-size: .65rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 1px 3px rgba(0,0,0,.2);
+      cursor: default;
+      font-family: inherit;
+    }
+    .nc-step-tab-lote:hover {
+      border-color: rgba(245, 158, 11, 0.65);
+      color: var(--text-primary);
+    }
+    .nc-step-tab-lote-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      justify-content: center;
+    }
+    .nc-step-tab-lote-badge {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #0f172a;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .55rem;
+      flex-shrink: 0;
+    }
+    .nc-step-tab-lote-fields {
+      width: 100%;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: stretch;
+    }
+    .nc-step-tab-lote-title {
+      font-size: .58rem;
+      font-weight: 700;
+      color: #fde68a;
+      letter-spacing: .02em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .nc-step-tab-lote-select {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      font-size: .58rem !important;
+      font-weight: 600 !important;
+      padding: 3px 4px !important;
+      background: rgba(15, 23, 42, 0.95) !important;
+      border: 1px solid rgba(245, 158, 11, 0.5) !important;
+      color: #f8fafc !important;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 0 !important;
+    }
+    .nc-step-tab-lote .step-tab-regime {
+      width: 100%;
+      margin-top: auto;
+      padding-top: 3px;
+      border-top: 1px solid rgba(255,255,255,.1);
+      text-align: center;
+      font-size: .5rem;
+      line-height: 1.15;
+      opacity: .9;
+      color: var(--text-muted);
+      font-weight: 500;
+      letter-spacing: .02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     @media (max-width: 900px) {
-      .nc-lote-strip-outer { padding-left: 12px !important; padding-right: 12px !important; }
-      .nc-lote-global-bar .form-input { min-width: 0 !important; flex: 1 1 220px; }
       .step-tabs {
-        flex-wrap: wrap;
-        overflow: visible;
-        gap: 8px;
-      }
-      .step-tab {
-        flex-shrink: 0;
+        gap: 4px;
+        padding: 5px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        grid-template-columns: repeat(11, minmax(72px, 1fr));
       }
     }
 
     .step-panel { display: none; }
     .step-panel.active { display: block; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    /* Pares de zonas de anexo no mesmo cartão: duas colunas no desktop. */
+    .nc-skin .nc-upload-pair {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px 14px;
+      align-items: start;
+      margin-bottom: 8px;
+    }
+    .nc-skin .nc-upload-pair > .form-group { min-width: 0; }
+    @media (max-width: 720px) {
+      .nc-skin .nc-upload-pair { grid-template-columns: 1fr; }
+    }
     .sessao-bar {
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
@@ -231,14 +366,15 @@
 
   </style>
 </head>
-<body>
+<body class="nc-skin">
   <div id="upload-indicator" class="upload-indicator" role="status" aria-live="polite" aria-label="Enviando arquivos"></div>
   <div class="login-overlay" id="loginOverlay">
     <div class="login-card animate-in">
       <div class="logo">
-        <div class="icon">🛣️</div>
+        <div class="icon" aria-hidden="true" style="font-size:clamp(36px,11vmin,59px);line-height:1">🛣️</div>
         <h2>Plataforma de Conservação e Obras</h2>
-        <p>Geração de relatórios georreferenciados e automação de relatórios internos. Faça login para continuar.</p>
+        <p class="login-brand-sub">Geração de relatórios georreferenciados e automação de relatórios internos. Faça login para continuar.</p>
+        <p class="login-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
       </div>
       <form id="formLogin">
         <div class="form-group">
@@ -256,11 +392,17 @@
       </form>
     </div>
   </div>
-  <header class="topbar">
+  <header class="topbar app-topbar">
     <div class="topbar-brand">
-      <span class="icon">🛣️</span>
-      <span>PLATAFORMA DE CONSERVAÇÃO E OBRAS - Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</span>
+      <span class="icon" aria-hidden="true" style="font-size:clamp(36px,6vw,62px);line-height:1;display:inline-flex;align-items:center;flex-shrink:0">🛣️</span>
+      <div class="app-brand-text">
+        <h1 class="app-brand-title">NC ARTESP - SP / NC ARTEMIG - MG</h1>
+        <p class="app-brand-sub">Pipeline de Não Conformidades — ARTESP (SP) e ARTEMIG (MG). Kartado e Kria.</p>
+        <p class="app-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
+      </div>
     </div>
+    <div class="topbar-sep" aria-hidden="true"></div>
+    <div class="topbar-fill">Sistema de Automação de Relatórios</div>
     <div class="topbar-right">
       <div class="topbar-user">
         <div class="avatar" id="userAvatar">U</div>
@@ -277,33 +419,25 @@
     <div class="topnav-spacer"></div>
     <a href="/web/admin"><span class="nav-icon"><i class="fas fa-cog"></i></span> Admin</a>
   </nav>
-  <!-- Lote fora do scroll do conteúdo: permanece visível em qualquer etapa -->
-  <div class="nc-lote-strip-outer" style="flex-shrink:0;width:100%;max-width:1400px;margin:0 auto;padding:12px 24px 10px;border-bottom:1px solid var(--border-color);background:linear-gradient(180deg,#152238,#121a2e);box-shadow:0 4px 12px rgba(0,0,0,.25)">
-    <div class="nc-lote-global-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px">
-      <span style="font-size:.9rem;font-weight:800;color:#fff;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.3)"><i class="fas fa-map-marked-alt" style="color:#fbbf24"></i> Lote</span>
-      <select id="sel-lote-nc-global" class="form-input" title="Obrigatório para todo o pipeline NC" style="min-width:300px;max-width:100%;font-size:.95rem;font-weight:600;padding:12px 14px;background:#1e293b;border:2px solid #f59e0b;color:#f8fafc">
-        <option value="">— Selecione o lote —</option>
-        <option value="13">13 — Rodovias das Colinas</option>
-        <option value="21">21 — Rodovias do Tietê</option>
-        <option value="26">26 — SP Serra</option>
-        <option value="50">50 — CONSOL (ARTEMIG - MG)</option>
-      </select>
-      <span style="font-size:.74rem;color:#94a3b8;line-height:1.4;max-width:520px">Válido para <strong>Análise PDF</strong>, <strong>Separar NC</strong>, <strong>Conservação</strong>, <strong>Meio Ambiente</strong> e demais etapas.</span>
-    </div>
-    <div id="nc-aviso-mudanca-lote" style="display:none;margin-top:10px;padding:10px 14px;font-size:.78rem;border-radius:var(--radius-sm);background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#fde68a">
-      <i class="fas fa-exchange-alt"></i> <strong>Lote alterado.</strong> Reinicie pelo <strong>Separar NC</strong> (ou 1ª etapa) antes de continuar o encadeamento.
-    </div>
-  </div>
   <div class="page-content" id="nc-page">
 
-    <div class="page-header animate-in">
-      <div class="icon-box"><i class="fas fa-clipboard-check"></i></div>
-      <div>
-        <h1>NC ARTESP - SP / NC ARTEMIG - MG</h1>
-        <p>Pipeline de Não Conformidades — ARTESP (SP) e ARTEMIG (MG). Kria e templates compartilhados.</p>
+    <div class="step-tabs animate-in" id="stepTabs">
+      <div class="nc-step-tab-lote" role="group" aria-label="Lote do contrato (obrigatório em todo o pipeline)">
+        <div class="nc-step-tab-lote-inner">
+          <span class="step-num nc-step-tab-lote-badge" aria-hidden="true"><i class="fas fa-map-marked-alt" style="font-size:.55rem"></i></span>
+          <div class="nc-step-tab-lote-fields">
+            <span class="nc-step-tab-lote-title"><i class="fas fa-briefcase" style="opacity:.9"></i> Lote</span>
+            <select id="sel-lote-nc-global" class="form-input nc-step-tab-lote-select" title="Obrigatório para todo o pipeline NC">
+              <option value="">— Escolha o lote —</option>
+              <option value="13">13 — Rodovias das Colinas</option>
+              <option value="21">21 — Rodovias do Tietê</option>
+              <option value="26">26 — SP Serra</option>
+              <option value="50">50 — CONSOL (ARTEMIG - MG)</option>
+            </select>
+          </div>
+        </div>
+        <span class="step-tab-regime">Primeiro passo · todas as etapas</span>
       </div>
-    </div>
-    <div class="step-tabs animate-in" style="animation-delay:.1s" id="stepTabs">
       <button class="step-tab active" data-step="analisar-pdf" style="color:#e67e22">
         <span class="step-num" style="background:#e67e22;color:#fff">⚡</span>
         <span class="step-tab-label"><i class="fas fa-search-location"></i> Análise PDF</span>
@@ -314,49 +448,52 @@
         <span class="step-tab-label"><i class="fas fa-file-pdf"></i> Extrair PDF</span>
         <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
-      <button class="step-tab" data-step="separar">
+      <button type="button" class="step-tab" data-step="separar">
         <span class="step-num">1</span>
-        <span class="step-tab-label"><i class="fas fa-cut"></i> Separar NC</span>
+        <span class="step-tab-label"><i class="fas fa-cut"></i> Separar NC artesp. Kartado.</span>
         <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
-      <button class="step-tab" data-step="criar-email">
-        <span class="step-num">✉</span>
-        <span class="step-tab-label"><i class="fas fa-envelope"></i> E-mail</span>
-        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
-      </button>
-      <button class="step-tab" data-step="modelo-foto">
-        <span class="step-num">2</span>
-        <span class="step-tab-label"><i class="fas fa-images"></i> Modelo Foto</span>
-        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
-      </button>
-      <button class="step-tab" data-step="conservacao">
-        <span class="step-num">3</span>
-        <span class="step-tab-label"><i class="fas fa-road"></i> Conservação</span>
-        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
-      </button>
-      <button class="step-tab" data-step="juntar">
-        <span class="step-num">4</span>
-        <span class="step-tab-label"><i class="fas fa-layer-group"></i> Acumulado</span>
-        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
-      </button>
-      <button class="step-tab" data-step="inserir-numero">
-        <span class="step-num">5</span>
-        <span class="step-tab-label"><i class="fas fa-hashtag"></i> Inserir Nº</span>
-        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
-      </button>
-      <button class="step-tab" data-step="exportar-calendario">
-        <span class="step-num">6</span>
-        <span class="step-tab-label"><i class="fas fa-calendar-alt"></i> Calendário</span>
-        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
-      </button>
-      <button class="step-tab" data-step="meio-ambiente">
-        <span class="step-num">7</span>
+      <button type="button" class="step-tab" data-step="meio-ambiente">
+        <span class="step-num" style="font-size:.55rem;width:auto;min-width:18px;padding:0 4px;border-radius:6px">MA</span>
         <span class="step-tab-label"><i class="fas fa-leaf"></i> Meio Ambiente</span>
         <span class="step-tab-regime">ARTESP / ARTEMIG</span>
       </button>
+      <button type="button" class="step-tab step-tab-disabled" disabled data-step="criar-email" aria-disabled="true" title="Em breve Novo Módulo">
+        <span class="step-num">✉</span>
+        <span class="step-tab-label"><i class="fas fa-envelope"></i> Em breve Novo Módulo</span>
+        <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
+      </button>
+      <button type="button" class="step-tab step-tab-disabled" disabled data-step="modelo-foto" aria-disabled="true" title="Em breve Novo Módulo">
+        <span class="step-num">2</span>
+        <span class="step-tab-label"><i class="fas fa-images"></i> Em breve Novo Módulo</span>
+        <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
+      </button>
+      <button type="button" class="step-tab step-tab-disabled" disabled data-step="conservacao" aria-disabled="true" title="Em breve Novo Módulo">
+        <span class="step-num">3</span>
+        <span class="step-tab-label"><i class="fas fa-road"></i> Em breve Novo Módulo</span>
+        <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
+      </button>
+      <button type="button" class="step-tab step-tab-disabled" disabled data-step="juntar" aria-disabled="true" title="Em breve Novo Módulo">
+        <span class="step-num">4</span>
+        <span class="step-tab-label"><i class="fas fa-layer-group"></i> Em breve Novo Módulo</span>
+        <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
+      </button>
+      <button type="button" class="step-tab step-tab-disabled" disabled data-step="inserir-numero" aria-disabled="true" title="Em breve Novo Módulo">
+        <span class="step-num">5</span>
+        <span class="step-tab-label"><i class="fas fa-hashtag"></i> Em breve Novo Módulo</span>
+        <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
+      </button>
+      <button type="button" class="step-tab step-tab-disabled" disabled data-step="exportar-calendario" aria-disabled="true" title="Em breve Novo Módulo">
+        <span class="step-num">6</span>
+        <span class="step-tab-label"><i class="fas fa-calendar-alt"></i> Em breve Novo Módulo</span>
+        <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
+      </button>
+    </div>
+    <div id="nc-aviso-mudanca-lote" style="display:none;margin:0 0 12px;padding:10px 14px;font-size:.78rem;border-radius:var(--radius-sm);background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#fde68a">
+      <i class="fas fa-exchange-alt"></i> <strong>Lote alterado.</strong> Reinicie pelo <strong>Separar NC</strong> (ou 1ª etapa) antes de continuar o encadeamento.
     </div>
     <div class="step-panel active step-panel-form-log" id="panel-analisar-pdf" style="animation-delay:.15s">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header" style="border-left:3px solid var(--warning)">
             <i class="fas fa-search-location" style="color:var(--warning)"></i>
@@ -366,102 +503,69 @@
             </span>
           </div>
           <div class="card-body">
-            <div class="form-group" style="margin-bottom:16px;padding:12px 14px;background:var(--bg-surface-3);border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,.06)">
-              <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 10px">
-                <i class="fas fa-map-marked-alt"></i> <strong>Lote</strong> — use a <strong>barra acima das etapas</strong> (todas as fases) ou o select abaixo (sincronizado).
-              </p>
-              <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end">
-                <div>
-                  <label style="display:block;margin-bottom:4px;font-size:.85rem">
-                    <i class="fas fa-map-marked-alt"></i> Lote
-                  </label>
-                  <select id="sel-lote-analise" class="form-input" style="min-width:220px">
-                    <option value="">Selecione o lote…</option>
-                    <option value="13">Lote 13 — Rodovias das Colinas</option>
-                    <option value="21">Lote 21 — Rodovias do Tietê</option>
-                    <option value="26">Lote 26 — SP Serra</option>
-                    <option value="50">Lote 50 — CONSOL (ARTEMIG - MG)</option>
-                  </select>
-                </div>
-                <div style="flex:1;min-width:200px">
-                  <label style="display:block;margin-bottom:4px;font-size:.85rem">Concessionária</label>
-                  <input type="text" id="campo-concessionaria-analise" class="form-input" readonly
-                         style="background:var(--bg-surface-3);cursor:default" value="">
-                </div>
-              </div>
-            </div>
+            <input type="hidden" id="campo-concessionaria-analise" value="">
 
-            <div class="upload-zone" id="zone-analisar-pdf"
-                 style="padding:28px 20px">
+            <div class="upload-zone" id="zone-analisar-pdf" style="padding:14px 14px">
               <input type="file" id="file-analisar-pdf" accept=".pdf" multiple>
               <div class="icon"><i class="fas fa-file-pdf" style="color:var(--warning)"></i></div>
-              <h3>PDFs de NC Constatação de Rotina</h3>
-              <p>Arraste um ou mais PDFs · Múltiplas rodovias aceitas</p>
-              <p style="font-size:.72rem;color:var(--text-muted);margin-top:4px">
-                <i class="fas fa-info-circle"></i> Selecione vários arquivos de uma vez (toque ou Ctrl+clique)
-              </p>
+              <h3 style="font-size:.95rem;margin-bottom:4px">PDFs de NC — Constatação de rotina</h3>
+              <p style="font-size:.78rem;margin:0">Arraste ou escolha PDFs · várias rodovias</p>
             </div>
 
-            <!-- Lista de arquivos selecionados -->
-            <div id="lista-pdfs-analise" style="display:none;margin-top:10px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <span style="font-size:.78rem;font-weight:600;color:var(--text-secondary)">
+            <div id="lista-pdfs-analise" style="display:none;margin-top:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:.74rem;font-weight:600;color:var(--text-secondary)">
                   <i class="fas fa-file-pdf" style="color:var(--warning)"></i>
-                  <span id="count-pdfs-analise">0</span> arquivo(s) selecionado(s)
+                  <span id="count-pdfs-analise">0</span> PDF(s)
                 </span>
                 <button type="button" id="clear-analisar-pdf"
-                        class="btn btn-outline" style="padding:3px 10px;font-size:.72rem">
-                  <i class="fas fa-times"></i> Limpar tudo
+                        class="btn btn-outline" style="padding:2px 8px;font-size:.7rem">
+                  <i class="fas fa-times"></i> Limpar
                 </button>
               </div>
               <ul id="ul-pdfs-analise"
-                  style="list-style:none;max-height:140px;overflow-y:auto;
+                  style="list-style:none;max-height:100px;overflow-y:auto;
                          background:var(--bg-surface-3);border-radius:var(--radius-sm);
-                         padding:8px 10px;font-size:.78rem;color:var(--text-secondary)">
+                         padding:6px 8px;font-size:.74rem;color:var(--text-secondary)">
               </ul>
             </div>
 
-            <div id="wrap-excel-analise" class="form-group" style="margin-top:12px">
-              <label style="display:block;margin-bottom:4px;font-size:.85rem">
-                <i class="fas fa-file-excel" style="color:var(--success)"></i> Excel(s) que acompanham os PDFs <span style="font-weight:400;color:var(--text-muted)">(opcional)</span>
+            <div id="wrap-excel-analise" class="form-group" style="margin-top:8px;margin-bottom:0">
+              <label style="display:block;margin-bottom:3px;font-size:.74rem;color:var(--text-secondary)">
+                <i class="fas fa-file-excel" style="color:var(--success)"></i> Excel opcional <span style="color:var(--text-muted)">(layout relatório)</span>
               </label>
               <input type="file" id="file-excel-analise" accept=".xlsx,.xls" multiple
-                     style="max-width:100%">
-              <p style="font-size:.7rem;color:var(--text-muted);margin-top:4px">
-                Um ou mais arquivos. Mesmo layout do relatório (cabeçalho 1–4, dados a partir da linha 5). Preenchem Horário (E), Tipo de Atividade (O) e Grupo de Atividade (P) por código fiscalização.
-              </p>
+                     class="form-input" style="max-width:100%;padding:5px 8px;font-size:.72rem">
             </div>
-            <p id="msg-artemig-somente-pdf" style="display:none;font-size:.8rem;color:var(--text-muted);margin-top:8px;padding:8px 12px;background:var(--bg-surface-3);border-radius:var(--radius-sm)">
-              <i class="fas fa-info-circle"></i> Artemig: somente PDF (não há planilha Excel).
+            <p id="msg-artemig-somente-pdf" style="display:none;font-size:.74rem;color:var(--text-muted);margin-top:6px;padding:6px 10px;background:var(--bg-surface-3);border-radius:var(--radius-sm)">
+              <i class="fas fa-info-circle"></i> Artemig: somente PDF.
             </p>
 
-            <div class="form-group" style="margin-top:14px">
-              <label>
-                <i class="fas fa-ruler-horizontal"></i>
-                Limiar de gap (km) para alerta de panela
-                <span style="color:var(--text-muted);font-weight:400">(padrão: 2 km)</span>
-              </label>
-              <input type="number" id="limiar-analisar-pdf" class="form-input"
-                     value="2" min="0.5" max="50" step="0.5" style="width:120px">
-            </div>
-            <div class="form-group" style="margin-top:10px">
-              <label style="font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:8px">
+            <div class="form-group" style="margin-top:8px;margin-bottom:0">
+              <label style="font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:6px">
                 <input type="checkbox" id="chk-teste-local-analise">
-                <span>Teste local — mostrar alertas no PDF mesmo se a data da constatação não for hoje</span>
+                <span>Teste local — alertas no PDF mesmo se a data não for hoje</span>
               </label>
             </div>
 
-            <div class="progress-bar-container" id="prog-analisar-pdf">
+            <div class="progress-bar-container" id="prog-analisar-pdf" style="margin-top:10px">
               <div class="progress-bar-fill" id="progfill-analisar-pdf"
                    style="background:linear-gradient(90deg,var(--warning),var(--danger))"></div>
             </div>
 
-            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+            <div style="margin-top:10px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 14px">
               <button class="btn btn-primary" id="btn-analisar-pdf" disabled
                       style="background:var(--warning);box-shadow:0 2px 8px rgba(230,126,34,.3)">
                 <i class="fas fa-play"></i> Analisar e gerar relatório
               </button>
-              <button class="btn btn-outline" id="reset-analisar-pdf">
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <label for="limiar-analisar-pdf" style="font-size:.65rem;color:var(--text-muted);line-height:1.2;margin:0">
+                  Limiar de gap (km) para alerta de panela <span style="white-space:nowrap">(padrão: 2 km)</span>
+                </label>
+                <input type="number" id="limiar-analisar-pdf" class="form-input" title="Limiar em km"
+                       value="2" min="0.5" max="50" step="0.5" style="width:4.25rem;padding:6px 8px;font-size:.85rem">
+              </div>
+              <button type="button" class="btn btn-outline" id="reset-analisar-pdf">
                 <i class="fas fa-redo"></i> Limpar
               </button>
             </div>
@@ -497,7 +601,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-extrair-pdf">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-file-pdf"></i> Extrair imagens dos PDFs de NC
@@ -522,7 +626,7 @@
                 <option value="26">Lote 26 — SP Serra</option>
                 <option value="50">Lote 50 — CONSOL (ARTEMIG - MG)</option>
               </select>
-              <p style="font-size:.72rem;color:var(--text-muted);margin:8px 0 0">O lote é o mesmo da <strong>barra acima das etapas</strong> (sincronizado com Análise PDF).</p>
+              <p style="font-size:.72rem;color:var(--text-muted);margin:8px 0 0">O lote é o do <strong>primeiro bloco do pipeline</strong> (sincronizado com este select, se usar).</p>
             </div>
 
             <div class="upload-zone" id="zone-extrair-pdf">
@@ -534,7 +638,7 @@
             <div id="lista-multi-extrair-pdf" style="display:none;margin-top:10px"></div>
 
             <p style="font-size:.75rem;color:var(--text-muted);margin:10px 0 0">
-              Nome do ZIP: <code>lote_&lt;nº lote&gt;_&lt;qtd PDFs&gt;_pdfs_imagens.zip</code> (ex.: <code>lote_50_12_pdfs_imagens.zip</code>) conforme o lote acima.
+              Nome do ZIP: <code>lote_&lt;nº lote&gt;_&lt;qtd PDFs&gt;_pdfs_imagens.zip</code> (ex.: <code>lote_50_12_pdfs_imagens.zip</code>) conforme o lote no pipeline.
             </p>
             <div class="form-group" style="margin-top:14px">
               <label>DPI de extração</label>
@@ -582,7 +686,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-separar">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-cut"></i> Separar NC da planilha EAF
@@ -592,10 +696,10 @@
           </div>
           <div class="card-body">
             <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:16px">
-              Processa a planilha EAF e gera arquivos <strong>XLS individuais</strong> por combinação Data + Rodovia + Tipo NC.
+              Gera um XLS por grupo de linhas <strong>100% iguais</strong> (todas as colunas); data de reparo/execução diferente → ficheiros separados. Várias EAF de uma vez: use o separador abaixo ou o pipeline.
             </p>
 
-            <div class="upload-zone" id="zone-separar">
+            <div class="upload-zone" id="zone-separar" style="display:none">
               <input type="file" id="file-separar" accept=".xlsx,.xls" multiple>
               <div class="icon"><i class="fas fa-file-excel"></i></div>
               <h3>Planilhas EAF (.xlsx ou .xls)</h3>
@@ -603,11 +707,120 @@
             </div>
             <div id="lista-multi-separar" style="display:none;margin-top:10px"></div>
 
-            <div class="progress-bar-container" id="prog-separar">
+            <hr style="display:none;margin:18px 0;border-color:var(--border-color);opacity:.85">
+            <div style="padding:12px 14px;background:var(--bg-surface-3);border-radius:var(--radius-sm);border:1px solid rgba(129,140,248,.4)">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+                <h4 style="margin:0;font-size:.88rem;font-weight:700">
+                  <i class="fas fa-bolt" style="color:#a5b4fc"></i> Pipeline completo (uma chamada)
+                </h4>
+                <span class="status-badge idle" id="status-pipeline-completo" title="Estado desta ação">
+                  <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+                </span>
+              </div>
+              <p style="font-size:.74rem;color:var(--text-muted);margin:0 0 12px;line-height:1.45">
+                <strong>1+</strong> planilhas EAF (múltiplas) + PDFs opcionais → M01…M06. No ZIP: <code>02_kartado</code> com Excel e pasta <code>pacotes/</code> (cada evento em ZIP com planilha + fotos referenciadas).
+                Também <strong>ZIP só imagens</strong> (backup) se houver PDFs.
+              </p>
+              <div class="nc-upload-pair">
+              <div class="form-group" style="margin-bottom:10px">
+                <label style="font-size:.78rem"><i class="fas fa-file-excel" style="color:var(--success)"></i> Planilha(s) EAF <span style="color:var(--danger)">*</span> (uma ou mais)</label>
+                <input type="file" id="file-pipeline-completo-eaf" accept=".xlsx,.xls,.xlsm" multiple class="form-input" style="max-width:100%;font-size:.8rem">
+              </div>
+              <div class="form-group" style="margin-bottom:10px">
+                <label style="font-size:.78rem"><i class="fas fa-file-pdf" style="color:var(--danger)"></i> PDFs de constatação <span style="color:var(--text-muted)">(opcional)</span></label>
+                <input type="file" id="file-pipeline-completo-pdfs" accept=".pdf" multiple class="form-input" style="max-width:100%;font-size:.8rem">
+              </div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end;margin-bottom:10px">
+                <div>
+                  <label for="dpi-pipeline-completo" style="font-size:.65rem;color:var(--text-muted)">DPI extração</label>
+                  <input type="number" id="dpi-pipeline-completo" class="form-input" value="150" min="72" max="300" style="width:5rem;padding:6px 8px;font-size:.8rem" title="Só aplicado se enviar PDFs">
+                </div>
+                <label style="font-size:.74rem;cursor:pointer;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                  <input type="checkbox" id="chk-pipeline-completo-nomear-indice">
+                  Nomes das fotos por índice de fiscalização
+                </label>
+              </div>
+              <div class="progress-bar-container" id="prog-pipeline-completo">
+                <div class="progress-bar-fill" id="progfill-pipeline-completo"></div>
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn-primary" id="btn-pipeline-completo" disabled style="background:linear-gradient(135deg,#6366f1,#4f46e5);border:none">
+                  <i class="fas fa-play"></i> Executar pipeline completo
+                </button>
+                <button type="button" class="btn btn-outline" id="reset-pipeline-completo">
+                  <i class="fas fa-redo"></i> Limpar
+                </button>
+              </div>
+              <div id="feedback-pipeline-completo" style="margin-top:10px"></div>
+              <div class="result-area" id="result-pipeline-completo">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                  <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
+                  <strong>Pipeline concluído</strong>
+                </div>
+                <p style="font-size:.78rem;color:var(--text-muted);margin:0 0 10px">Guarde os ZIPs no disco (ou use os botões abaixo).</p>
+                <button type="button" class="btn btn-success" id="download-pipeline-completo-zip">
+                  <i class="fas fa-download"></i> Baixar ZIP final (01_nc…02_kartado/pacotes…)
+                </button>
+                <div id="wrap-download-pipeline-completo-imagens" style="display:none;margin-top:10px">
+                  <button type="button" class="btn btn-outline" id="download-pipeline-completo-imagens" style="border-color:rgba(52,211,153,.5);color:#6ee7b7">
+                    <i class="fas fa-images"></i> Baixar ZIP só imagens (backup)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:none;margin-top:14px;padding:10px 12px;background:var(--bg-surface-2);border-radius:var(--radius-sm);border:1px dashed rgba(148,163,184,.45)">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px">
+                <h4 style="margin:0;font-size:.8rem;font-weight:600;color:var(--text-secondary)">
+                  <i class="fas fa-plug"></i> Etapa 2 (após <code style="font-size:.72rem">POST /nc/start</code>)
+                </h4>
+                <span class="status-badge idle" id="status-nc-stage2">
+                  <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
+                </span>
+              </div>
+              <p style="font-size:.68rem;color:var(--text-muted);margin:0 0 8px;line-height:1.4">
+                Só após <strong><code>POST /nc/start</code></strong> (workspace com <code>stage1/nc_separados.zip</code> no servidor).
+                O botão <strong>Separar NCs</strong> acima só faz download do ZIP no browser — <strong>não</strong> serve para esta etapa.
+                Mesmos ficheiros que o pipeline completo: ZIP final + ZIP só imagens (se houver).
+              </p>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="font-size:.72rem">job_id</label>
+                <input type="text" id="input-nc-stage2-job-id" class="form-input" placeholder="ex.: nc_20250325_…" autocomplete="off" style="max-width:100%;font-size:.78rem">
+              </div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label style="font-size:.72rem">ZIP imagens PDF <span style="color:var(--text-muted)">(opcional)</span></label>
+                <input type="file" id="file-nc-stage2-imagens" accept=".zip" class="form-input" style="max-width:100%;font-size:.78rem">
+              </div>
+              <div class="progress-bar-container" id="prog-nc-stage2">
+                <div class="progress-bar-fill" id="progfill-nc-stage2"></div>
+              </div>
+              <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" class="btn btn-outline" id="btn-nc-stage2" style="font-size:.78rem">
+                  <i class="fas fa-forward"></i> Executar etapa 2
+                </button>
+                <button type="button" class="btn btn-outline" id="reset-nc-stage2" style="font-size:.78rem;padding:6px 10px">
+                  <i class="fas fa-redo"></i> Limpar
+                </button>
+              </div>
+              <div id="feedback-nc-stage2" style="margin-top:8px"></div>
+              <div class="result-area" id="result-nc-stage2">
+                <button type="button" class="btn btn-success" id="download-nc-stage2-zip" style="font-size:.78rem">
+                  <i class="fas fa-download"></i> ZIP final
+                </button>
+                <div id="wrap-download-nc-stage2-imagens" style="display:none;margin-top:8px">
+                  <button type="button" class="btn btn-outline" id="download-nc-stage2-imagens" style="font-size:.78rem;border-color:rgba(52,211,153,.5);color:#6ee7b7">
+                    <i class="fas fa-images"></i> ZIP só imagens
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="progress-bar-container" id="prog-separar" style="display:none">
               <div class="progress-bar-fill" id="progfill-separar"></div>
             </div>
 
-            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+            <div style="display:none;margin-top:16px;gap:10px;flex-wrap:wrap">
               <button class="btn btn-primary" id="btn-separar" disabled>
                 <i class="fas fa-play"></i> Separar NCs
               </button>
@@ -615,8 +828,8 @@
                 <i class="fas fa-redo"></i> Limpar
               </button>
             </div>
-            <div id="feedback-separar"></div>
-            <div class="result-area" id="result-separar">
+            <div id="feedback-separar" style="display:none"></div>
+            <div class="result-area" id="result-separar" style="display:none">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                 <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
                 <strong>NCs separadas com sucesso</strong>
@@ -644,7 +857,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-criar-email">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header" style="border-left:3px solid #0ea5e9">
             <i class="fas fa-envelope" style="color:#0ea5e9"></i> Gerar E-mails de Resposta NC
@@ -657,6 +870,7 @@
               Gera arquivos <strong>.eml</strong> (rascunhos de resposta à Artesp). Use o ZIP da etapa <strong>Separar NC</strong>.
               Opcionalmente envie um ZIP com imagens <strong>PDF (N).jpg</strong> da etapa <strong>Extrair PDF</strong> para as fotos aparecerem no corpo do e-mail.
             </p>
+            <div class="nc-upload-pair">
             <div class="form-group">
               <label><i class="fas fa-file-archive"></i> ZIP da etapa <strong>Separar NC</strong> (XLS individuais) <span style="color:var(--danger)">*</span></label>
               <div class="upload-zone" id="zone-email-xls" style="padding:18px">
@@ -682,6 +896,7 @@
                 <span id="infotext-email-fotos">nenhum</span>
                 <button type="button" onclick="clearFile('email-fotos')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
               </div>
+            </div>
             </div>
             <div class="progress-bar-container" id="prog-criar-email">
               <div class="progress-bar-fill" id="progfill-criar-email"></div>
@@ -722,7 +937,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-modelo-foto">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-images"></i> Gerar Kria e Resposta
@@ -732,7 +947,7 @@
           </div>
           <div class="card-body">
             <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
-              Gera planilha <strong>Kria</strong> e relatório de <strong>Resposta</strong>. Use o ZIP da etapa <strong>Separar NC</strong>.
+              Gera planilha <strong>Kartado</strong> (abertura evento) e relatório de <strong>Resposta</strong>. Use o ZIP da etapa <strong>Separar NC</strong>.
               Opcional: ZIP com fotos <strong>nc (N).jpg</strong> ou <strong>PDF (N).jpg</strong> (etapa Extrair PDF) para aparecer nos relatórios.
             </p>
 
@@ -740,6 +955,7 @@
               <i class="fas fa-database"></i> Modelos Kria e Resposta carregados automaticamente pelo servidor.
             </div>
 
+            <div class="nc-upload-pair">
             <div class="form-group">
               <label><i class="fas fa-file-archive"></i> ZIP da etapa <strong>Separar NC</strong> (XLS individuais) <span style="color:var(--danger)">*</span></label>
               <div class="upload-zone" id="zone-m02-xls" style="padding:18px">
@@ -766,6 +982,7 @@
                 <span id="infotext-m02-fotos">nenhum</span>
                 <button type="button" onclick="clearFile('m02-fotos')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
               </div>
+            </div>
             </div>
 
             <div class="progress-bar-container" id="prog-modelo-foto">
@@ -809,7 +1026,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-conservacao">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-road"></i> Kcor-Kria Conservação
@@ -822,6 +1039,11 @@
               Use o ZIP da etapa <strong>Modelo Foto</strong> (Kria + Resposta). Insere na planilha Kcor-Kria Conservação Rotina.
             </p>
 
+            <div class="alert alert-success" style="font-size:.78rem;margin-bottom:12px">
+              <i class="fas fa-database"></i> Modelo Kcor-Kria carregado automaticamente pelo servidor.
+            </div>
+
+            <div class="nc-upload-pair">
             <div class="form-group">
               <label><i class="fas fa-file-archive"></i> ZIP da etapa <strong>Modelo Foto</strong> (Kria + Resposta) <span style="color:var(--danger)">*</span></label>
               <div class="upload-zone" id="zone-m03-kria" style="padding:20px">
@@ -836,10 +1058,6 @@
               </div>
             </div>
 
-            <div class="alert alert-success" style="font-size:.78rem;margin-bottom:12px">
-              <i class="fas fa-database"></i> Modelo Kcor-Kria carregado automaticamente pelo servidor.
-            </div>
-
             <div class="form-group">
               <label><i class="fas fa-images"></i> ZIP com fotos PDF (N).jpg <span style="color:var(--text-muted)">(opcional)</span></label>
               <div class="upload-zone" id="zone-m03-fotos" style="padding:18px">
@@ -851,6 +1069,7 @@
                 <span id="infotext-m03-fotos">nenhum</span>
                 <button type="button" onclick="clearFile('m03-fotos')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
               </div>
+            </div>
             </div>
 
             <div class="progress-bar-container" id="prog-conservacao">
@@ -894,7 +1113,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-meio-ambiente">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-leaf"></i> Kcor-Kria Meio Ambiente
@@ -907,6 +1126,7 @@
               A partir do <strong>PDF</strong>: gera a planilha EAF e executa o <strong>Separar NC</strong> (ZIP com EAF + NCs separados). Ou envie um ZIP com planilhas Kria MA para gerar Kcor-Kria.
             </p>
 
+            <div class="nc-upload-pair">
             <div class="form-group">
               <label><i class="fas fa-file-pdf"></i> PDF(s) de NC Meio Ambiente <span style="color:var(--success)">(recomendado)</span></label>
               <div class="upload-zone" id="zone-m07-pdf" style="padding:18px;border:1px dashed rgba(34,197,94,.4)">
@@ -921,8 +1141,6 @@
               </div>
             </div>
 
-            <p style="font-size:.75rem;color:var(--text-muted);margin:12px 0">ou</p>
-
             <div class="form-group">
               <label><i class="fas fa-file-archive"></i> ZIP com planilhas Kria MA <span style="color:var(--text-muted)">(se já tiver)</span></label>
               <div class="upload-zone" id="zone-m07-kria" style="padding:20px">
@@ -935,6 +1153,7 @@
                 <span id="infotext-m07-kria">nenhum</span>
                 <button type="button" onclick="clearFile('m07-kria');updateBtnMeioAmbiente()" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
               </div>
+            </div>
             </div>
 
             <div class="alert alert-success" style="font-size:.78rem;margin-bottom:12px">
@@ -982,7 +1201,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-juntar">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-layer-group"></i> Acumulado (juntar arquivos)
@@ -995,6 +1214,7 @@
               Consolida em uma única planilha. Use o ZIP que você <strong>baixou na etapa anterior</strong> (Conservação ou Meio Ambiente).
             </p>
 
+            <div class="nc-upload-pair">
             <div class="form-group">
               <label><i class="fas fa-file-archive"></i> ZIP <strong>Kcor-Kria</strong> (arquivo da etapa Conservação ou Meio Ambiente) <span style="color:var(--danger)">*</span></label>
               <div class="upload-zone" id="zone-m04-kcor" style="padding:20px">
@@ -1020,6 +1240,7 @@
                 <span id="infotext-m04-acum">nenhum</span>
                 <button type="button" onclick="clearFile('m04-acum')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
               </div>
+            </div>
             </div>
 
             <div class="form-group">
@@ -1069,7 +1290,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-inserir-numero">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-hashtag"></i> Inserir número Kria no acumulado
@@ -1158,7 +1379,7 @@
       </div>
     </div>
     <div class="step-panel step-panel-form-log" id="panel-exportar-calendario">
-      <div class="grid-2">
+      <div class="grid-2 pipeline-grid-2">
         <div class="card">
           <div class="card-header">
             <i class="fas fa-calendar-alt"></i> Exportar eventos para calendário (.ics)
@@ -1332,23 +1553,25 @@
   const STEP_NAMES = {
     'analisar-pdf': 'Análise PDF',
     'extrair-pdf': 'Extrair PDF',
-    'separar': 'Separar NC',
-    'criar-email': 'E-mail',
-    'modelo-foto': 'Modelo Foto',
-    'conservacao': 'Conservação',
-    'juntar': 'Acumulado',
-    'inserir-numero': 'Inserir Nº',
-    'exportar-calendario': 'Calendário',
-    'meio-ambiente': 'Meio Ambiente'
+    'separar': 'Separar NC artesp. Kartado.',
+    'criar-email': 'Em breve Novo Módulo (E-mail)',
+    'modelo-foto': 'Em breve Novo Módulo (Modelo Foto)',
+    'conservacao': 'Em breve Novo Módulo (Conservação)',
+    'juntar': 'Em breve Novo Módulo (Acumulado)',
+    'inserir-numero': 'Em breve Novo Módulo (Inserir Nº)',
+    'exportar-calendario': 'Em breve Novo Módulo (Calendário)',
+    'meio-ambiente': 'Meio Ambiente',
+    'pipeline-completo': 'Pipeline completo',
+    'nc-stage2': 'Etapa 2 (start → stage2)'
   };
   /** Próxima(s) etapa(s) que usam a saída desta (para exibir "Saída para usar em: X"). */
   const NEXT_STEP_LABEL = {
-    'separar': 'E-mail, Modelo Foto',
+    'separar': 'Pipeline completo NC ARTESP · Meio Ambiente',
     'criar-email': '—',
-    'modelo-foto': 'Conservação',
-    'conservacao': 'Acumulado',
+    'modelo-foto': '—',
+    'conservacao': '—',
     'meio-ambiente': 'Acumulado',
-    'juntar': 'Inserir Nº, Calendário',
+    'juntar': '—',
     'inserir-numero': '—',
     'exportar-calendario': '—',
     'extrair-pdf': 'E-mail (imagens), Separar NC'
@@ -1424,6 +1647,8 @@
   });
 
   function irParaAba(step) {
+    const tabPre = document.querySelector(`[data-step="${step}"]`);
+    if (tabPre && (tabPre.disabled || tabPre.classList.contains('step-tab-disabled'))) return;
     document.querySelectorAll('.step-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
     const tab = document.querySelector(`[data-step="${step}"]`);
@@ -1466,7 +1691,7 @@
   };
   document.getElementById('stepTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.step-tab');
-    if (!tab) return;
+    if (!tab || tab.disabled || tab.classList.contains('step-tab-disabled')) return;
     const step = tab.dataset.step;
     document.querySelectorAll('.step-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
@@ -1524,6 +1749,18 @@
       'Gerando arquivos por fiscalização',
       'Gravando workspace / job',
       'Compactando nc_separados.zip'
+    ],
+    'pipeline-completo': [
+      'Separando NC (M01) e extraindo imagens dos PDFs',
+      'Gerando e-mails e modelos Kria (M02)',
+      'Inserindo NC conservação (M03)',
+      'Juntando acumulado (M04) e calendário (M06)',
+      'Montando ZIP final e ZIP de backup das imagens'
+    ],
+    'nc-stage2': [
+      'Lendo stage1 e ZIP de imagens (se enviado)',
+      'Executando e-mail, M02, M03, M04 e M06',
+      'Gerando ZIP final e backup de imagens'
     ],
     'criar-email': [
       'Extraindo planilhas do ZIP',
@@ -1814,10 +2051,10 @@
   function ncLoteObrigatorio(logId, stepId) {
     if (!ncLoteValor()) {
       if (logId) {
-        var msg = (stepId === 'extrair-pdf') ? 'Selecione o lote na barra acima das etapas ou em Extrair PDF.' : 'Selecione o lote na barra global acima das etapas (Lote).';
+        var msg = (stepId === 'extrair-pdf') ? 'Selecione o lote no 1.º bloco do pipeline ou neste select.' : 'Selecione o lote no 1.º bloco do pipeline (Lote).';
         logMsg(logId, msg, 'error');
       }
-      if (stepId) showFeedback(stepId, '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione o <strong>lote</strong> na barra acima das abas (Análise PDF, Separar NC, …).</div>');
+      if (stepId) showFeedback(stepId, '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione o <strong>lote</strong> no primeiro bloco do pipeline (à esquerda).</div>');
       return false;
     }
     return true;
@@ -1826,19 +2063,11 @@
     var g = document.getElementById('sel-lote-nc-global');
     var vg = (g && String(g.value || '').trim()) ? String(g.value).trim() : '';
     if (vg) return vg;
-    var s = document.getElementById('sel-lote-analise');
     var e = document.getElementById('sel-lote-extrair-pdf');
-    var va = (s && String(s.value || '').trim()) ? String(s.value).trim() : '';
     var ve = (e && String(e.value || '').trim()) ? String(e.value).trim() : '';
-    return va || ve;
+    return ve;
   }
 
-  var NC_FILE_INPUT_IDS = [
-    'file-analisar-pdf', 'file-excel-analise', 'file-extrair-pdf', 'file-separar',
-    'file-email-xls', 'file-email-fotos', 'file-m02-xls', 'file-m02-fotos',
-    'file-m03-kria', 'file-m03-fotos', 'file-m07-pdf', 'file-m07-kria',
-    'file-m04-kcor', 'file-m04-acum', 'file-m05-acum', 'file-m06-acum',
-  ];
   var NC_ZONE_IDS = [
     'zone-analisar-pdf', 'zone-extrair-pdf', 'zone-separar',
     'zone-email-xls', 'zone-email-fotos', 'zone-m02-xls', 'zone-m02-fotos',
@@ -1847,14 +2076,49 @@
   ];
   function ncAtualizarAnexosHabilitados() {
     var ok = !!ncLoteValor();
-    NC_FILE_INPUT_IDS.forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.disabled = !ok;
-    });
     NC_ZONE_IDS.forEach(function (id) {
       var z = document.getElementById(id);
       if (z) z.classList.toggle('nc-anexo-sem-lote', !ok);
     });
+    ncAtualizarBtnPipelineCompleto();
+    ncAtualizarBtnNcStage2();
+  }
+
+  function ncAtualizarBtnPipelineCompleto() {
+    var eaf = document.getElementById('file-pipeline-completo-eaf');
+    var btn = document.getElementById('btn-pipeline-completo');
+    if (!btn || !eaf) return;
+    var hasEaf = eaf.files && eaf.files.length > 0;
+    btn.disabled = !hasEaf || !ncLoteValor();
+  }
+
+  function ncAtualizarBtnNcStage2() {
+    var inp = document.getElementById('input-nc-stage2-job-id');
+    var btn = document.getElementById('btn-nc-stage2');
+    if (!btn || !inp) return;
+    btn.disabled = !String(inp.value || '').trim();
+  }
+
+  /**
+   * Após POST /nc/completo ou /nc/stage2: JSON com download_links → GET cada ficheiro (auth) e grava em blobs.
+   */
+  async function ncBaixarLinksOutputNc(j, logId, blobKeys) {
+    var links = j.download_links || [];
+    if (!links.length) throw new Error('Resposta sem download_links');
+    var keys = blobKeys || ['pipeline-completo', 'pipeline-completo-imagens'];
+    for (var i = 0; i < links.length; i++) {
+      var path = links[i];
+      var nom = (path.split('/').pop() || 'download.zip').split('?')[0];
+      logMsg(logId, 'A transferir: ' + nom + '…', 'info');
+      var r = await fetch(path, { headers: getAuthHeader(), credentials: 'include' });
+      if (!r.ok) {
+        var errT = await r.text().catch(function () { return ''; });
+        throw new Error('Falha ao baixar ' + nom + ': HTTP ' + r.status + ' ' + (errT || '').slice(0, 160));
+      }
+      var buf = await r.arrayBuffer();
+      var k = keys[i] || ('nc-output-' + i);
+      storeBlobForDownload(k, buf, nom, 'application/zip');
+    }
   }
 
   async function executarModulo({ stepId, endpoint, buildFormData, filename, mimeType, logId, timeoutMs }) {
@@ -2039,7 +2303,6 @@
 
   (function () {
     var LOTES_CONCESSIONARIA = { '13': 'Lote 13 Rodovias das Colinas', '21': 'Lote 21 Rodovias do Tietê', '26': 'Lote 26 SP Serra', '50': 'CONSOL' };
-    var sel = document.getElementById('sel-lote-analise');
     var selExt = document.getElementById('sel-lote-extrair-pdf');
     var gGlob = document.getElementById('sel-lote-nc-global');
     var campo = document.getElementById('campo-concessionaria-analise');
@@ -2066,7 +2329,6 @@
     function _ncApplyLote(v) {
       v = (v == null ? '' : String(v)).trim();
       if (gGlob) gGlob.value = v;
-      if (sel) sel.value = v;
       if (selExt) selExt.value = v;
       if (campo) campo.value = LOTES_CONCESSIONARIA[v] || '';
       var isArtemig = (v === '50');
@@ -2080,9 +2342,8 @@
       _ncTratarMudancaLote();
     }
     if (gGlob) gGlob.addEventListener('change', function () { _ncApplyLote(gGlob.value); });
-    if (sel) sel.addEventListener('change', function () { _ncApplyLote(sel.value); });
-    if (selExt) selExt.addEventListener('change', function () { if (sel) _ncApplyLote(selExt.value); });
-    _ncApplyLote((gGlob && gGlob.value) || (sel && sel.value) || (selExt && selExt.value) || '');
+    if (selExt) selExt.addEventListener('change', function () { _ncApplyLote(selExt.value); });
+    _ncApplyLote((gGlob && gGlob.value) || (selExt && selExt.value) || '');
   })();
 
   document.getElementById('clear-analisar-pdf').addEventListener('click', () => {
@@ -2188,8 +2449,21 @@
 
       const resumoEl = document.getElementById('resumo-analisar-pdf');
       if (resumoEl) {
+        var lo50 = (typeof ncLoteValor === 'function' ? (ncLoteValor() || '').trim() : '') === '50';
+        var kcorOk = r.headers.get('X-NC-Kcor-Ok');
+        var kcorMod = r.headers.get('X-NC-Kcor-Modelo') || '';
+        var kcorSpan = '';
+        if (lo50 && kcorOk === '1') {
+          kcorSpan = '<span style="color:#34d399"><i class="fas fa-file-excel"></i> <b>Exportar Kcor</b> no ZIP'
+            + (kcorMod === 'minimo'
+              ? ' <span style="opacity:.9;font-weight:600">(modelo mínimo gerado — copie o XLSX oficial para <code>nc_artemig/assets/Template/templates/</code> se precisar do layout Kria idêntico)</span>'
+              : '')
+            + '</span>';
+        } else if (lo50 && kcorOk === '0') {
+          kcorSpan = '<span style="color:var(--warning)"><i class="fas fa-file-excel"></i> Exportar Kcor <b>não</b> incluído — ver consola do servidor (NCs sem lote 50 / erro openpyxl)</span>';
+        }
         resumoEl.innerHTML =
-          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">' +
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;align-items:baseline">' +
           (zipSlug
             ? '<span><i class="fas fa-folder" style="color:var(--accent)"></i> Pasta no ZIP: <b>' + zipSlug + '</b></span>'
             : '') +
@@ -2203,6 +2477,7 @@
           (parseInt(emerg) > 0
             ? '<span><i class="fas fa-fire" style="color:var(--danger)"></i> <b>' + emerg + '</b> emergencial(is)</span>'
             : '') +
+          kcorSpan +
           '</div>';
       }
 
@@ -2410,6 +2685,30 @@
     }
   });
 
+  function resetPipelineCompletoUi() {
+    var eaf = document.getElementById('file-pipeline-completo-eaf');
+    var pdfs = document.getElementById('file-pipeline-completo-pdfs');
+    var chk = document.getElementById('chk-pipeline-completo-nomear-indice');
+    var dpi = document.getElementById('dpi-pipeline-completo');
+    if (eaf) eaf.value = '';
+    if (pdfs) pdfs.value = '';
+    if (chk) chk.checked = false;
+    if (dpi) dpi.value = '150';
+    showResult('pipeline-completo', false);
+    showFeedback('pipeline-completo', '');
+    setProgress('pipeline-completo', 0, false);
+    setStatus('pipeline-completo', 'idle', 'Aguardando');
+    var w = document.getElementById('wrap-download-pipeline-completo-imagens');
+    if (w) w.style.display = 'none';
+    try {
+      if (_blobs['pipeline-completo']) { URL.revokeObjectURL(_blobs['pipeline-completo'].url); delete _blobs['pipeline-completo']; }
+      if (_blobs['pipeline-completo-imagens']) { URL.revokeObjectURL(_blobs['pipeline-completo-imagens'].url); delete _blobs['pipeline-completo-imagens']; }
+      delete _downloadFeito['pipeline-completo'];
+      delete _downloadFeito['pipeline-completo-imagens'];
+    } catch (e) {}
+    ncAtualizarBtnPipelineCompleto();
+  }
+
   document.getElementById('reset-separar').addEventListener('click', () => {
     _gestores['file-separar'].reset();
     showResult('separar', false);
@@ -2417,6 +2716,26 @@
     setProgress('separar', 0, false);
     setStatus('separar', 'idle', 'Aguardando');
     limparLog('log-separar');
+    resetPipelineCompletoUi();
+    (function () {
+      var inp = document.getElementById('input-nc-stage2-job-id');
+      var fZip = document.getElementById('file-nc-stage2-imagens');
+      if (inp) inp.value = '';
+      if (fZip) fZip.value = '';
+      showResult('nc-stage2', false);
+      showFeedback('nc-stage2', '');
+      setProgress('nc-stage2', 0, false);
+      setStatus('nc-stage2', 'idle', 'Aguardando');
+      var w = document.getElementById('wrap-download-nc-stage2-imagens');
+      if (w) w.style.display = 'none';
+      try {
+        if (_blobs['nc-stage2-main']) { URL.revokeObjectURL(_blobs['nc-stage2-main'].url); delete _blobs['nc-stage2-main']; }
+        if (_blobs['nc-stage2-imagens']) { URL.revokeObjectURL(_blobs['nc-stage2-imagens'].url); delete _blobs['nc-stage2-imagens']; }
+        delete _downloadFeito['nc-stage2-main'];
+        delete _downloadFeito['nc-stage2-imagens'];
+      } catch (e) {}
+      ncAtualizarBtnNcStage2();
+    })();
   });
 
   document.getElementById('btn-separar').addEventListener('click', async () => {
@@ -2438,6 +2757,8 @@
     try {
       const fd = new FormData();
       files.forEach(f => fd.append('eafs', f));
+      // UI NC trabalha no fluxo Kartado; explicitar para não cair no default Art_011 da API.
+      fd.append('m01_kartado', 'true');
       clearNcJobId();
       setProgress('separar', 30, true);
       const r = await fetch('/nc/separar', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
@@ -2477,6 +2798,245 @@
     }
     btn.disabled = _gestores['file-separar'].getFiles().length === 0;
   });
+
+  (function bindPipelineCompleto() {
+    var eaf = document.getElementById('file-pipeline-completo-eaf');
+    var pdfs = document.getElementById('file-pipeline-completo-pdfs');
+    if (eaf) eaf.addEventListener('change', ncAtualizarBtnPipelineCompleto);
+    if (pdfs) pdfs.addEventListener('change', function () { /* lote já obrigatório */ });
+
+    var btnResetPc = document.getElementById('reset-pipeline-completo');
+    if (btnResetPc) btnResetPc.addEventListener('click', function () {
+      resetPipelineCompletoUi();
+    });
+
+    var btnPc = document.getElementById('btn-pipeline-completo');
+    if (!btnPc) return;
+    btnPc.addEventListener('click', async function () {
+      var eafIn = document.getElementById('file-pipeline-completo-eaf');
+      var pdfsIn = document.getElementById('file-pipeline-completo-pdfs');
+      var logId = 'log-separar';
+      if (!eafIn || !eafIn.files || !eafIn.files.length) return;
+      if (!ncLoteObrigatorio(logId, 'pipeline-completo')) return;
+
+      btnPc.disabled = true;
+      var stopLive = _ncStartLivePipelineLog(logId, 'pipeline-completo');
+      setStatus('pipeline-completo', 'processing', 'A processar…');
+      setProgress('pipeline-completo', 10, true);
+      showResult('pipeline-completo', false);
+      showFeedback('pipeline-completo', '');
+      var wrapImg = document.getElementById('wrap-download-pipeline-completo-imagens');
+      if (wrapImg) wrapImg.style.display = 'none';
+      logMsg(logId, 'Pipeline completo: envio de EAF + PDFs (se houver) para /nc/completo…', 'info');
+      _uploadIndicatorShow();
+
+      var abortController = new AbortController();
+      var tmo = setTimeout(function () { abortController.abort(); }, 1800000);
+
+      try {
+        var fd = new FormData();
+        for (var ei = 0; ei < eafIn.files.length; ei++) fd.append('arquivos', eafIn.files[ei]);
+        if (pdfsIn && pdfsIn.files && pdfsIn.files.length) {
+          for (var pi = 0; pi < pdfsIn.files.length; pi++) fd.append('pdfs', pdfsIn.files[pi]);
+        }
+        // Força M01 no layout Kartado (templates por atividade) conforme expectativa da tela.
+        fd.append('m01_kartado', 'true');
+        fd.append('lote', ncLoteValor());
+        var dpiEl = document.getElementById('dpi-pipeline-completo');
+        if (dpiEl && dpiEl.value) fd.append('dpi', String(dpiEl.value));
+        var chkInd = document.getElementById('chk-pipeline-completo-nomear-indice');
+        if (chkInd && chkInd.checked) fd.append('nomear_por_indice_fiscalizacao', 'true');
+
+        setProgress('pipeline-completo', 25, true);
+        var r = await fetch('/nc/completo', {
+          method: 'POST',
+          headers: getAuthHeader(),
+          body: fd,
+          credentials: 'include',
+          signal: abortController.signal
+        });
+        clearTimeout(tmo);
+
+        if (r.status === 401) {
+          if (stopLive) stopLive();
+          localStorage.removeItem('artesp_token');
+          localStorage.removeItem('artesp_user_email');
+          showLogin('Sessão expirada. Faça login novamente.');
+          logMsg(logId, 'Sessão expirada.', 'error');
+          setStatus('pipeline-completo', 'error', 'Não autenticado');
+          return;
+        }
+        if (!r.ok) {
+          if (stopLive) stopLive();
+          var data = await r.json().catch(function () { return {}; });
+          var msg = (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) || r.statusText;
+          logMsg(logId, 'Erro: ' + msg, 'error');
+          showFeedback('pipeline-completo', '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>');
+          setStatus('pipeline-completo', 'error', 'Erro');
+          setProgress('pipeline-completo', 0, false);
+          return;
+        }
+
+        var ct = (r.headers.get('content-type') || '').toLowerCase();
+        if (ct.indexOf('application/json') === -1) {
+          if (stopLive) stopLive();
+          logMsg(logId, 'Resposta inesperada (não JSON).', 'error');
+          showFeedback('pipeline-completo', '<div class="alert alert-danger">O servidor não devolveu JSON. Confirme o endpoint /nc/completo.</div>');
+          setStatus('pipeline-completo', 'error', 'Erro');
+          setProgress('pipeline-completo', 0, false);
+          return;
+        }
+
+        var j = await r.json();
+        if (stopLive) { stopLive(); stopLive = null; }
+        if (j.job_id) setNcJobId(j.job_id);
+        logMsg(logId, 'job_id: ' + (j.job_id || '—'), 'info');
+        setProgress('pipeline-completo', 70, true);
+        await ncBaixarLinksOutputNc(j, logId, ['pipeline-completo', 'pipeline-completo-imagens']);
+        await new Promise(function (res) { _ncReplayPipelineSteps(logId, 'pipeline-completo', res); });
+        setProgress('pipeline-completo', 100, true);
+        if (wrapImg) wrapImg.style.display = j.download_imagens_backup_zip ? 'block' : 'none';
+        logMsg(logId, 'Concluído: ' + (j.download_zip || 'ZIP final') + (j.download_imagens_backup_zip ? ' + ' + j.download_imagens_backup_zip : ''), 'success');
+        setStatus('pipeline-completo', 'done', 'Concluído');
+        showResult('pipeline-completo', true);
+      } catch (err) {
+        if (stopLive) stopLive();
+        clearTimeout(tmo);
+        var msg = err.name === 'AbortError'
+          ? 'Tempo esgotado (30 min). Tente com menos ficheiros ou em lotes.'
+          : _msgErroRede(err);
+        logMsg(logId, 'Erro: ' + msg, 'error');
+        showFeedback('pipeline-completo', '<div class="alert alert-danger">' + msg + '</div>');
+        setStatus('pipeline-completo', 'error', 'Erro');
+        setProgress('pipeline-completo', 0, false);
+      } finally {
+        if (stopLive) stopLive();
+        clearTimeout(tmo);
+        _uploadIndicatorHide();
+        ncAtualizarBtnPipelineCompleto();
+      }
+    });
+
+    var dl1 = document.getElementById('download-pipeline-completo-zip');
+    var dl2 = document.getElementById('download-pipeline-completo-imagens');
+    if (dl1) dl1.addEventListener('click', function () { triggerDownload('pipeline-completo'); });
+    if (dl2) dl2.addEventListener('click', function () { triggerDownload('pipeline-completo-imagens'); });
+  })();
+
+  (function bindNcStage2() {
+    var inp = document.getElementById('input-nc-stage2-job-id');
+    var fZip = document.getElementById('file-nc-stage2-imagens');
+    if (inp) inp.addEventListener('input', ncAtualizarBtnNcStage2);
+    function resetNcStage2Ui() {
+      if (inp) inp.value = '';
+      if (fZip) fZip.value = '';
+      showResult('nc-stage2', false);
+      showFeedback('nc-stage2', '');
+      setProgress('nc-stage2', 0, false);
+      setStatus('nc-stage2', 'idle', 'Aguardando');
+      var w = document.getElementById('wrap-download-nc-stage2-imagens');
+      if (w) w.style.display = 'none';
+      try {
+        if (_blobs['nc-stage2-main']) { URL.revokeObjectURL(_blobs['nc-stage2-main'].url); delete _blobs['nc-stage2-main']; }
+        if (_blobs['nc-stage2-imagens']) { URL.revokeObjectURL(_blobs['nc-stage2-imagens'].url); delete _blobs['nc-stage2-imagens']; }
+        delete _downloadFeito['nc-stage2-main'];
+        delete _downloadFeito['nc-stage2-imagens'];
+      } catch (e) {}
+      ncAtualizarBtnNcStage2();
+    }
+    var btnR = document.getElementById('reset-nc-stage2');
+    if (btnR) btnR.addEventListener('click', resetNcStage2Ui);
+    var btn = document.getElementById('btn-nc-stage2');
+    if (!btn) return;
+    btn.addEventListener('click', async function () {
+      var jid = inp ? String(inp.value || '').trim() : '';
+      var logId = 'log-separar';
+      if (!jid) return;
+      btn.disabled = true;
+      var stopLive = _ncStartLivePipelineLog(logId, 'nc-stage2');
+      setStatus('nc-stage2', 'processing', 'A processar…');
+      setProgress('nc-stage2', 10, true);
+      showResult('nc-stage2', false);
+      showFeedback('nc-stage2', '');
+      var wrapImg = document.getElementById('wrap-download-nc-stage2-imagens');
+      if (wrapImg) wrapImg.style.display = 'none';
+      logMsg(logId, 'POST /nc/stage2 — job_id ' + jid + '…', 'info');
+      _uploadIndicatorShow();
+      var abortController = new AbortController();
+      var tmo = setTimeout(function () { abortController.abort(); }, 1800000);
+      try {
+        var fd = new FormData();
+        fd.append('job_id', jid);
+        if (fZip && fZip.files && fZip.files[0]) fd.append('imagens_pdf_zip', fZip.files[0]);
+        var lo = ncLoteValor();
+        if (lo) fd.append('lote', lo);
+        setProgress('nc-stage2', 25, true);
+        var r = await fetch('/nc/stage2', {
+          method: 'POST',
+          headers: getAuthHeader(),
+          body: fd,
+          credentials: 'include',
+          signal: abortController.signal
+        });
+        clearTimeout(tmo);
+        if (r.status === 401) {
+          if (stopLive) stopLive();
+          localStorage.removeItem('artesp_token');
+          showLogin('Sessão expirada. Faça login novamente.');
+          logMsg(logId, 'Sessão expirada.', 'error');
+          setStatus('nc-stage2', 'error', 'Não autenticado');
+          return;
+        }
+        if (!r.ok) {
+          if (stopLive) stopLive();
+          var data = await r.json().catch(function () { return {}; });
+          var msg = (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) || r.statusText;
+          logMsg(logId, 'Erro: ' + msg, 'error');
+          showFeedback('nc-stage2', '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>');
+          setStatus('nc-stage2', 'error', 'Erro');
+          setProgress('nc-stage2', 0, false);
+          return;
+        }
+        var ct = (r.headers.get('content-type') || '').toLowerCase();
+        if (ct.indexOf('application/json') === -1) {
+          if (stopLive) stopLive();
+          logMsg(logId, 'Resposta inesperada (não JSON).', 'error');
+          showFeedback('nc-stage2', '<div class="alert alert-danger">Esperado JSON de /nc/stage2.</div>');
+          setStatus('nc-stage2', 'error', 'Erro');
+          setProgress('nc-stage2', 0, false);
+          return;
+        }
+        var j = await r.json();
+        if (stopLive) { stopLive(); stopLive = null; }
+        if (j.job_id) setNcJobId(j.job_id);
+        setProgress('nc-stage2', 70, true);
+        await ncBaixarLinksOutputNc(j, logId, ['nc-stage2-main', 'nc-stage2-imagens']);
+        await new Promise(function (res) { _ncReplayPipelineSteps(logId, 'nc-stage2', res); });
+        setProgress('nc-stage2', 100, true);
+        if (wrapImg) wrapImg.style.display = j.download_imagens_backup_zip ? 'block' : 'none';
+        logMsg(logId, 'Etapa 2 concluída.', 'success');
+        setStatus('nc-stage2', 'done', 'Concluído');
+        showResult('nc-stage2', true);
+      } catch (err) {
+        if (stopLive) stopLive();
+        clearTimeout(tmo);
+        var msg = err.name === 'AbortError' ? 'Tempo esgotado (30 min).' : _msgErroRede(err);
+        logMsg(logId, 'Erro: ' + msg, 'error');
+        showFeedback('nc-stage2', '<div class="alert alert-danger">' + msg + '</div>');
+        setStatus('nc-stage2', 'error', 'Erro');
+        setProgress('nc-stage2', 0, false);
+      } finally {
+        if (stopLive) stopLive();
+        clearTimeout(tmo);
+        _uploadIndicatorHide();
+        ncAtualizarBtnNcStage2();
+      }
+    });
+    var d1 = document.getElementById('download-nc-stage2-zip');
+    var d2 = document.getElementById('download-nc-stage2-imagens');
+    if (d1) d1.addEventListener('click', function () { triggerDownload('nc-stage2-main'); });
+    if (d2) d2.addEventListener('click', function () { triggerDownload('nc-stage2-imagens'); });
+  })();
 
   document.getElementById('download-separar').addEventListener('click', () => triggerDownload('separar'));
   bindFile('file-email-xls', 'info-email-xls', 'infotext-email-xls', 'btn-criar-email', ['file-email-xls']);

@@ -29,6 +29,11 @@
   --topbar-h: 56px;
   --nav-h: 46px;
   --log-height: 340px;
+  /* Cabeçalho + nav + rodapé + padding: evita painel maior que a viewport. */
+  --pipeline-chrome-reserve: 228px;
+  --pipeline-painel-altura: clamp(260px, calc(55vh + 80px), calc(100dvh - var(--pipeline-chrome-reserve)));
+  /* Mobile empilhado (2 cartões): body.nc-skin aumenta --pipeline-mobile-chrome (abas NC). */
+  --pipeline-mobile-chrome: 268px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -69,7 +74,85 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   max-width: 60%;
   min-width: 0;
 }
-.topbar-brand .icon { font-size: 1.4rem; flex-shrink: 0; }
+/* Só topbar “antiga”; em app-topbar o ícone é span.icon com tamanho próprio. */
+.topbar:not(.app-topbar) .topbar-brand .icon { font-size: 1.4rem; flex-shrink: 0; }
+/* Topbar expandida: módulo (título + subtítulo) + linha plataforma — NC, GeoJSON, Fotos */
+.topbar.app-topbar {
+  height: auto;
+  min-height: 52px;
+  padding: 10px 24px;
+  align-items: center;
+}
+.topbar.app-topbar .topbar-brand {
+  flex-direction: row;
+  align-items: stretch;
+  align-self: center;
+  gap: 12px;
+  max-width: min(1100px, 82%);
+  min-width: 0;
+  /* Não recortar emoji grande (mobile aplicava overflow:hidden em .topbar-brand). */
+  overflow: visible;
+}
+/* Ícone 🛣️ na topbar: complementa style inline (font-size) nos HTML — emoji no Windows costuma ignorar só CSS externo/cache. */
+.topbar.app-topbar .topbar-brand > .icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  flex-shrink: 0;
+  flex-grow: 0;
+  line-height: 1;
+  min-width: 2.25rem;
+  width: max-content;
+  max-width: none;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+.topbar.app-topbar .topbar-fill {
+  flex: 1;
+  min-width: 0;
+  font-size: .72rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+.app-brand-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.app-brand-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1.2;
+  color: #f1f5f9;
+  letter-spacing: -0.02em;
+}
+.app-brand-sub {
+  margin: 0;
+  font-size: .72rem;
+  line-height: 1.35;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.app-brand-platform {
+  margin: 5px 0 0;
+  padding-top: 5px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: .66rem;
+  line-height: 1.35;
+  color: #6b7c8f;
+  font-weight: 500;
+}
+@media (max-width: 900px) {
+  .topbar.app-topbar .topbar-brand {
+    max-width: calc(100% - 120px);
+    gap: 8px;
+  }
+  .app-brand-title { font-size: .92rem; }
+  .app-brand-sub { font-size: .65rem; }
+}
 .topbar-brand,
 .topbar-brand > span:last-child { font-weight: 500; font-size: .74rem; color: #6b7c8f !important; }
 .topbar-badge {
@@ -155,12 +238,30 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px 24px 28px;
-  gap: 24px;
+  padding: 14px 22px 16px;
+  gap: 16px;
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  overflow: auto;
+  overflow: hidden;
+}
+/* Uma única grelha (GeoJSON / Fotos): preenche a coluna até ao rodapé; cartões esticam na célula. */
+.page-content > .pipeline-grid-2:only-child,
+.page-content > .dashboard-grid:only-child {
+  flex: 1 1 0;
+  min-height: 0;
+  align-self: stretch;
+  grid-template-rows: minmax(0, 1fr);
+}
+.page-content > .pipeline-grid-2:only-child > .card {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+}
+.page-content > .dashboard-grid:only-child > .glass-card {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
 }
 .page-header {
   display: flex;
@@ -191,7 +292,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s ease;
 }
 .card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-2px);
   border-color: var(--accent);
 }
 .card-header {
@@ -213,8 +314,11 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 @media (max-width: 768px) {
   .grid-2 { grid-template-columns: 1fr; }
   .page-content { padding: 16px 12px; }
-  .topbar { padding: 0 12px; gap: 10px; flex-wrap: nowrap; min-height: 44px; height: 44px; align-items: center; }
+  /* Topbar compacta só nas páginas antigas; app-topbar mantém altura automática e ícone grande. */
+  .topbar:not(.app-topbar) { padding: 0 12px; gap: 10px; flex-wrap: nowrap; min-height: 44px; height: 44px; align-items: center; }
+  .topbar.app-topbar { padding: 10px 12px; gap: 10px; flex-wrap: wrap; align-items: center; min-height: 0; height: auto; }
   .topbar-brand { max-width: calc(100% - 70px); font-size: .75rem; min-width: 0; overflow: hidden; }
+  .topbar.app-topbar .topbar-brand { overflow: visible; max-width: min(100%, 1100px); }
   .topbar-brand > span:last-child { font-size: .68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .topbar-user { display: none; }
   .topbar-right { width: auto; order: 0; margin-left: auto; margin-top: 0; }
@@ -224,9 +328,9 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
   .card-body { min-width: 0; overflow: visible; }
   .card-body .btn { flex-shrink: 0; }
   .btn-row { flex-wrap: wrap !important; }
-  .log-container { min-height: 220px; }
-  /* Rodapé visível no mobile: body pode rolar para não cortar o footer */
-  body { overflow-y: auto; min-height: 100vh; }
+  .log-container { min-height: 200px; }
+  /* Rodapé no fluxo flex; rolagem só nos miolos (.card-body / .log-container). */
+  body { overflow: hidden; min-height: 100dvh; height: 100dvh; }
   .app-footer {
     padding: 12px 14px 14px;
     flex-shrink: 0;
@@ -346,10 +450,254 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .form-group { margin-bottom: 16px; }
 .form-group label {
   display: block;
-  font-size: .78rem;
+  font-size: .82rem;
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 6px;
+}
+select.form-input,
+select.pipeline-select {
+  padding: 8px 10px;
+  font-size: .85rem;
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+.pipeline-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.pipeline-hint {
+  font-size: .7rem;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+  line-height: 1.35;
+}
+.pipeline-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(17, 24, 39, 0.9);
+  color: var(--text-primary);
+  font-size: .85rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.pipeline-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.glass-card {
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-card);
+  padding: 18px;
+}
+.glass-card > .card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.glass-card > .card-title i { color: var(--accent); }
+.pipeline-dashboard {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+  gap: 25px;
+  align-items: stretch;
+}
+.pipeline-dashboard > .glass-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: var(--pipeline-painel-altura);
+  max-height: var(--pipeline-painel-altura);
+  box-sizing: border-box;
+  overflow: hidden;
+  container-type: size;
+  container-name: pipeline-quadro;
+}
+.pipeline-dashboard > .glass-card > .card-title { flex-shrink: 0; }
+.pipeline-dashboard > .glass-card > .log-container {
+  flex: 1;
+  min-height: 0;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto;
+}
+.pipeline-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.pipeline-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+  gap: 25px;
+  align-items: stretch;
+}
+/* Quadros de pipeline (NC, GeoJSON): altura fixa pela variável; miolo escala ao quadro (container queries). */
+.pipeline-grid-2 > .card {
+  min-height: 0;
+  height: var(--pipeline-painel-altura);
+  max-height: var(--pipeline-painel-altura);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  container-type: size;
+  container-name: pipeline-quadro;
+}
+.pipeline-grid-2 > .card:hover {
+  transform: none;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.pipeline-grid-2 > .card .card-header { flex-shrink: 0; }
+.pipeline-grid-2 > .card .card-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 1.8cqh, 14px);
+  padding: clamp(10px, 2.2cqh, 18px) clamp(10px, 2.5cqw, 20px);
+}
+/* Zona de arrastar: padding/ícone proporcionais ao cartão, não tamanho fixo da página. */
+.pipeline-grid-2 > .card .upload-zone {
+  padding: clamp(10px, 7cqh, 36px) clamp(8px, 4cqw, 22px);
+}
+.pipeline-grid-2 > .card .upload-zone .icon {
+  font-size: clamp(1.35rem, 11cqh, 2.6rem);
+  margin-bottom: clamp(6px, 2cqh, 14px);
+}
+.pipeline-grid-2 > .card .log-container {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  font-size: clamp(0.7rem, 3.2cqh, 0.84rem);
+  line-height: 1.55;
+}
+/* Estado vazio do log: ocupa só o espaço útil do cartão, sem min-height em vh a lutar com o quadro. */
+.pipeline-grid-2 > .card .log-container .log-empty {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+.pipeline-grid-2 > .card .log-container .log-empty i {
+  font-size: clamp(1.1rem, 8cqh, 1.75rem);
+}
+@media (max-width: 900px) {
+  .pipeline-dashboard,
+  .pipeline-grid-2 { grid-template-columns: 1fr; }
+  .pipeline-dashboard > .glass-card,
+  .pipeline-grid-2 > .card,
+  .fotos-page .dashboard-grid > .glass-card {
+    height: min(480px, max(198px, calc((100dvh - var(--pipeline-mobile-chrome)) / 2 - 10px)));
+    max-height: min(480px, max(198px, calc((100dvh - var(--pipeline-mobile-chrome)) / 2 - 10px)));
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .pipeline-dashboard .pipeline-card-body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .pipeline-dashboard > .glass-card:last-child .log-container {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+  }
+  .pipeline-grid-2 > .card .card-body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .pipeline-grid-2 > .card .log-container {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none !important;
+    overflow-y: auto;
+  }
+  .pipeline-grid-2 > .card .log-container .log-empty {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  /* GeoJSON / Fotos (grelha única): duas faixas 1fr; cartões enchem a viewport, sem “teto” fixo. */
+  .page-content > .pipeline-grid-2:only-child {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+  .page-content > .pipeline-grid-2:only-child > .card {
+    height: 100% !important;
+    max-height: none !important;
+  }
+  .page-content > .dashboard-grid:only-child {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+  .page-content > .dashboard-grid:only-child > .glass-card {
+    height: 100% !important;
+    max-height: none !important;
+  }
+}
+/* Fotos — glass-cards do dashboard: conteúdo proporcional ao quadro (mesmos princípios). */
+.fotos-page .dashboard-grid > .glass-card {
+  container-type: size;
+  container-name: fotos-quadro;
+}
+.fotos-page .dashboard-grid > .glass-card .fotos-card-body {
+  gap: clamp(4px, 1.2cqh, 12px);
+}
+.fotos-page .dashboard-grid > .glass-card .upload-zone {
+  padding: clamp(8px, 6.5cqh, 22px) clamp(8px, 3.5cqw, 16px);
+}
+.fotos-page .dashboard-grid > .glass-card .upload-zone .icon {
+  font-size: clamp(1.15rem, 9cqh, 2rem);
+  margin-bottom: clamp(4px, 1.5cqh, 10px);
+}
+.fotos-page .dashboard-grid > .glass-card .log-container {
+  display: flex;
+  flex-direction: column;
+}
+/* Cartão direito: preenche o quadro (evita height fixo global do .log-container). */
+.fotos-page .dashboard-grid > .glass-card:last-child .log-container {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto !important;
+  max-height: none !important;
+}
+.fotos-page .dashboard-grid > .glass-card .log-container .log-empty {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
+}
+/* Estado vazio do log sem min-height global que force barra de rolagem no quadro alto. */
+.page-content > .pipeline-grid-2:only-child > .card .log-container .log-empty,
+.page-content > .dashboard-grid:only-child > .glass-card .log-container .log-empty {
+  min-height: 0;
+}
+.page-content > .pipeline-grid-2:only-child > .card .log-container,
+.page-content > .dashboard-grid:only-child > .glass-card .log-container {
+  min-height: 0;
 }
 .icon-circle {
   width: 48px;
@@ -566,17 +914,46 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 }
 .login-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 420px;
   padding: 40px 36px;
 }
 .login-card .logo { text-align: center; margin-bottom: 28px; }
-.login-card .logo .icon { font-size: 2.4rem; margin-bottom: 10px; }
-.login-card .logo h2 { font-size: 1.3rem; font-weight: 700; }
-.login-card .logo p { font-size: .78rem; color: var(--text-muted); margin-top: 4px; }
+.login-card .logo .icon {
+  line-height: 1;
+  margin-bottom: 14px;
+  display: inline-block;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
+.login-card .logo h2 {
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.login-card .logo .login-brand-sub {
+  font-size: .74rem;
+  color: #94a3b8;
+  margin: 10px 0 0;
+  line-height: 1.4;
+  font-weight: 500;
+}
+.login-card .logo .login-brand-platform {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  font-size: .64rem;
+  line-height: 1.35;
+  color: #6b7c8f;
+  font-weight: 500;
+}
 .login-card .form-group { margin-bottom: 18px; }
 .login-card .form-group .form-input { padding: 10px 14px; font-size: .88rem; }
 .app-footer {

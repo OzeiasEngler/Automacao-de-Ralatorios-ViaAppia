@@ -7,7 +7,7 @@
   <title>Admin — ARTESP WEB</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css?v=10">
   <style>
     .admin-wrap { flex: 1; padding: 24px; overflow-y: auto; }
     .admin-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
@@ -44,15 +44,23 @@
     .usuarios-acoes.proprietario { color: var(--text-muted); font-size: .8rem; }
     .usuarios-acoes .btn { padding: 6px 10px; font-size: .78rem; }
     .usuarios-loading { padding: 20px; text-align: center; color: var(--text-muted); }
+    .admin-topbar .topbar-right { margin-left: 0; flex-wrap: wrap; }
+    @media (max-width: 768px) {
+      .admin-topbar.app-topbar { flex-wrap: wrap; padding: 10px 14px; gap: 8px; }
+      .admin-topbar .topbar-sep { display: none; }
+      .admin-topbar .topbar-fill { flex-basis: 100%; order: 3; }
+      .admin-topbar .topbar-right { width: 100%; justify-content: flex-end; order: 4; }
+    }
   </style>
 </head>
 <body>
   <div class="login-overlay" id="loginOverlay">
     <div class="login-card animate-in">
       <div class="logo">
-        <div class="icon">🛣️</div>
+        <div class="icon" aria-hidden="true" style="font-size:clamp(36px,11vmin,59px);line-height:1">🛣️</div>
         <h2>Plataforma de Conservação e Obras</h2>
-        <p>Área administrativa. Faça login com uma conta de administrador.</p>
+        <p class="login-brand-sub">Área administrativa. Faça login com uma conta de administrador.</p>
+        <p class="login-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
       </div>
       <form id="formLogin">
         <div class="form-group">
@@ -71,11 +79,17 @@
     </div>
   </div>
 
-  <header class="topbar">
+  <header class="topbar app-topbar admin-topbar">
     <div class="topbar-brand">
-      <span class="icon">🛣️</span>
-      <span>PLATAFORMA DE CONSERVAÇÃO E OBRAS — Admin</span>
+      <span class="icon" aria-hidden="true" style="font-size:clamp(36px,6vw,62px);line-height:1;display:inline-flex;align-items:center;flex-shrink:0">🛣️</span>
+      <div class="app-brand-text">
+        <h1 class="app-brand-title">Admin</h1>
+        <p class="app-brand-sub">Cadastro de analistas, usuários e perfis de acesso à plataforma.</p>
+        <p class="app-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
+      </div>
     </div>
+    <div class="topbar-sep" aria-hidden="true"></div>
+    <div class="topbar-fill">Sistema de Automação de Relatórios</div>
     <div class="topbar-right">
       <div class="topbar-user">
         <div class="avatar" id="userAvatar">A</div>

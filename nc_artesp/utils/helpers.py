@@ -199,42 +199,169 @@ def sanitizar_nome(s: str, max_len: int = 200) -> str:
     return s[:max_len]
 
 
-def garantir_pasta(caminho) -> Path:
-    """Cria o diretório se não existir. Retorna Path."""
+def truncar_nome_preservando_sufixo_prazo_m01(nome: str, max_chars: int) -> str:
+    """
+    Encurta o nome do ficheiro (com extensão) para no máximo ``max_chars`` caracteres,
+    preservando o sufixo Art_011 / M01 `` - Prazo - dd-mm-aaaa`` antes da extensão quando existir.
+    Usado no ZIP da API (componente limitado a N chars) e noutros truncamentos agressivos.
+    """
+    nome = (nome or "").strip()
+    if not nome or len(nome) <= max_chars:
+        return nome
+    ext = Path(nome).suffix
+    stem = Path(nome).stem
+    room = max(8, max_chars - len(ext))
+    if len(stem) <= room:
+        return nome
+    tail = ""
+    m = re.search(r"( - Prazo - \d{1,2}-\d{1,2}-\d{4})$", stem)
+    if m:
+        tail = m.group(1)
+    else:
+        m = re.search(r"( - Prazo - .+)$", stem)
+        if m:
+            tail = m.group(1)
+    if tail and len(tail) <= room:
+        head_budget = room - len(tail)
+        if head_budget > 0:
+            head = stem[:head_budget].rstrip(" -")
+            if not head:
+                head = stem[:head_budget]
+        else:
+            head = ""
+        return head + tail + ext
+    if tail and len(tail) + len(ext) <= max_chars:
+        return tail.strip() + ext
+    return stem[:room].rstrip(" -.") + ext
+
+
+def str_caminho_io_windows(caminho) -> str:
+    """
+    Caminho absoluto para ``open()``, ``shutil``, ``ZipFile.extractall``, openpyxl, etc. no Windows.
+
+    Prefixa **sempre** ``\\\\?\\`` (ou ``\\\\?\\UNC\\`` em partilhas de rede) no caminho absoluto
+    resolvido, permitindo até ~32 767 caracteres sem «LongPathsEnabled» e sem falhas perto do
+    limite clássico de 260. Em outros SO devolve ``str(Path.resolve())``.
+    """
+    if os.name != "nt":
+        p = Path(caminho)
+        try:
+            return str(p.resolve(strict=False))
+        except (OSError, RuntimeError):
+            return str(p)
     p = Path(caminho)
+    try:
+        abs_s = str(p.resolve(strict=False))
+    except (OSError, RuntimeError):
+        abs_s = str(p if p.is_absolute() else Path.cwd() / p)
+    abs_s = os.path.normpath(abs_s)
+    if abs_s.startswith("\\\\?\\"):
+        return abs_s
+    if abs_s.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + abs_s[2:].lstrip("\\")
+    return "\\\\?\\" + abs_s
+
+
+def str_caminho_outlook_mapi(caminho) -> str:
+    """
+    Caminho para ``Outlook.Application`` / ``Attachments.Add`` e outras APIs MAPI/COM.
+
+    O Outlook costuma **falhar** com o prefixo ``\\\\?\\``; usa-se caminho clássico (sem prefixo)
+    quando o comprimento absoluto ≤ 259. Acima disso volta a ``str_caminho_io_windows`` (pode ainda
+    falhar no COM — nesse caso copiar o ficheiro para pasta curta).
+    """
+    if os.name != "nt":
+        p = Path(caminho)
+        try:
+            return str(p.resolve(strict=False))
+        except (OSError, RuntimeError):
+            return str(p)
+    p = Path(caminho)
+    try:
+        s = str(p.resolve(strict=False))
+    except (OSError, RuntimeError):
+        s = str(p if p.is_absolute() else Path.cwd() / p)
+    s = os.path.normpath(s)
+    if s.startswith("\\\\?\\"):
+        return s
+    if len(s) <= 259:
+        return s
+    return str_caminho_io_windows(p)
+
+
+def extrair_zipfile_para_pasta(zf, destino) -> None:
+    """
+    ``ZipFile.extractall`` com pasta de destino criada via caminho estendido no Windows
+    (``\\\\?\\``), para extrações profundas no servidor/pipeline.
+    """
+    import zipfile as _zipfile
+
+    if not isinstance(zf, _zipfile.ZipFile):
+        raise TypeError("extrair_zipfile_para_pasta espera zipfile.ZipFile")
+    p = Path(destino)
+    if os.name != "nt":
+        p.mkdir(parents=True, exist_ok=True)
+        zf.extractall(str(p))
+        return
+    dest_s = str_caminho_io_windows(p)
+    os.makedirs(dest_s, exist_ok=True)
+    zf.extractall(dest_s)
+
+
+def garantir_pasta(caminho) -> Path:
+    """Cria o diretório se não existir. Retorna Path. No Windows usa caminho longo se preciso."""
+    p = Path(caminho)
+    if os.name == "nt":
+        os.makedirs(str_caminho_io_windows(p), exist_ok=True)
+        return p
     p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def escrever_bytes_caminho(caminho, data: bytes) -> Path:
+    """Grava bytes no ficheiro; cria pastas e usa caminho longo no Windows quando necessário."""
+    p = Path(caminho)
+    garantir_pasta(p.parent)
+    with open(str_caminho_io_windows(p), "wb") as f:
+        f.write(data)
     return p
 
 
 def caminho_dentro_limite_windows(caminho, max_len: int = 259) -> Path:
     """
-    Retorna o caminho garantindo que não ultrapasse max_len chars.
-    Se o caminho for longo demais, trunca o nome do arquivo preservando a extensão.
+    Retorna o caminho garantindo que não ultrapasse max_len chars (nome do ficheiro truncado).
+    Se a pasta sozinha já exceder o limite, devolve o caminho original (use ``str_caminho_io_windows`` na escrita).
     """
     p = Path(caminho)
-    if len(str(p)) <= max_len:
+    parent_s = str(p.parent)
+    ext = p.suffix
+    base = p.stem
+    sep = 1
+
+    def _total(stem: str) -> int:
+        return len(parent_s) + sep + len(stem) + len(ext)
+
+    if _total(base) <= max_len:
         return p
-    ext    = p.suffix
-    base   = p.stem
-    margem = max_len - len(str(p.parent)) - len(ext) - 2
-    margem = max(margem, 5)
-    return p.parent / (base[:margem] + ext)
+    room = max_len - len(parent_s) - sep - len(ext)
+    if room < 1:
+        return p
+    return p.parent / (base[:room] + ext)
 
 
 def encurtar_nome_em_pasta(pasta: Path, nome: str, max_path: int = 259) -> Path:
     """
     Retorna Path(pasta/nome) encurtando o nome se o caminho total exceder max_path.
-    Preserva a extensão.
+    Preserva o sufixo M01 « - Prazo - dd-mm-aaaa» antes de .xlsx (ver ``truncar_nome_preservando_sufixo_prazo_m01``).
     """
     destino = pasta / nome
     if len(str(destino)) <= max_path:
         return destino
-    ext  = Path(nome).suffix
-    base = Path(nome).stem
-    margem = max_path - len(str(pasta)) - len(ext) - 2  # -2 para / e margem
-    if margem < 10:
-        margem = 10
-    nome_curto = base[:margem] + ext
+    pasta_s = str(pasta)
+    max_nome = max_path - len(pasta_s) - 1
+    if max_nome < 12:
+        max_nome = 12
+    nome_curto = truncar_nome_preservando_sufixo_prazo_m01(nome, max_nome)
     return pasta / nome_curto
 
 
@@ -244,7 +371,7 @@ def copiar_arquivo(src, dst, sobrescrever: bool = True) -> Path:
     if not sobrescrever and dst.exists():
         return dst
     garantir_pasta(dst.parent)
-    shutil.copy2(str(src), str(dst))
+    shutil.copy2(str_caminho_io_windows(src), str_caminho_io_windows(dst))
     return dst
 
 
@@ -263,7 +390,7 @@ def renomear_arquivo(src, dst) -> Path:
         src.rename(dst)
     except FileExistsError:
         # WinError 183 / OneDrive: destino ainda existe; substituir explicitamente
-        os.replace(str(src), str(dst))
+        os.replace(str_caminho_io_windows(src), str_caminho_io_windows(dst))
     return dst
 
 
@@ -406,15 +533,133 @@ def path_foto_pdf(pasta_pdf, numero: "int | str") -> Path:
 
 
 def _pastas_busca_foto_extracao(pasta: "Path", prefixo: str) -> list:
-    """nc/ e PDF/ (extração web) ou raiz (legado)."""
+    """Pastas candidatas para fotos extraídas (raiz, subpastas e ZIP com pasta-base)."""
     pasta = Path(pasta)
     sub = "PDF" if (prefixo or "").strip().upper() == "PDF" else "nc"
-    out = []
-    if (pasta / sub).is_dir():
-        out.append(pasta / sub)
+    out: list[Path] = []
+
+    def _add(p: Path) -> None:
+        if p.is_dir() and p not in out:
+            out.append(p)
+
     if pasta.is_dir():
-        out.append(pasta)
+        # Estrutura direta (legado e alguns fluxos): raiz + raiz/sub
+        _add(pasta / sub)
+        _add(pasta)
+
+        # Estrutura comum do ZIP web: pasta/lote_.../{arquivos} e/ou pasta/lote_.../sub
+        try:
+            for child in sorted(pasta.iterdir()):
+                if not child.is_dir():
+                    continue
+                _add(child / sub)
+                _add(child)
+        except OSError:
+            pass
+
     return out or [pasta]
+
+
+_FOTO_INDEX_CACHE: dict[tuple[str, str], tuple[dict[str, Path], dict[str, Path]]] = {}
+_FOTO_INDEX_RECURSIVO_CACHE: dict[tuple[str, str], tuple[dict[str, Path], dict[str, Path]]] = {}
+
+
+def limpar_cache_indices_foto() -> None:
+    """Limpa cache global de índices de imagens (evita paths stale após purge/extract)."""
+    _FOTO_INDEX_CACHE.clear()
+    _FOTO_INDEX_RECURSIVO_CACHE.clear()
+
+
+def _indexar_fotos_base(base: Path, prefixo: str) -> tuple[dict[str, Path], dict[str, Path]]:
+    """
+    Indexa 1x os JPG de uma pasta:
+      - exato: nome lower -> Path
+      - mid: valor dentro de '(...)' -> Path (case-insensitive)
+    """
+    key = (str(base), (prefixo or "").strip().lower())
+    cached = _FOTO_INDEX_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    exato: dict[str, Path] = {}
+    mid: dict[str, Path] = {}
+    pref_l = (prefixo or "").strip().lower()
+    start_l = f"{pref_l} ("
+
+    try:
+        for f in base.iterdir():
+            if not f.is_file():
+                continue
+            name = f.name
+            low = name.lower()
+            if not low.endswith(".jpg"):
+                continue
+            exato[low] = f
+            if not low.startswith(start_l):
+                continue
+            rest = name[len(prefixo) + 2 :]  # após "PREFIXO ("
+            if ")" not in rest:
+                continue
+            mid_raw = rest.split(")", 1)[0].strip()
+            if not mid_raw:
+                continue
+            mid_l = mid_raw.lower()
+            # Primeiro encontrado vence para manter determinismo.
+            if mid_l not in mid:
+                mid[mid_l] = f
+            if "_" in mid_l:
+                base_mid = mid_l.split("_", 1)[0].strip()
+                if base_mid and base_mid not in mid:
+                    mid[base_mid] = f
+    except OSError:
+        pass
+
+    _FOTO_INDEX_CACHE[key] = (exato, mid)
+    return exato, mid
+
+
+def _indexar_fotos_recursivo(pasta: Path, prefixo: str) -> tuple[dict[str, Path], dict[str, Path]]:
+    """Indexa JPG recursivamente (fallback robusto para ZIPs com pastas profundas)."""
+    key = (str(pasta), (prefixo or "").strip().lower())
+    cached = _FOTO_INDEX_RECURSIVO_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    exato: dict[str, Path] = {}
+    mid: dict[str, Path] = {}
+    pref_l = (prefixo or "").strip().lower()
+    start_l = f"{pref_l} ("
+
+    try:
+        for f in pasta.rglob("*"):
+            if not f.is_file():
+                continue
+            name = f.name
+            low = name.lower()
+            if not low.endswith(".jpg"):
+                continue
+            if low not in exato:
+                exato[low] = f
+            if not low.startswith(start_l):
+                continue
+            rest = name[len(prefixo) + 2 :]
+            if ")" not in rest:
+                continue
+            mid_raw = rest.split(")", 1)[0].strip()
+            if not mid_raw:
+                continue
+            mid_l = mid_raw.lower()
+            if mid_l not in mid:
+                mid[mid_l] = f
+            if "_" in mid_l:
+                base_mid = mid_l.split("_", 1)[0].strip()
+                if base_mid and base_mid not in mid:
+                    mid[base_mid] = f
+    except OSError:
+        pass
+
+    _FOTO_INDEX_RECURSIVO_CACHE[key] = (exato, mid)
+    return exato, mid
 
 
 def encontrar_foto_por_codigo_ou_numero(
@@ -438,20 +683,22 @@ def encontrar_foto_por_codigo_ou_numero(
         cod = (cod or "").strip()
         if not cod:
             return None
+        cod_l = cod.lower()
         for base in bases:
-            exacto = base / f"{prefixo} ({cod}){suffix}"
-            if exacto.is_file():
-                return exacto
-            try:
-                for f in sorted(base.iterdir()):
-                    if not f.is_file() or not f.name.lower().endswith(".jpg"):
-                        continue
-                    if f.name.startswith(prefix + cod + ")") or f.name.startswith(
-                        prefix + cod + "_"
-                    ):
-                        return f
-            except OSError:
-                pass
+            exato, mid = _indexar_fotos_base(base, prefixo)
+            hit = exato.get(f"{prefix}{cod}{suffix}".lower())
+            if hit is not None:
+                return hit
+            hit = mid.get(cod_l)
+            if hit is not None:
+                return hit
+        exato_r, mid_r = _indexar_fotos_recursivo(pasta, prefixo)
+        hit = exato_r.get(f"{prefix}{cod}{suffix}".lower())
+        if hit is not None:
+            return hit
+        hit = mid_r.get(cod_l)
+        if hit is not None:
+            return hit
         return None
 
     # Código alfanumérico (ex: HE.13.0111)
@@ -471,22 +718,20 @@ def encontrar_foto_por_codigo_ou_numero(
         except (ValueError, TypeError):
             continue
         for cod in (str(n), str(n).zfill(5)):
+            cod_l = cod.lower()
             for base in bases:
-                exacto = base / f"{prefixo} ({cod}){suffix}"
-                if exacto.is_file():
-                    return exacto
-        try:
-            for base in bases:
-                for f in sorted(base.iterdir()):
-                    if not f.is_file() or not f.name.lower().endswith(".jpg"):
-                        continue
-                    if not f.name.startswith(prefix):
-                        continue
-                    rest = f.name[len(prefix) :]
-                    if ")" in rest:
-                        mid = rest.split(")")[0]
-                        if mid == str(n) or mid == str(n).zfill(5):
-                            return f
-        except OSError:
-            pass
+                exato, mid = _indexar_fotos_base(base, prefixo)
+                hit = exato.get(f"{prefix}{cod}{suffix}".lower())
+                if hit is not None:
+                    return hit
+                hit = mid.get(cod_l)
+                if hit is not None:
+                    return hit
+            exato_r, mid_r = _indexar_fotos_recursivo(pasta, prefixo)
+            hit = exato_r.get(f"{prefix}{cod}{suffix}".lower())
+            if hit is not None:
+                return hit
+            hit = mid_r.get(cod_l)
+            if hit is not None:
+                return hit
     return None

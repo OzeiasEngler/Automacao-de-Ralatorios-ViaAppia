@@ -1197,6 +1197,39 @@ def _periodo_mensal_por_versao(versao_key: str) -> tuple[Optional[int], Optional
             return hoje.year, hoje.month - 1
 
 
+def _linha_sobrepoe_mes_relatorio(
+    row: Any,
+    tipo: str,
+    mes: Optional[int],
+    ano: int,
+    formatar_data_iso,
+) -> tuple[bool, Optional[str]]:
+    """
+    MENSAL/EXECUTADO: só entra no GeoJSON se ``data_inicial``/``data_final`` existirem
+    na planilha e o intervalo intersectar o mês alvo (ano/mes).
+    Sem datas não se usa mais o atalho «todo o mês» — isso incluía todas as linhas como no anual.
+    Retorna (incluir, motivo_pendencia). motivo None + incluir False = fora do mês (omitir sem pendência).
+    """
+    if tipo not in ("MENSAL", "EXECUTADO") or not mes:
+        return True, None
+    iso_i = formatar_data_iso(row.get("data_inicial"))
+    iso_f = formatar_data_iso(row.get("data_final"))
+    if not iso_i or not iso_f:
+        return False, "mensal: preencha data_inicial e data_final na planilha"
+    try:
+        di = datetime.date.fromisoformat(iso_i)
+        df_d = datetime.date.fromisoformat(iso_f)
+    except ValueError:
+        return False, "mensal: data_inicial ou data_final invalida"
+    if df_d < di:
+        return False, "mensal: data_final anterior a data_inicial"
+    ms = datetime.date(ano, mes, 1)
+    me = datetime.date(ano, mes, calendar.monthrange(ano, mes)[1])
+    if df_d < ms or di > me:
+        return False, None
+    return True, None
+
+
 def verificar_consistencia_dados(content: bytes, modalidade: str) -> dict:
     """
     Valida se o Excel é um "clone" do template oficial (Keys do template presentes e Values coerentes).
@@ -2450,6 +2483,12 @@ def _gerar_relatorio_do_excel(
                     pendencias.append({"seq": seq, "rod": rod, "motivo": f"item invalido: {row.get('item')} (conservacao: use ex. a.1.2 ou numero 1, 2, 3)"})
                     continue
 
+        inc_mes, pend_mes = _linha_sobrepoe_mes_relatorio(row, tipo, mes, ano, _formatar_data_iso)
+        if not inc_mes:
+            if pend_mes:
+                pendencias.append({"seq": seq, "rod": rod, "motivo": pend_mes})
+            continue
+
         if CACHE.tem_sentidos and not usar_geom_por_rodovia:
             sentidos = []
             lote_sigla = lote.get("sigla", "")
@@ -2475,8 +2514,12 @@ def _gerar_relatorio_do_excel(
         if mes:
             d1 = f"{ano}-{mes:02d}-01"
             dn = f"{ano}-{mes:02d}-{calendar.monthrange(ano, mes)[1]:02d}"
-            data_ini = _formatar_data_iso(row.get("data_inicial")) or d1
-            data_fin = _formatar_data_iso(row.get("data_final")) or dn
+            if tipo in ("MENSAL", "EXECUTADO"):
+                data_ini = _formatar_data_iso(row.get("data_inicial"))
+                data_fin = _formatar_data_iso(row.get("data_final"))
+            else:
+                data_ini = _formatar_data_iso(row.get("data_inicial")) or d1
+                data_fin = _formatar_data_iso(row.get("data_final")) or dn
         else:
             data_ini = _formatar_data_iso(row.get("data_inicial")) or f"{ano}-01-01"
             data_fin = _formatar_data_iso(row.get("data_final")) or f"{ano}-12-31"
@@ -3805,6 +3848,65 @@ async def download_outputs_zip(
         content=conteudo,
         media_type="application/zip",
         headers=headers,
+    )
+
+
+@app.get("/outputs/nc/{job_id}/{subpath:path}")
+async def download_nc_job_file(
+    job_id: str,
+    subpath: str,
+    request: Request,
+):
+    """
+    Ficheiros do workspace NC (ex.: final/*.zip, stage1/nc_separados.zip).
+    O JSON do pipeline devolve URLs neste formato; não confundir com GET /outputs/{ficheiro_plano}.
+    """
+    # Fluxo NC permite acesso sem sessão; manter rate-limit por IP para proteção básica.
+    _check_rate_limit(request, "download:nc", RATE_LIMIT_DOWNLOAD_MAX, RATE_LIMIT_DOWNLOAD_JANELA)
+    if not job_id or ".." in job_id or "/" in job_id or "\\" in job_id:
+        raise HTTPException(status_code=400, detail="job_id inválido.")
+    if not subpath or not str(subpath).strip():
+        raise HTTPException(status_code=400, detail="Caminho inválido.")
+    norm = str(subpath).replace("\\", "/").lstrip("/")
+    if any(p == ".." for p in norm.split("/")):
+        raise HTTPException(status_code=400, detail="Caminho inválido.")
+    base = (OUTPUT_PATH / "nc" / job_id).resolve()
+    if not base.is_dir():
+        raise HTTPException(status_code=404, detail="Not Found")
+    target = (base / norm).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Acesso negado.")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        from render_api.job_manager import carregar_job_nc as _nc_job_touch
+
+        try:
+            _nc_job_touch(job_id, touch=True)
+        except HTTPException:
+            pass
+    except ImportError:
+        pass
+    nome_limpo = target.name
+    ext = nome_limpo.rsplit(".", 1)[-1].lower() if "." in nome_limpo else ""
+    content_types = {
+        "geojson": "application/geo+json",
+        "json": "application/json",
+        "pdf": "application/pdf",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "csv": "text/csv; charset=utf-8",
+        "txt": "text/plain; charset=utf-8",
+        "html": "text/html; charset=utf-8",
+        "zip": "application/zip",
+    }
+    media_type = content_types.get(ext, "application/octet-stream")
+    return FileResponse(
+        path=str(target),
+        filename=nome_limpo,
+        media_type=media_type,
+        headers={"X-NC-Job-Id": job_id, "X-ARTESP-Arquivo": nome_limpo},
     )
 
 

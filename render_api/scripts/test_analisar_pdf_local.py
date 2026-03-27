@@ -14,7 +14,10 @@ Uso:
        python render_api/scripts/test_analisar_pdf_local.py caminho/para/seu.pdf
 
   O script envia o PDF para http://127.0.0.1:8000/nc/analisar-pdf, salva o ZIP
-  em Relatorio_Analise_NCs.zip (na pasta atual) e extrai em test_analise_saida/.
+  em Relatorio_Analise_NCs_*.zip (na pasta atual) e extrai em test_analise_saida/.
+
+  --lote 50  Artemig (Exportar Kcor + imagens/PDF na mesma pasta do ZIP que o relatório).
+  --lote 13  ARTESP (padrão do script).
 
   --teste-local  Força seções de alerta no PDF mesmo com data da constatação ≠ hoje.
   Ou defina ARTESP_NC_TESTE_LOCAL=1 ao subir o uvicorn (vale para todas as chamadas).
@@ -44,6 +47,11 @@ def main():
         action="store_true",
         help="Força alertas no PDF (gap/emerg.) mesmo se a data da constatação ≠ hoje",
     )
+    parser.add_argument(
+        "--lote",
+        default="13",
+        help="Lote do formulário (13/21/26 ARTESP; 50 Artemig). Default: 13",
+    )
     args = parser.parse_args()
 
     pdf_path = args.pdf.resolve()
@@ -60,7 +68,7 @@ def main():
 
     try:
         with httpx.Client(timeout=120.0) as client:
-            data = {"limiar_km": "2.0", "lote": "13"}
+            data = {"limiar_km": "2.0", "lote": (args.lote or "13").strip()}
             if args.teste_local:
                 data["teste_local"] = "1"
             r = client.post(

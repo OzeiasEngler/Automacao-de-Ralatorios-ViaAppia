@@ -7,7 +7,7 @@
   <title>Plataforma de Conservação e Obras — Início</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css?v=10">
   <style>
     :root {
       --bg-body: #060912;
@@ -19,41 +19,109 @@
       --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg-body); color: var(--text-primary); min-height: 100vh; display: flex; flex-direction: column; }
-    .topbar { height: 56px; background: linear-gradient(135deg, #0f172a, #1e293b); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 24px; gap: 12px; position: sticky; top: 0; z-index: 100; }
-    .topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: .85rem; color: #6b7c8f; }
-    .topbar-brand span { color: #6b7c8f; }
-    .topbar-sep { width: 1px; height: 24px; background: var(--border-color); margin: 0 8px; }
-    .topbar-right { margin-left: auto; }
-    .home-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; overflow-y: auto; }
+    /* Sobrepor bloco-padrao.css (body overflow:hidden quebra coluna flex + rodapé no fundo). */
+    body.home-page {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-body);
+      color: var(--text-primary);
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+    }
+    .topbar-sep { width: 1px; min-height: 28px; align-self: center; background: var(--border-color); margin: 0 4px; flex-shrink: 0; }
+    .home-topbar .topbar-right { margin-left: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    /* Ocupa o espaço abaixo do header; filho #homeLoggedArea empurra o rodapé para o fundo da viewport. */
+    .home-wrap {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      /* Sem padding horizontal: rodapé alinha à largura total como o header. */
+      padding: 16px 0 0;
+      min-height: 0;
+      width: 100%;
+    }
+    .home-wrap > #homeLoginSection,
+    .home-wrap > #homeLoggedArea {
+      width: 100%;
+      max-width: 100%;
+      align-self: stretch;
+    }
+    #homeLoginSection {
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow-y: auto;
+      padding: 0 16px 24px;
+    }
+    /* Coluna: miolo (cresce/rola) + rodapé fixo ao fundo da área útil. */
+    #homeLoggedArea.home-logged-area {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #homeLoggedArea.home-logged-area #homeAppsSection {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+    }
     .container { width: 100%; max-width: 960px; margin: 0 auto; padding: 0 16px; }
     .animate-in { animation: fadeIn 0.4s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    .hero-section { text-align: center; margin-bottom: 2rem; }
-    .hero-section .display-4 { font-size: 1.75rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-    .hero-section .text-secondary { font-size: .95rem; color: var(--text-secondary); }
-    .grid-main { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; width: 100%; margin-top: 24px; }
-    .grid-main .card { background: var(--bg-surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border-glass); border-radius: 16px; box-shadow: var(--shadow-lg); padding: 1.5rem; display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s ease; }
-    .grid-main .card:hover { transform: translateY(-5px); border-color: var(--accent); }
-    .grid-main .card .icon-circle { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; margin-bottom: 12px; }
-    .grid-main .card h3 { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 6px; }
-    .grid-main .card .text-muted.small { font-size: .8rem; color: var(--text-muted); line-height: 1.5; flex: 1; margin-bottom: 12px; }
+    .hero-section { text-align: center; margin-bottom: 0.75rem; }
+    .hero-section .display-4 { font-size: 1.28rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; line-height: 1.25; }
+    .hero-section .text-secondary { font-size: .78rem; color: var(--text-secondary); line-height: 1.45; max-width: 36rem; margin-left: auto; margin-right: auto; }
+    /* Sempre uma coluna (blocos empilhados), como antes. */
+    .grid-main {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      width: 100%;
+      max-width: 480px;
+      margin: 10px auto 0;
+    }
+    .grid-main .card { background: var(--bg-surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border-glass); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 1.05rem 1.15rem; display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s ease; }
+    .grid-main .card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .grid-main .card .icon-circle { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; margin-bottom: 8px; }
+    .grid-main .card h3 { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
+    .grid-main .card .text-muted.small { font-size: .76rem; color: var(--text-muted); line-height: 1.45; flex: 1; margin-bottom: 8px; }
     .grid-main .card .mt-auto { margin-top: auto; }
-    .grid-main .card .text-accent { color: var(--accent); font-weight: 600; font-size: .9rem; display: inline-flex; align-items: center; gap: 6px; }
+    .grid-main .card .text-accent { color: var(--accent); font-weight: 600; font-size: .82rem; display: inline-flex; align-items: center; gap: 6px; }
     .mb-3 { margin-bottom: 1rem; }
-    .mb-5 { margin-bottom: 2rem; }
+    .mb-5 { margin-bottom: 1rem; }
     .ms-2 { margin-inline-start: 0.5rem; }
-    .home-footer { margin-top: 28px; padding: 12px 16px; text-align: center; font-size: 11px; color: var(--text-secondary); border-top: 1px solid var(--border-glass); background: var(--bg-surface); position: relative; }
+    .home-footer {
+      flex-shrink: 0;
+      align-self: stretch;
+      margin-top: 0;
+      margin-left: 0;
+      margin-right: 0;
+      width: 100%;
+      max-width: none;
+      padding: 16px 24px 12px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border-glass);
+      background: var(--bg-surface);
+      position: relative;
+      flex-shrink: 0;
+      box-sizing: border-box;
+    }
     .home-footer::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent-gradient); opacity: .5; }
     .home-footer-brand { font-weight: 500; color: var(--text-secondary); }
     .home-footer-sep { color: var(--text-muted); font-weight: 300; }
     .home-footer-dev { color: var(--text-secondary); font-size: 10px; opacity: .9; }
     .topbar-user { display: flex; align-items: center; gap: 8px; background: var(--bg-surface-2); border: 1px solid var(--border-color); border-radius: 20px; padding: 4px 14px 4px 8px; font-size: .8rem; color: var(--text-secondary); }
-    .login-card { background: var(--bg-surface); backdrop-filter: blur(12px); border: 1px solid var(--border-glass); border-radius: 16px; box-shadow: var(--shadow-lg); width: 100%; max-width: 400px; padding: 36px 32px; }
-    .login-card .logo { text-align: center; margin-bottom: 24px; }
-    .login-card .logo .icon { font-size: 2.2rem; margin-bottom: 8px; }
-    .login-card .logo h2 { font-size: 1.2rem; font-weight: 700; }
-    .login-card .logo p { font-size: .78rem; color: var(--text-muted); margin-top: 4px; }
+    .home-wrap .login-card { max-width: 420px; }
     .form-group { margin-bottom: 16px; }
     .form-group label { display: block; font-size: .78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
     .form-group .form-input { width: 100%; padding: 10px 14px; background: var(--bg-surface-2); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: .88rem; font-family: inherit; }
@@ -66,24 +134,37 @@
     .alert-danger { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
     .home-login-note { font-size: .8rem; color: var(--text-muted); margin-top: 16px; text-align: center; }
     @media (max-width: 768px) {
-      .grid-main { grid-template-columns: 1fr; max-width: 420px; }
-      .hero-section .display-4 { font-size: 1.35rem; }
-      .topbar { flex-wrap: wrap; height: auto; padding: 10px 12px; gap: 8px; }
-      .topbar-brand { max-width: 100%; font-size: .75rem; }
-      .topbar-brand span:last-child { font-size: .68rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-      .topbar-right { width: 100%; margin-top: 4px; justify-content: flex-end; }
-      .home-wrap { padding: 16px 12px; }
+      .grid-main { max-width: 420px; }
+      .hero-section .display-4 { font-size: 1.12rem; }
+      .hero-section .text-secondary { font-size: .72rem; }
+      .home-topbar.app-topbar { flex-wrap: wrap; padding: 10px 14px; gap: 8px; }
+      .home-topbar .topbar-sep { display: none; }
+      .home-topbar .topbar-fill { flex-basis: 100%; order: 3; }
+      .home-topbar .topbar-right { width: 100%; justify-content: flex-end; order: 4; }
+      .home-wrap { padding: 16px 0 0; }
     }
-    @media (max-width: 480px) { .home-wrap { padding: 12px 8px; } .grid-main .card { padding: 1.25rem; } .hero-section .display-4 { font-size: 1.2rem; } }
-    @media (min-width: 769px) and (max-width: 900px) { .grid-main { grid-template-columns: repeat(2, 1fr); max-width: 620px; } }
+    @media (max-width: 480px) {
+      .home-wrap { padding: 12px 0 0; }
+      .grid-main { max-width: 100%; padding: 0 12px; box-sizing: border-box; }
+      .grid-main .card { padding: 1.25rem; }
+      .hero-section .display-4 { font-size: 1.02rem; }
+      .hero-section .text-secondary { font-size: .68rem; }
+    }
   </style>
 </head>
-<body>
+<body class="home-page">
 
-  <header class="topbar">
-    <div class="topbar-brand"><span>🛣️</span><span>PLATAFORMA DE CONSERVAÇÃO E OBRAS - Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</span></div>
-    <div class="topbar-sep"></div>
-    <div style="font-size:12px;color:#8ea6c9;flex:1">Sistema de Automação de Relatórios</div>
+  <header class="topbar app-topbar home-topbar">
+    <div class="topbar-brand">
+      <span class="icon" aria-hidden="true" style="font-size:clamp(36px,6vw,62px);line-height:1;display:inline-flex;align-items:center;flex-shrink:0">🛣️</span>
+      <div class="app-brand-text">
+        <h1 class="app-brand-title">Início</h1>
+        <p class="app-brand-sub">GeoJSON, Fotos de Campo e NC — acesso unificado. Kartado e Kria.</p>
+        <p class="app-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
+      </div>
+    </div>
+    <div class="topbar-sep" aria-hidden="true"></div>
+    <div class="topbar-fill">Sistema de Automação de Relatórios</div>
     <div class="topbar-right">
       <div class="topbar-user" id="topbarUser" style="display:none">
         <span>👤</span><strong id="topbarEmail"></strong>
@@ -98,9 +179,10 @@
     <div id="homeLoginSection" style="display:none">
       <div class="login-card">
         <div class="logo">
-          <div class="icon">🛣️</div>
+          <div class="icon" aria-hidden="true" style="font-size:clamp(36px,11vmin,59px);line-height:1">🛣️</div>
           <h2>Plataforma de Conservação e Obras</h2>
-          <p>Faça login para acessar GeoJSON, Fotos de Campo e NC</p>
+          <p class="login-brand-sub">Faça login para acessar GeoJSON, Fotos de Campo e NC.</p>
+          <p class="login-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
         </div>
         <form id="formLoginHome">
           <div class="form-group">
@@ -118,11 +200,12 @@
       </div>
     </div>
 
+    <div id="homeLoggedArea" class="home-logged-area">
     <div id="homeAppsSection">
     <div class="container animate-in">
       <div class="hero-section text-center mb-5">
         <h1 class="display-4 fw-bold">Plataforma de Engenharia</h1>
-        <p class="text-secondary">Automação inteligente para processos ARTESP e Gestão de Rodovias.</p>
+        <p class="text-secondary">Automação inteligente para processar NCs ARTESP / ARTEMIG e inclusão em sistemas Kria / kartado.</p>
       </div>
 
       <div class="grid-main">
@@ -154,6 +237,7 @@
         </a>
       </div>
     </div>
+    </div>
 
     <div class="home-footer">
       <span class="home-footer-brand">Plataforma de Conservação e Obras</span>
@@ -170,11 +254,13 @@
       var userEmail = localStorage.getItem('artesp_user_email');
       var loginSection = document.getElementById('homeLoginSection');
       var appsSection = document.getElementById('homeAppsSection');
+      var loggedArea = document.getElementById('homeLoggedArea');
       var topbarUser = document.getElementById('topbarUser');
       var topbarEmail = document.getElementById('topbarEmail');
 
       function showLoggedIn() {
         if (loginSection) loginSection.style.display = 'none';
+        if (loggedArea) loggedArea.style.display = 'flex';
         if (appsSection) appsSection.style.display = 'block';
         if (topbarUser && userEmail) {
           topbarUser.style.display = 'flex';
@@ -182,8 +268,9 @@
         }
       }
       function showLoginForm() {
-        if (loginSection) loginSection.style.display = 'block';
-        if (appsSection) appsSection.style.display = 'none';
+        if (loginSection) loginSection.style.display = 'flex';
+        if (loggedArea) loggedArea.style.display = 'none';
+        if (appsSection) appsSection.style.display = 'block';
         if (topbarUser) topbarUser.style.display = 'none';
       }
 

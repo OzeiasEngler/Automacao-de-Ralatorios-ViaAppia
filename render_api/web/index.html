@@ -8,35 +8,76 @@
   <title>GeoJSON ARTESP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="/web-static/bloco-padrao.css">
+  <link rel="stylesheet" href="/web-static/bloco-padrao.css?v=10">
   <style>
-    /* GeoJSON: blocos mais baixos para evitar barra de rolagem */
-    #geojson-page .card-body { padding: 14px; }
-    #geojson-page .log-container { height: 240px; min-height: 200px; max-height: 38vh; }
-    #geojson-page .upload-zone { padding: 24px 18px; }
-    #geojson-page .upload-zone .icon { font-size: 2rem; margin-bottom: 10px; }
+    /* Altura dos cartões = :root --pipeline-painel-altura (bloco-padrao). Miolo proporcional via .pipeline-grid-2 no CSS global. */
     #geojson-page .upload-zone.geojson-sem-lote {
-      opacity: 0.55;
       pointer-events: none;
       position: relative;
+    }
+    /* Sem lote: esconder miolo da zona para o ::after não sobrepor “Excel…” / ícone. */
+    #geojson-page .upload-zone.geojson-sem-lote > :not(input[type="file"]) {
+      visibility: hidden;
     }
     #geojson-page .upload-zone.geojson-sem-lote::after {
       content: 'Selecione o lote acima';
       position: absolute;
       inset: 0;
+      z-index: 2;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(0,0,0,.3);
-      color: var(--text-muted);
-      font-size: 0.85rem;
+      text-align: center;
+      padding: 8px;
+      box-sizing: border-box;
+      background: rgba(10, 14, 23, 0.94);
+      color: #94a3b8;
+      font-size: 0.82rem;
       font-weight: 600;
+      line-height: 1.35;
       border-radius: inherit;
     }
-    #geojson-page .upload-zone h3 { font-size: .95rem; }
-    #geojson-page .upload-zone p { font-size: .78rem; }
-    #geojson-page .opcoes-relatorio { margin-top: 14px; padding-top: 12px; }
+    #geojson-page .upload-zone {
+      padding: 8px 12px !important;
+      margin-top: 6px;
+    }
+    #geojson-page .pipeline-grid-2 > .card .upload-zone .icon {
+      font-size: 1.35rem !important;
+      margin-bottom: 4px !important;
+    }
+    #geojson-page .upload-zone h3 { font-size: .8rem; font-weight: 600; margin: 0 0 2px; }
+    #geojson-page .upload-zone p { font-size: .68rem; margin: 0; line-height: 1.35; color: var(--text-muted); }
+    #geojson-page .opcoes-relatorio { margin-top: 0; padding-top: 0; margin-bottom: 10px; border-top: 0; }
     #geojson-page .opcoes-grid { gap: 10px; }
+    #geojson-page .opcoes-mes-com-checks {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 14px;
+    }
+    #geojson-page .opcoes-mes-com-checks > .form-input {
+      flex: 0 1 150px;
+      min-width: 110px;
+      max-width: 200px;
+      width: auto;
+    }
+    #geojson-page .opcoes-inline-checks {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 16px;
+    }
+    #geojson-page .opcoes-inline-checks .opcoes-check {
+      font-size: .74rem;
+      margin: 0;
+    }
+    #geojson-page .opcoes-item-mes-extras { grid-column: 1 / -1; }
+    #geojson-page .opcoes-lead {
+      font-size: .72rem;
+      color: var(--text-muted);
+      margin: 0 0 10px;
+      line-height: 1.4;
+    }
     /* GeoJSON: opções do relatório e downloads */
     .opcoes-relatorio { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-color); }
     .opcoes-title { font-size: .8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
@@ -51,6 +92,7 @@
     .result-downloads .btn { margin-top: 0; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
     .pulse { animation: pulse 1.5s ease-in-out infinite; }
+    #geojson-page select.form-input:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -58,9 +100,10 @@
   <div class="login-overlay" id="loginOverlay">
     <div class="login-card animate-in">
       <div class="logo">
-        <div class="icon">🛣️</div>
+        <div class="icon" aria-hidden="true" style="font-size:clamp(36px,11vmin,59px);line-height:1">🛣️</div>
         <h2>Plataforma de Conservação e Obras</h2>
-        <p>Geração de relatórios georreferenciados e automação de relatórios internos.</p>
+        <p class="login-brand-sub">Geração de relatórios georreferenciados e automação de relatórios internos. Faça login para continuar.</p>
+        <p class="login-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
       </div>
       <form id="formLogin">
         <div class="form-group">
@@ -78,11 +121,17 @@
       </form>
     </div>
   </div>
-  <header class="topbar">
+  <header class="topbar app-topbar">
     <div class="topbar-brand">
-      <span class="icon">🛣️</span>
-      <span>PLATAFORMA DE CONSERVAÇÃO E OBRAS - Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</span>
+      <span class="icon" aria-hidden="true" style="font-size:clamp(36px,6vw,62px);line-height:1;display:inline-flex;align-items:center;flex-shrink:0">🛣️</span>
+      <div class="app-brand-text">
+        <h1 class="app-brand-title">GeoJSON ARTESP</h1>
+        <p class="app-brand-sub">Upload de planilha Excel para conversão automática em GeoJSON georreferenciado.</p>
+        <p class="app-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
+      </div>
     </div>
+    <div class="topbar-sep" aria-hidden="true"></div>
+    <div class="topbar-fill">Sistema de Automação de Relatórios</div>
     <div class="topbar-right">
       <div class="topbar-user">
         <div class="avatar" id="userAvatar">U</div>
@@ -101,15 +150,7 @@
   </nav>
   <div class="page-content" id="geojson-page">
 
-    <div class="page-header animate-in">
-      <div class="icon-box"><i class="fas fa-map-marked-alt"></i></div>
-      <div>
-        <h1>Gerador GeoJSON</h1>
-        <p>Upload de planilha Excel para conversão automática em GeoJSON georreferenciado</p>
-      </div>
-    </div>
-
-    <div class="grid-2">
+    <div class="grid-2 pipeline-grid-2">
       <!-- LEFT: Upload -->
       <div class="card animate-in" style="animation-delay:.1s">
         <div class="card-header">
@@ -119,9 +160,8 @@
           </div>
         </div>
         <div class="card-body">
-          <div class="opcoes-relatorio" id="opcoesRelatorio" style="margin-bottom:18px">
-            <div class="opcoes-title"><i class="fas fa-sliders-h"></i> Opções do relatório</div>
-            <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px">Escolha o <strong>lote</strong> primeiro; só depois anexe o Excel abaixo.</p>
+          <div class="opcoes-relatorio" id="opcoesRelatorio">
+            <p class="opcoes-lead"><i class="fas fa-sliders-h" style="color:var(--accent);margin-right:6px"></i>Escolha o <strong>lote</strong> primeiro; depois anexe o Excel na área abaixo.</p>
             <div class="opcoes-grid">
               <div class="opcoes-item">
                 <label for="selLote">Lote</label>
@@ -139,23 +179,24 @@
                 <label for="selAno">Ano</label>
                 <select id="selAno" class="form-input" title="Ano do relatório"></select>
               </div>
-              <div class="opcoes-item">
+              <div class="opcoes-item opcoes-item-mes-extras">
                 <label for="selMes">Mês</label>
-                <select id="selMes" class="form-input" title="Mês (para versões mensais)"><option value="">—</option></select>
+                <div class="opcoes-mes-com-checks">
+                  <select id="selMes" class="form-input" title="Ativo só para M (programado) e E (executado). Mês anterior → E; mês seguinte → M."></select>
+                  <div class="opcoes-inline-checks" aria-label="Opções de saída">
+                    <label class="opcoes-check"><input type="checkbox" id="chkDashboard" checked> Gerar dashboard (HTML)</label>
+                    <label class="opcoes-check"><input type="checkbox" id="chkAssinar" checked> Assinar digitalmente</label>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="opcoes-extras" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
-              <label class="opcoes-check"><input type="checkbox" id="chkDashboard" checked> Gerar dashboard (HTML)</label>
-              <label class="opcoes-check"><input type="checkbox" id="chkAssinar" checked> Assinar digitalmente</label>
             </div>
           </div>
 
-          <div class="upload-zone geojson-sem-lote" id="uploadZone">
+          <div class="upload-zone geojson-sem-lote" id="uploadZone" title="Se o navegador não listar ficheiros na pasta, abra a pasta e escolha o ficheiro manualmente.">
             <input type="file" id="arquivoExcel" accept=".xlsx,.xls,.csv" style="position:absolute;inset:0;opacity:0;font-size:0;width:100%;height:100%;pointer-events:none;cursor:pointer;">
             <div class="icon"><i class="fas fa-cloud-upload-alt"></i></div>
-            <h3>Arraste o arquivo Excel aqui</h3>
-            <p>ou clique para selecionar · .xlsx, .xls, .csv</p>
-            <p style="font-size:0.7rem;color:var(--text-muted);margin-top:10px;max-width:340px;margin-left:auto;margin-right:auto;">Se o Edge ou Chrome não listar arquivos na pasta, navegue até a pasta e selecione o arquivo manualmente.</p>
+            <h3>Excel (.xlsx, .xls, .csv)</h3>
+            <p>Arraste ou clique para selecionar</p>
           </div>
 
           <div class="file-info" id="fileInfo">
@@ -226,6 +267,91 @@
       loadOpcoesRelatorio();
     }
 
+    /** Sincroniza Versão (R0… / M / E) ↔ Mês/Ano (só anual desativa o mês). */
+    var _vmListenersBound = false;
+    var _syncVM = false;
+
+    function refMesAnterior() {
+      var d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - 1);
+      return { y: d.getFullYear(), m: d.getMonth() + 1 };
+    }
+    function refMesPosterior() {
+      var d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() + 1);
+      return { y: d.getFullYear(), m: d.getMonth() + 1 };
+    }
+    function getVersaoTipo() {
+      var sel = document.getElementById('selVersao');
+      if (!sel || sel.selectedIndex < 0) return 'ANUAL';
+      var opt = sel.options[sel.selectedIndex];
+      return (opt && opt.getAttribute('data-tipo')) || 'ANUAL';
+    }
+    function applyVersaoToMesUI() {
+      if (_syncVM) return;
+      var selM = document.getElementById('selMes');
+      var selA = document.getElementById('selAno');
+      var selV = document.getElementById('selVersao');
+      if (!selM || !selA || !selV) return;
+      _syncVM = true;
+      try {
+        var tipo = getVersaoTipo();
+        if (tipo === 'ANUAL') {
+          selM.disabled = true;
+          selM.value = '';
+          return;
+        }
+        selM.disabled = false;
+        var prev = refMesAnterior();
+        var next = refMesPosterior();
+        if (tipo === 'EXECUTADO') {
+          selA.value = String(prev.y);
+          selM.value = String(prev.m);
+        } else if (tipo === 'MENSAL') {
+          selA.value = String(next.y);
+          selM.value = String(next.m);
+        }
+      } finally {
+        _syncVM = false;
+      }
+    }
+    function applyMesToVersaoUI() {
+      if (_syncVM) return;
+      var selM = document.getElementById('selMes');
+      var selA = document.getElementById('selAno');
+      var selV = document.getElementById('selVersao');
+      if (!selM || selM.disabled || !selA || !selV) return;
+      var mesVal = String(selM.value || '').trim();
+      if (!mesVal) return;
+      var y = parseInt(selA.value, 10);
+      var m = parseInt(mesVal, 10);
+      if (!y || !m) return;
+      var prev = refMesAnterior();
+      var next = refMesPosterior();
+      var optE = Array.prototype.find.call(selV.options, function(o) { return (o.getAttribute('data-tipo') || '') === 'EXECUTADO'; });
+      var optM = Array.prototype.find.call(selV.options, function(o) { return (o.getAttribute('data-tipo') || '') === 'MENSAL'; });
+      _syncVM = true;
+      try {
+        if (y === prev.y && m === prev.m && optE && selV.value !== optE.value) selV.value = optE.value;
+        else if (y === next.y && m === next.m && optM && selV.value !== optM.value) selV.value = optM.value;
+      } finally {
+        _syncVM = false;
+      }
+    }
+    function bindVersaoMesSincrono() {
+      if (_vmListenersBound) return;
+      var selV = document.getElementById('selVersao');
+      var selM = document.getElementById('selMes');
+      var selA = document.getElementById('selAno');
+      if (!selV || !selM || !selA) return;
+      _vmListenersBound = true;
+      selV.addEventListener('change', applyVersaoToMesUI);
+      selM.addEventListener('change', applyMesToVersaoUI);
+      selA.addEventListener('change', applyMesToVersaoUI);
+    }
+
     async function loadOpcoesRelatorio() {
       try {
         const r = await fetch('/api/config', { credentials: 'include' });
@@ -251,7 +377,10 @@
           selModalidade.innerHTML = cfg.modalidades.map(function(o) { return '<option value="' + (o.key || '') + '">' + (o.label || o.chave || o.key) + '</option>'; }).join('');
         }
         if (selVersao && cfg.versoes) {
-          selVersao.innerHTML = cfg.versoes.map(function(o) { return '<option value="' + (o.key || '') + '">' + (o.label || o.key) + '</option>'; }).join('');
+          selVersao.innerHTML = cfg.versoes.map(function(o) {
+            var tipo = String(o.tipo || 'ANUAL').replace(/"/g, '');
+            return '<option value="' + (o.key || '') + '" data-tipo="' + tipo + '">' + (o.label || o.key) + '</option>';
+          }).join('');
         }
         const anoAtual = new Date().getFullYear();
         if (selAno) {
@@ -271,6 +400,8 @@
             return '<option value="' + String(v) + '">' + rot + '</option>';
           }).join('');
         }
+        bindVersaoMesSincrono();
+        applyVersaoToMesUI();
       } catch (_) {}
     }
 
