@@ -18,7 +18,7 @@
     Nome saída Resp:   yyyymmdd - hhmmss - {rodovia} - dd-mm-yyyy - {nc}.xlsx
 
   M03 — INSERIR NC CONSERVAÇÃO (Kcor-Kria)
-    Template:     _Planilha Modelo Kcor-Kria.XLSX
+    Template:     _Planilha Modelo Kcor-Kria.xlsx
     Pasta saída:  Arquivos/Conservação
     Nome saída:   yyyymmdd-hhmm - {cco}.xlsx
 
@@ -28,7 +28,7 @@
     Nome saída:   yyyymmdd - hhmmss - Eventos Acumulado Artesp para Exportar Kria.xlsx
 
   M07 — INSERIR NC MEIO AMBIENTE (Kcor-Kria MA)
-    Template:     _Planilha Modelo Kcor-Kria.XLSX  (mesmo do M03)
+    Template:     _Planilha Modelo Kcor-Kria.xlsx  (mesmo do M03)
     Pasta saída:  Arquivos/Meio Ambiente
     Nome saída:   yyyymmdd-hhmm - {cco}.xlsx
 
@@ -40,7 +40,7 @@
   • Template_EAF.xlsx
   • Modelo Abertura Evento Kria Conserva Rotina.xlsx
   • Modelo.xlsx
-  • _Planilha Modelo Kcor-Kria.XLSX
+  • _Planilha Modelo Kcor-Kria.xlsx
   • Eventos Acumulado Artesp para Exportar Kria.xlsx  (M04 — template padrão do acumulado)
 
 ═══════════════════════════════════════════════════════════════════════════════

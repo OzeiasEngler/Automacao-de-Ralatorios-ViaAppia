@@ -251,7 +251,7 @@ M02_EXTRACAO_RENDER_DPI = _env_int("ARTESP_M02_EXTRACAO_RENDER_DPI", 150)
 M03_ENTRADA      = _BASE / "Arquivos" / "Arquivo Foto - Conserva"
 M03_IMAGENS      = _BASE / "Imagens" / "Conservação"
 # Modelo Kcor-Kria: somente em nc_artesp/assets/templates/
-M03_MODELO_KCOR  = _nc_root / "assets" / "templates" / "_Planilha Modelo Kcor-Kria.XLSX"
+M03_MODELO_KCOR  = _nc_root / "assets" / "templates" / "_Planilha Modelo Kcor-Kria.xlsx"
 M03_SAIDA        = _BASE / "Arquivos" / "Conservação"
 M03_LINHA_INICIO = _env_int("ARTESP_M03_LINHA_INICIO", 9)   # âncora y (linha do km)
 M03_BLOCO        = _env_int("ARTESP_M03_BLOCO", 5)           # linhas por bloco NC
@@ -322,7 +322,7 @@ M06_PASTA_OUTLOOK = _BASE / "Calendario"
 M07_ENTRADA      = _BASE / "Arquivos" / "Arquivo Foto - MA"
 M07_IMAGENS      = _BASE / "Imagens" / "Meio Ambiente"
 M07_SAIDA        = _BASE / "Arquivos" / "Meio Ambiente"
-M07_MODELO_KCOR  = _nc_root / "assets" / "templates" / "_Planilha Modelo Kcor-Kria.XLSX"  # mesmo modelo do M03
+M07_MODELO_KCOR  = _nc_root / "assets" / "templates" / "_Planilha Modelo Kcor-Kria.xlsx"  # mesmo modelo do M03
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MÓDULOS 1–4 EXCLUSIVOS MEIO AMBIENTE (equivalentes M01, M02, M03, M04 para MA)

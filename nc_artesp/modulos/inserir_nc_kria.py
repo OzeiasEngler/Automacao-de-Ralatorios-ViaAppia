@@ -314,7 +314,7 @@ def _processar_pdf_meio_ambiente(
     Processa PDF de Meio Ambiente: extrai todo o texto, parseia as NCs e monta
     a planilha Kcor-Kria (M07). Fluxo de coleta e preenchimento segue a macro MA:
     - Coleta: mesmos campos que a macro lê da planilha (H, G, D, F, L, B em analisar_pdf_ma).
-    - Preenchimento: template _Planilha Modelo Kcor-Kria.XLSX, colunas A–Y como na macro.
+    - Preenchimento: template _Planilha Modelo Kcor-Kria.xlsx, colunas A–Y como na macro.
     As imagens são extraídas do próprio PDF quando possível.
     Retorna o Path do arquivo Kcor-Kria gerado ou None.
     """

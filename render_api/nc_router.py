@@ -991,7 +991,7 @@ def _garantir_path_nc() -> None:
 # Nomes dos templates conforme config.py e arquivos em nc_artesp/assets/templates/
 _NOME_MODELO_KRIA = "Modelo Abertura Evento Kria Conserva Rotina.xlsx"
 _NOME_MODELO_RESP = "Modelo.xlsx"
-_NOME_MODELO_KCOR = "_Planilha Modelo Kcor-Kria.XLSX"
+_NOME_MODELO_KCOR = "_Planilha Modelo Kcor-Kria.xlsx"
 
 
 def _pastas_busca_templates_nc() -> list[Path]:
@@ -1936,7 +1936,7 @@ async def nc_gerar_modelo_foto(
 async def nc_inserir_conservacao(
     request: Request,
     kria_zip: UploadFile = File(..., description="ZIP com planilhas Kria (saída M02)"),
-    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: nc_artesp/assets/templates/_Planilha Modelo Kcor-Kria.XLSX"),
+    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: nc_artesp/assets/templates/_Planilha Modelo Kcor-Kria.xlsx"),
     fotos_zip: Optional[UploadFile] = File(None, description="ZIP fotos PDF (opcional)"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
@@ -1950,7 +1950,7 @@ async def nc_inserir_conservacao(
 async def nc_inserir_ma(
     request: Request,
     kria_zip: UploadFile = File(..., description="ZIP com planilhas Kria MA"),
-    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: nc_artesp/assets/templates/_Planilha Modelo Kcor-Kria.XLSX"),
+    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: nc_artesp/assets/templates/_Planilha Modelo Kcor-Kria.xlsx"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
     lote: Optional[str] = Form(None, description="Lote 50 = ARTEMIG (template em nc_artemig/assets/Template)"),
@@ -2894,7 +2894,7 @@ def _nc_executar_pipeline_stage2_interno(
     if not _nc_gerar_acumulado_xlsx(ws.input, acum_path, pasta_fallback=pasta_xls):
         (p04 / "README.txt").write_text(
             "Não foi possível gerar o Acumulado.xlsx.\n"
-            "Verifique: (1) ficheiro _Planilha Modelo Kcor-Kria.XLSX em nc_artesp/assets/templates/ "
+            "Verifique: (1) ficheiro _Planilha Modelo Kcor-Kria.xlsx em nc_artesp/assets/templates/ "
             "(ou variável ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA no servidor);\n"
             "(2) EAF com código na coluna C a partir da linha 5, ou saída M01 Kartado com código na linha 2;\n"
             "(3) logs do serviço com mensagens «Acumulado Kcor-Kria».\n",
