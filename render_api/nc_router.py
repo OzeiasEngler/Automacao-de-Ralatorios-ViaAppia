@@ -818,21 +818,30 @@ def _nc_gravar_pacotes_kartado_de_m01(pasta_xls: Path, pasta_fotos_pdf: Optional
         )
 
 
-def _nc_gerar_acumulado_xlsx(pasta_input_eaf: Path, out_path: Path) -> bool:
+def _nc_gerar_acumulado_xlsx(
+    pasta_input_eaf: Path,
+    out_path: Path,
+    pasta_fallback: Optional[Path] = None,
+) -> bool:
     """
     Gera «Acumulado.xlsx» no **layout Kcor-Kria** (template ``_Planilha Modelo Kcor-Kria``),
-    preenchendo a partir das planilhas-mãe EAF em ``input/`` — fluxo rede/M04, independente do Kartado.
+    a partir de EAF em ``input/``. Se não houver linhas úteis, tenta ``pasta_fallback`` (ex. Exportar
+    extraído do ZIP do M01 — ficheiros Kartado com dados na linha 2).
     """
-    if not pasta_input_eaf.is_dir():
-        return False
-    try:
-        mod = _importar_modulo("juntar_arquivos")
-        return bool(mod.gerar_acumulado_kcor_kria_desde_pasta_eaf(pasta_input_eaf, out_path, None))
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.warning("Acumulado Kcor-Kria (EAF): %s", exc)
-        return False
+    mod = _importar_modulo("juntar_arquivos")
+    for pasta in (pasta_input_eaf, pasta_fallback):
+        if pasta is None or not pasta.is_dir():
+            continue
+        try:
+            if mod.gerar_acumulado_kcor_kria_desde_pasta_eaf(pasta, out_path, None):
+                if pasta != pasta_input_eaf:
+                    logger.info("Acumulado Kcor-Kria gerado a partir de %s (fallback).", pasta)
+                return True
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("Acumulado Kcor-Kria (EAF) em %s: %s", pasta, exc)
+    return False
 
 
 def _nc_copiar_kartado_para_entrega(origem_exportar: Path, destino: Path) -> None:
@@ -2892,9 +2901,13 @@ def _nc_executar_pipeline_stage2_interno(
     p04.mkdir(parents=True, exist_ok=True)
     _log_etapa(6, total_etapas, "Gerar acumulado (M04) e calendário (M06)")
     acum_path = p04 / "Acumulado.xlsx"
-    if not _nc_gerar_acumulado_xlsx(ws.input, acum_path):
+    if not _nc_gerar_acumulado_xlsx(ws.input, acum_path, pasta_fallback=pasta_xls):
         (p04 / "README.txt").write_text(
-            "Não foi possível gerar o Acumulado.xlsx a partir dos EAF em input/ (template Kcor-Kria ou dados).",
+            "Não foi possível gerar o Acumulado.xlsx.\n"
+            "Verifique: (1) ficheiro _Planilha Modelo Kcor-Kria.XLSX em nc_artesp/assets/ ou assets/templates/ "
+            "(ou variável ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA no servidor);\n"
+            "(2) EAF com código na coluna C a partir da linha 5, ou saída M01 Kartado com código na linha 2;\n"
+            "(3) logs do serviço com mensagens «Acumulado Kcor-Kria».\n",
             encoding="utf-8",
         )
 

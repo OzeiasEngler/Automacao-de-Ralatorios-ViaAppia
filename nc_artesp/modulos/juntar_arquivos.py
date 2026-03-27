@@ -389,6 +389,55 @@ def _ultima_linha_dados_eaf_codigo(ws, linha_inicio: int, col_codigo: int = 3) -
     return linha_inicio - 1
 
 
+def _linha_inicio_dados_por_ficheiro(ws, col_codigo: int) -> int:
+    """
+    Planilha-mãe EAF: dados a partir de M01_LINHA_INICIO (5).
+    Saída M01 Kartado (1 NC por ficheiro): código col C costuma estar na linha 2.
+    """
+    v5 = ws.cell(row=M01_LINHA_INICIO, column=col_codigo).value
+    if v5 is not None and str(v5).strip():
+        return M01_LINHA_INICIO
+    for cand in (2, 3, 4):
+        v = ws.cell(row=cand, column=col_codigo).value
+        if v is not None and str(v).strip():
+            return cand
+    return M01_LINHA_INICIO
+
+
+def _iter_xlsx_xls_em_pasta(pasta: Path, ex_ok: tuple[str, ...]) -> list[Path]:
+    """Ficheiros na raiz e um nível de subpastas (Exportar/, input/ com subdiretórios)."""
+    seen: set[str] = set()
+    out: list[Path] = []
+
+    def add(f: Path) -> None:
+        if not f.is_file() or f.name.startswith("~"):
+            return
+        if f.suffix.lower() not in ex_ok:
+            return
+        try:
+            k = str(f.resolve())
+        except OSError:
+            k = str(f)
+        if k not in seen:
+            seen.add(k)
+            out.append(f)
+
+    if not pasta.is_dir():
+        return []
+    try:
+        for f in pasta.iterdir():
+            add(f)
+            if f.is_dir():
+                try:
+                    for g in f.iterdir():
+                        add(g)
+                except OSError:
+                    pass
+    except OSError:
+        return []
+    return sorted(out, key=lambda p: p.as_posix().lower())
+
+
 def _str_eaf(v) -> str:
     return str(v).strip() if v is not None else ""
 
@@ -511,6 +560,16 @@ def _eaf_linha_para_registro_kcor(
     return linha
 
 
+def _ficheiro_e_ponteiro_git_lfs(path: Path) -> bool:
+    """True se o ficheiro no disco é só o ponteiro LFS (build sem `git lfs pull`)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(120)
+        return head.startswith(b"version https://git-lfs")
+    except OSError:
+        return False
+
+
 def gerar_acumulado_kcor_kria_desde_pasta_eaf(
     pasta_eaf: Path,
     out_path: Path,
@@ -532,14 +591,18 @@ def gerar_acumulado_kcor_kria_desde_pasta_eaf(
             "Coloque _Planilha Modelo Kcor-Kria.XLSX em nc_artesp/assets/ ou defina ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA."
         )
         return False
+    if _ficheiro_e_ponteiro_git_lfs(tpl):
+        logger.warning(
+            "Template Kcor-Kria em %s é ponteiro Git LFS (conteúdo real não está no disco). "
+            "Ative Git LFS no deploy ou defina ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA para um .xlsx real.",
+            tpl,
+        )
+        return False
 
     ex_ok = (".xlsx", ".xlsm", ".xls")
-    arquivos = sorted(
-        f
-        for f in pasta_eaf.iterdir()
-        if f.is_file() and f.suffix.lower() in ex_ok and not f.name.startswith("~")
-    )
+    arquivos = _iter_xlsx_xls_em_pasta(pasta_eaf, ex_ok)
     if not arquivos:
+        logger.warning("Acumulado Kcor-Kria: nenhum .xlsx/.xls em %s", pasta_eaf)
         return False
 
     todos: list[list] = []
@@ -548,14 +611,15 @@ def gerar_acumulado_kcor_kria_desde_pasta_eaf(
             p = sn._converter_xls_para_xlsx(fpath) if fpath.suffix.lower() == ".xls" else fpath
             wb = load_workbook(str_caminho_io_windows(p), data_only=True)
             ws = wb.active
-            ultima = _ultima_linha_dados_eaf_codigo(ws, M01_LINHA_INICIO, sn.COL_CODIGO)
-            if ultima < M01_LINHA_INICIO:
+            linha_ini = _linha_inicio_dados_por_ficheiro(ws, sn.COL_CODIGO)
+            ultima = _ultima_linha_dados_eaf_codigo(ws, linha_ini, sn.COL_CODIGO)
+            if ultima < linha_ini:
                 wb.close()
                 continue
             col_data_reparo = sn._detectar_col_data_reparo(ws, fallback=sn.COL_DATA_NC)
             col_data_envio = sn._detectar_col_data_envio(ws, fallback=19)
             col_tipo_nc = sn._detectar_col_tipo_nc(ws, fallback=sn.COL_TIPO_NC)
-            for r in range(M01_LINHA_INICIO, ultima + 1):
+            for r in range(linha_ini, ultima + 1):
                 reg = _eaf_linha_para_registro_kcor(
                     ws,
                     r,
@@ -571,6 +635,11 @@ def gerar_acumulado_kcor_kria_desde_pasta_eaf(
             continue
 
     if not todos:
+        logger.warning(
+            "Acumulado Kcor-Kria: %s ficheiro(s) lidos em %s, mas nenhuma linha com código (col C) válido.",
+            len(arquivos),
+            pasta_eaf,
+        )
         return False
 
     garantir_pasta(out_path.parent)
