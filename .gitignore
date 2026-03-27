@@ -1,11 +1,13 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
 *.egg-info/
 .eggs/
 venv/
 .mypy_cache/
+.ruff_cache/
 
 # Ambiente e credenciais (Segurança!)
 .env
@@ -26,6 +28,25 @@ GeradorARTESP.exe
 
 # IDE e editor
 .cursor/
+.vscode/
+.idea/
+
+# Office / Excel — bloqueios e temporários (nunca versionar)
+~$*
+*.xlk
+*.tmp
+*.temp
+
+# Windows / macOS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
+.DS_Store
+
+# Artefactos locais que não pertencem ao repo
+**/*PERSONAL.XLSB
+**/gerar-arvore-de-arquivos-e-diretorios-no-excel.xlsm
 
 # Dados, Logs e Saídas
 *.log
@@ -39,6 +60,3 @@ acumulado.xlsx
 Imagens/
 PHOTO-*.jpg
 _test_*.geojson
-
-# Módulos duplicados (evitar no repo)
-nc_artesp/modulos/gerar_modelo_foto *.py
