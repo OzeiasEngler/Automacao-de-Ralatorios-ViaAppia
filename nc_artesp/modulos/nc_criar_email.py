@@ -515,15 +515,17 @@ def _cid_imagem_inline_email(seq: int) -> str:
 
 
 def _img_html_cid(cid: str, w: int, h: int) -> str:
+    # Sem margin:auto — isso centralizava a imagem; margin:0 alinha à esquerda como o texto.
     return (
         f'<img src="cid:{cid}" width="{w}" height="{h}" '
-        'style="display:block;border:0;max-width:100%;height:auto;margin:0 auto;" alt="">'
+        'style="display:block;border:0;max-width:100%;height:auto;margin:0;" alt="">'
     )
 
 
 # Estilo base alinhado ao Outlook (macro envolve a saudação em <p>).
 _EMAIL_BODY_STYLE = (
     "font-family:Calibri,Arial,Helvetica,sans-serif;font-size:11pt;color:#000000;line-height:1.4;"
+    "text-align:left;"
 )
 
 
@@ -531,11 +533,14 @@ def _bloco_html_macro_so_pdf(nc: dict, partes_pdf: list[tuple[Path, str]]) -> st
     """Cabeçalho como na macro + uma ou mais imagens PDF (711×295) via cid:."""
     cab = html.escape(_cabecalho_linha_macro_vba(nc), quote=False)
     inner: list[str] = [
-        '<div style="margin:0 0 24px 0;padding:0 0 18px 0;border-bottom:1px solid #d0d0d0;">',
-        f'<p style="margin:0 0 12px 0;"><b><u>{cab}</u></b></p>',
+        '<div style="margin:0 0 24px 0;padding:0 0 18px 0;border-bottom:1px solid #d0d0d0;text-align:left;">',
+        f'<p style="margin:0 0 12px 0;text-align:left;"><b><u>{cab}</u></b></p>',
     ]
     for _path, cid in partes_pdf:
-        inner.append(f'<p style="margin:12px 0 8px 0;">{_img_html_cid(cid, _IMG_APONT_W, _IMG_APONT_H)}</p>')
+        inner.append(
+            f'<p style="margin:12px 0 8px 0;text-align:left;">'
+            f"{_img_html_cid(cid, _IMG_APONT_W, _IMG_APONT_H)}</p>"
+        )
     inner.append("<BR><BR><BR><BR></div>")
     return "".join(inner)
 
@@ -544,9 +549,9 @@ def _bloco_html_macro_sem_pdf(nc: dict) -> str:
     """Cabeçalho macro; sem <img> PDF (fiscal cola nc / nc_1 manualmente)."""
     cab = html.escape(_cabecalho_linha_macro_vba(nc), quote=False)
     return (
-        '<div style="margin:0 0 24px 0;padding:0 0 18px 0;border-bottom:1px solid #d0d0d0;">'
-        f'<p style="margin:0 0 12px 0;"><b><u>{cab}</u></b></p>'
-        '<p style="margin:0;color:#666;"><i>(Imagem PDF do apontamento não encontrada. '
+        '<div style="margin:0 0 24px 0;padding:0 0 18px 0;border-bottom:1px solid #d0d0d0;text-align:left;">'
+        f'<p style="margin:0 0 12px 0;text-align:left;"><b><u>{cab}</u></b></p>'
+        '<p style="margin:0;color:#666;text-align:left;"><i>(Imagem PDF do apontamento não encontrada. '
         "Insira manualmente as fotos de vistoria nc e nc_1 no corpo do e-mail, se necessário.)</i></p>"
         "<BR><BR><BR><BR></div>"
     )
