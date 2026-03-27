@@ -1,8 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
-  REPOSITÓRIO GIT
-  A pasta nc_artesp/assets/templates/ está no .gitignore (cópia espelho / arquivo histórico).
-  Os templates usados pelo código continuam em nc_artesp/assets/ (raiz desta pasta), versionados.
-  Se usar também a subpasta templates/, copie-a após clone a partir do backup da equipa.
+  REPOSITÓRIO GIT / DEPLOY (Render, Docker)
+  A pasta nc_artesp/assets/templates/ é versionada (ficheiros .xlsx via Git LFS) para o servidor
+  ter os modelos Kartado/Kria sem cópia manual. Também há .xlsx na raiz de assets/ quando aplicável.
 ═══════════════════════════════════════════════════════════════════════════════
 
 ═══════════════════════════════════════════════════════════════════════════════

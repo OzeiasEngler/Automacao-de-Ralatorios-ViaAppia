@@ -24,7 +24,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copia o código do projeto
+# Copia o código do projeto (inclui templates Kartado: nc_artesp/assets/templates/,
+# fotos_campo/assets/Template/ — no Render, ative Git LFS no serviço para os .xlsx serem ficheiros reais no build).
 COPY . .
 
 # Não declarar VOLUME /data: o Render gerencia o disco persistente pelo painel.

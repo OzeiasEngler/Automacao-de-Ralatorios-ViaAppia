@@ -42,7 +42,3 @@ _test_*.geojson
 
 # Módulos duplicados (evitar no repo)
 nc_artesp/modulos/gerar_modelo_foto *.py
-
-# Modelos Excel em massa (não versionar — manter cópia local ou pacote à parte)
-fotos_campo/assets/Template/
-nc_artesp/assets/templates/
