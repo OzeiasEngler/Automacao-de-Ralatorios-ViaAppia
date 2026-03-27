@@ -561,7 +561,7 @@ def copiar_renomear_xlsx(planilha: str, modo: int,
 
 
 # MÓDULO 4 – RELATÓRIO FOTOGRÁFICO 2 LADOS
-# Template: nc_artesp/assets/Planilha Modelo Conservação - Foto 2 Lados.xlsx
+# Template: nc_artesp/assets/templates/Planilha Modelo Conservação - Foto 2 Lados.xlsx
 # Estrutura validada no template (aba Relat_Foto_Cons):
 # - Fotos: C8:H18 (esq.) e J8:O18 (dir.), âncora C8/J8
 # - Dados: rodovia/km/sentido em j (linha 19), serviço em j+1 (linha 20)

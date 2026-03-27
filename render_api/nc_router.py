@@ -130,7 +130,6 @@ except ImportError:  # execução com cwd em nc_artesp
     )
 
 _NC_ASSETS = Path(__file__).resolve().parent.parent / "nc_artesp" / "assets" / "templates"
-_NC_ASSETS_ROOT = _NC_ASSETS.parent
 _FOTOS_ASSETS = Path(__file__).resolve().parent.parent / "fotos_campo" / "assets"
 _NC_ARTEMIG_TEMPLATES = Path(__file__).resolve().parent.parent / "nc_artemig" / "assets" / "Template"
 
@@ -989,34 +988,22 @@ def _garantir_path_nc() -> None:
     if proj not in sys.path:
         sys.path.insert(0, proj)
 
-# Nomes dos templates conforme config.py e arquivos físicos em nc_artesp/assets/
+# Nomes dos templates conforme config.py e arquivos em nc_artesp/assets/templates/
 _NOME_MODELO_KRIA = "Modelo Abertura Evento Kria Conserva Rotina.xlsx"
 _NOME_MODELO_RESP = "Modelo.xlsx"
 _NOME_MODELO_KCOR = "_Planilha Modelo Kcor-Kria.XLSX"
 
 
 def _pastas_busca_templates_nc() -> list[Path]:
-    """
-    Ordem de pastas para templates Kria/Kcor/EAF em implantação: módulo Fotos de Campo,
-    depois nc_artesp/assets (subpastas Kartado/Kria/Template e raiz).
-    """
-    f = _FOTOS_ASSETS
-    a = _NC_ASSETS_ROOT
+    """Templates Kria/Kcor/EAF: nc_artesp/assets/templates e fotos_campo/assets/templates."""
     return [
-        f,
-        f / "Template",
-        f / "Kartado",
-        f / "Kria",
         _NC_ASSETS,
-        a / "Template",
-        a / "Kartado",
-        a / "Kria",
-        a,
+        _FOTOS_ASSETS / "templates",
     ]
 
 
 def _ler_asset(nome: str, pasta_base: Path | None = None) -> bytes:
-    """Lê template: pasta_base (ex. Artemig) primeiro; depois fotos_campo/assets e nc_artesp/assets."""
+    """Lê template: pasta_base (ex. Artemig) primeiro; depois nc_artesp/assets/templates e fotos_campo/assets/templates."""
     pastas = ([pasta_base] if pasta_base and pasta_base.is_dir() else []) + _pastas_busca_templates_nc()
     for pasta in pastas:
         if not pasta or not pasta.is_dir():
@@ -1031,8 +1018,8 @@ def _ler_asset(nome: str, pasta_base: Path | None = None) -> bytes:
     raise HTTPException(
         status_code=503,
         detail=(
-            f"Template '{nome}' não encontrado. Coloque em fotos_campo/assets ou nc_artesp/assets "
-            f"(subpastas Template, Kartado, Kria ou templates)."
+            f"Template '{nome}' não encontrado. Coloque em nc_artesp/assets/templates/ "
+            f"ou fotos_campo/assets/templates/."
         ),
     )
 
@@ -1812,8 +1799,8 @@ async def nc_criar_email_endpoint(
 async def nc_gerar_modelo_foto(
     request: Request,
     xls_zip: UploadFile = File(..., description="ZIP com os XLS individuais (saída M01)"),
-    modelo_kria: Optional[UploadFile] = File(None, description="Modelo Kria (.xlsx) — padrão: assets/Modelo Abertura Evento Kria Conserva Rotina.xlsx"),
-    modelo_resp: Optional[UploadFile] = File(None, description="Modelo Resposta (.xlsx) — padrão: assets/Modelo.xlsx"),
+    modelo_kria: Optional[UploadFile] = File(None, description="Modelo Kria (.xlsx) — padrão: nc_artesp/assets/templates/Modelo Abertura Evento Kria Conserva Rotina.xlsx"),
+    modelo_resp: Optional[UploadFile] = File(None, description="Modelo Resposta (.xlsx) — padrão: nc_artesp/assets/templates/Modelo.xlsx"),
     fotos_pdf_zip: Optional[UploadFile] = File(None, description="ZIP com fotos PDF (N).jpg (opcional — saída do Extrair PDF)"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
@@ -1949,7 +1936,7 @@ async def nc_gerar_modelo_foto(
 async def nc_inserir_conservacao(
     request: Request,
     kria_zip: UploadFile = File(..., description="ZIP com planilhas Kria (saída M02)"),
-    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: assets/_Planilha Modelo Kcor-Kria.XLSX"),
+    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: nc_artesp/assets/templates/_Planilha Modelo Kcor-Kria.XLSX"),
     fotos_zip: Optional[UploadFile] = File(None, description="ZIP fotos PDF (opcional)"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
@@ -1963,7 +1950,7 @@ async def nc_inserir_conservacao(
 async def nc_inserir_ma(
     request: Request,
     kria_zip: UploadFile = File(..., description="ZIP com planilhas Kria MA"),
-    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: assets/_Planilha Modelo Kcor-Kria.XLSX"),
+    modelo_kcor: Optional[UploadFile] = File(None, description="Modelo Kcor-Kria (.xlsx) — padrão: nc_artesp/assets/templates/_Planilha Modelo Kcor-Kria.XLSX"),
     job_id: Optional[str] = Form(None),
     finalize: bool = Form(False),
     lote: Optional[str] = Form(None, description="Lote 50 = ARTEMIG (template em nc_artemig/assets/Template)"),
@@ -2037,7 +2024,7 @@ async def nc_inserir_ma_pdf(
                     f"{pasta_raiz}/LEIA-ME Separar NC.txt",
                     "O Separar NC não gerou arquivos individuais.\n"
                     "A planilha EAF está neste ZIP — abra e verifique se há dados a partir da linha 5 (colunas C e Q).\n"
-                    "Se a EAF estiver correta, o problema pode ser o template Template_EAF.xlsx em nc_artesp/assets.",
+                    "Se a EAF estiver correta, o problema pode ser o template Template_EAF.xlsx em nc_artesp/assets/templates/.",
                 )
         zip_bytes = buf.getvalue()
         ws.final.mkdir(parents=True, exist_ok=True)
@@ -2148,7 +2135,10 @@ async def nc_pipeline_ma_pdf(
             except Exception:
                 pass
         if modelo_kria_ma is None or not getattr(modelo_kria_ma, "is_file", lambda: False)():
-            logger.warning("Pipeline MA: modelo Kria não disponível. Kria/Resposta podem não ser gerados. Verifique assets/templates.")
+            logger.warning(
+                "Pipeline MA: modelo Kria não disponível. Kria/Resposta podem não ser gerados. "
+                "Verifique nc_artesp/assets/templates/ e fotos_campo/assets/templates/."
+            )
         resultado = mod.executar_pipeline_meio_ambiente_pdf(
             pdf_bytes,
             pasta_imagens=pasta_imagens,
@@ -2904,7 +2894,7 @@ def _nc_executar_pipeline_stage2_interno(
     if not _nc_gerar_acumulado_xlsx(ws.input, acum_path, pasta_fallback=pasta_xls):
         (p04 / "README.txt").write_text(
             "Não foi possível gerar o Acumulado.xlsx.\n"
-            "Verifique: (1) ficheiro _Planilha Modelo Kcor-Kria.XLSX em nc_artesp/assets/ ou assets/templates/ "
+            "Verifique: (1) ficheiro _Planilha Modelo Kcor-Kria.XLSX em nc_artesp/assets/templates/ "
             "(ou variável ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA no servidor);\n"
             "(2) EAF com código na coluna C a partir da linha 5, ou saída M01 Kartado com código na linha 2;\n"
             "(3) logs do serviço com mensagens «Acumulado Kcor-Kria».\n",

@@ -13,7 +13,7 @@ atividade e código (desativar com ``unico_arquivo_organizado=False`` ou ``um_ar
 
 Fluxo:
   Com M01_COPIA_PLANILHA_MAE=False (padrão desktop): copia o .xlsx Kartado por atividade
-  (``M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO`` / ``ART03_ATIVIDADE_PARA_SERVICO_KARTADO``, ficheiros em assets/templates),
+  (``M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO`` / ``ART03_ATIVIDADE_PARA_SERVICO_KARTADO``, ficheiros em nc_artesp/assets/templates/),
   apaga linhas de dados do template e preenche a partir da mãe. Nomes no modo Art_011 usam ``M01_SERVICO_ABREV_ART011``
   (espelho da macro Art_011); o mapa Kartado usa o texto da coluna Q da EAF, não a coluna «Classe» do template Kartado.
   Com M01_COPIA_PLANILHA_MAE=True ou ``executar(..., copia_planilha_mae=True)``: macro Art_011 — base ``Template_EAF.xlsx``
@@ -116,11 +116,10 @@ class ValidadorArquivoEAF:
 
 
 # TEMPLATE EAF — planilha base para os arquivos gerados (cabeçalho 1–4; dados a partir da 5)
-# Procura DENTRO do projeto nc_artesp (assets/Template ou assets/templates).
-# Ordem: ARTESP_TEMPLATE_EAF (se definido) → nc_artesp/assets/Template → nc_artesp/assets/templates
+# Ordem: ARTESP_TEMPLATE_EAF (se definido) → nc_artesp/assets/templates/
 # Aceita: Template_EAF.xlsx ou Template_EAF.xlsx.xlsx
 def _caminho_template_eaf() -> Path:
-    """Retorna o Path do template EAF. Procura em nc_artesp/assets/ (dentro do projeto)."""
+    """Retorna o Path do template EAF. Procura em nc_artesp/assets/templates/."""
     # 1. ARTESP_TEMPLATE_EAF (ficheiro ou pasta)
     if M01_TEMPLATE_EAF.is_file():
         return M01_TEMPLATE_EAF
@@ -129,17 +128,13 @@ def _caminho_template_eaf() -> Path:
             c = M01_TEMPLATE_EAF / n
             if c.is_file():
                 return c
-    # 2. Pastas dentro do pacote nc_artesp (projeto GeradorARTESP)
+    # 2. Pacote nc_artesp
     _nc = Path(__file__).resolve().parent.parent
-    pastas = [
-        _nc / "assets" / "Template",
-        _nc / "assets" / "templates",
-    ]
-    for pasta in pastas:
-        for nome in ("Template_EAF.xlsx", "Template_EAF.xlsx.xlsx"):
-            candidato = pasta / nome
-            if candidato.is_file():
-                return candidato
+    pasta = _nc / "assets" / "templates"
+    for nome in ("Template_EAF.xlsx", "Template_EAF.xlsx.xlsx"):
+        candidato = pasta / nome
+        if candidato.is_file():
+            return candidato
     return M01_TEMPLATE_EAF  # usado na mensagem de erro se não encontrar nenhum
 
 
@@ -236,31 +231,18 @@ def _xlsx_parece_layout_kartado(path_str: str) -> bool:
 
 
 def _iter_nc_assets_xlsx_kartado_candidatos() -> list[Path]:
-    """
-    .xlsx Kartado sob nc_artesp/assets: subpastas templates/Template/Kartado
-    e ficheiros na raiz de assets (versionados mesmo com templates/ no .gitignore).
-    """
-    nc_assets = Path(__file__).resolve().parent.parent / "assets"
-    out: list[Path] = []
-    for sub in ("templates", "Template", "Kartado"):
-        d = nc_assets / sub
-        if not d.is_dir():
-            continue
-        try:
-            for f in d.rglob("*.xlsx"):
-                out.append(f)
-        except OSError:
-            continue
+    """.xlsx Kartado apenas em nc_artesp/assets/templates/ (recursivo)."""
+    d = Path(__file__).resolve().parent.parent / "assets" / "templates"
+    if not d.is_dir():
+        return []
     try:
-        for f in nc_assets.glob("*.xlsx"):
-            out.append(f)
+        return list(d.rglob("*.xlsx"))
     except OSError:
-        pass
-    return out
+        return []
 
 
 def _resolver_ficheiro_xlsx_por_nome_em_repo(nome: str) -> Path | None:
-    """Localiza `nome` em nc_artesp/assets (templates, Template, raiz), fotos_campo/assets ou repo Kartado/."""
+    """Localiza `nome` em nc_artesp/assets/templates, fotos_campo/assets/templates ou repo Kartado/."""
     if not (nome or "").strip():
         return None
     alvo = _norm_stem_comparar(nome)
@@ -303,40 +285,27 @@ def _resolver_ficheiro_xlsx_por_nome_em_repo(nome: str) -> Path | None:
 @lru_cache(maxsize=32)
 def _listar_candidatos_templates_kartado_cache() -> tuple[Path, ...]:
     """
-    .xlsx em nc_artesp/assets, fotos_campo/assets (subpastas templates/Template/Kartado)
+    .xlsx em nc_artesp/assets/templates e fotos_campo/assets/templates (recursivo),
     e em repo/Kartado/Planilhas Padrão - Templates — exceto EAF, Kria/Kcor/acumulado e Foto 2 Lados.
     """
     repo = _repo_root()
-    nc_assets = Path(__file__).resolve().parent.parent / "assets"
-    bases = [
-        nc_assets,
-        repo / "fotos_campo" / "assets",
+    dirs = [
+        Path(__file__).resolve().parent.parent / "assets" / "templates",
+        repo / "fotos_campo" / "assets" / "templates",
     ]
     out: list[Path] = []
-    for base in bases:
-        # Raiz de assets (ex.: «Dren. - Superficial - Reparo.xlsx» versionado em nc_artesp/assets/)
+    for d in dirs:
+        if not d.is_dir():
+            continue
         try:
-            for f in base.glob("*.xlsx"):
+            for f in d.rglob("*.xlsx"):
                 if _deve_excluir_xlsx_template_m01(f):
                     continue
                 if not _xlsx_parece_layout_kartado(str(f.resolve())):
                     continue
                 out.append(f)
         except OSError:
-            pass
-        for sub in ("templates", "Template", "Kartado"):
-            d = base / sub
-            if not d.is_dir():
-                continue
-            try:
-                for f in d.rglob("*.xlsx"):
-                    if _deve_excluir_xlsx_template_m01(f):
-                        continue
-                    if not _xlsx_parece_layout_kartado(str(f.resolve())):
-                        continue
-                    out.append(f)
-            except OSError:
-                continue
+            continue
     out.extend(_iter_xlsx_kartado_repo_extra())
     # únicos por caminho resolvido
     seen: set[str] = set()
@@ -387,7 +356,7 @@ def _resolver_template_kartado_para_atividade(tipo_atividade: str, fallback: Pat
 
     Ordem:
       1. Mapa exato M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO (texto col Q EAF, alinhado ao Art_03).
-      2. Dicas por palavra-chave → ficheiro em assets.
+      2. Dicas por palavra-chave → ficheiro em assets/templates.
       3. Maior sobreposição de tokens entre atividade e stem do ficheiro.
       4. fallback (opcional).
     """
@@ -442,7 +411,7 @@ def _resolver_template_kartado_para_atividade(tipo_atividade: str, fallback: Pat
 LINHA_CABECALHO_FIM = 4   # última linha do cabeçalho EAF (1–4)
 PRIMEIRA_LINHA_DADOS = 5  # primeira linha de dados na mãe / Template_EAF
 
-# Templates Kartado (nc_artesp/assets/templates, etc.): só a linha 1 é cabeçalho — não apagar; dados a partir da 2.
+# Templates Kartado (nc_artesp/assets/templates/): só a linha 1 é cabeçalho — não apagar; dados a partir da 2.
 PRIMEIRA_LINHA_DADOS_TEMPLATE_KARTADO = 2
 
 
@@ -1190,8 +1159,8 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
             if template_src is None or not template_src.is_file():
                 raise FileNotFoundError(
                     f"Template Kartado não encontrado para atividade '{tipo_para_tpl}'. "
-                    "Verifique o .xlsx em nc_artesp/assets/ ou assets/templates/, "
-                    "fotos_campo/assets/Template/, ou o mapeamento M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO."
+                    "Verifique o .xlsx em nc_artesp/assets/templates/ ou fotos_campo/assets/templates/, "
+                    "ou o mapeamento M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO."
                 )
             logger.info(f"  Template base: {template_src.name} (atividade={tipo_para_tpl!r})")
     

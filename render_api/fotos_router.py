@@ -131,6 +131,7 @@ def _importar_core():
 
 FOTOS_ASSETS = Path(__file__).resolve().parent.parent / "fotos_campo" / "assets"
 NC_ARTESP_ASSETS = Path(__file__).resolve().parent.parent / "nc_artesp" / "assets"
+NC_ARTESP_TEMPLATES = NC_ARTESP_ASSETS / "templates"
 NC_ARTEMIG_ASSETS = Path(__file__).resolve().parent.parent / "nc_artemig" / "assets"
 ARTEMIG_MALHA_DIR = NC_ARTEMIG_ASSETS / "Malha"
 ARTEMIG_TEMPLATES_DIR = NC_ARTEMIG_ASSETS / "Template"
@@ -362,7 +363,7 @@ def _carregar_relacao_assets(lote: str = DEFAULT_LOTE) -> bytes:
 
 
 def _carregar_modelo_foto2lados(lote: str = "") -> Optional[bytes]:
-    """Template Foto 2 Lados: Lote 50 = nc_artemig/assets/Template; 13/21/26 = nc_artesp/assets."""
+    """Template Foto 2 Lados: Lote 50 = nc_artemig/assets/Template; 13/21/26 = nc_artesp/assets/templates/."""
     nome = FOTO2LADOS_MODELO_NOME
     if (lote or "").strip() == "50":
         path = ARTEMIG_TEMPLATES_DIR / nome
@@ -373,12 +374,12 @@ def _carregar_modelo_foto2lados(lote: str = "") -> Optional[bytes]:
             for p in ARTEMIG_TEMPLATES_DIR.iterdir():
                 if p.is_file() and _normalizar_nome(p.name) == nome_nfc:
                     return p.read_bytes()
-    path = NC_ARTESP_ASSETS / nome
+    path = NC_ARTESP_TEMPLATES / nome
     if path.is_file():
         return path.read_bytes()
-    if NC_ARTESP_ASSETS.is_dir():
+    if NC_ARTESP_TEMPLATES.is_dir():
         nome_nfc = _normalizar_nome(nome)
-        for p in NC_ARTESP_ASSETS.iterdir():
+        for p in NC_ARTESP_TEMPLATES.iterdir():
             if p.is_file() and _normalizar_nome(p.name) == nome_nfc:
                 return p.read_bytes()
     return None

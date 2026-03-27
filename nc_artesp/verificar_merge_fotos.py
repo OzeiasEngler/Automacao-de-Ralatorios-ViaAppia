@@ -49,11 +49,6 @@ def main():
     base = Path(__file__).resolve().parent
     kria_path = base / "assets" / "templates" / "Modelo Abertura Evento Kria Conserva Rotina.xlsx"
     resp_path = base / "assets" / "templates" / "Modelo.xlsx"
-    # Fallback: assets/ sem templates
-    if not kria_path.exists():
-        kria_path = base / "assets" / "Modelo Abertura Evento Kria Conserva Rotina.xlsx"
-    if not resp_path.exists():
-        resp_path = base / "assets" / "Modelo.xlsx"
 
     print("=" * 70)
     print("VERIFICAÇÃO DE MERGE E TAMANHO DAS FOTOS NOS TEMPLATES")

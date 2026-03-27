@@ -59,25 +59,24 @@ LOTES_MENU_ANALISE = [
 _env_concessionaria    = (os.environ.get("ARTESP_CONCESSIONARIA_NOME") or "").strip()
 _lote_num              = re.search(r"\d+", M01_LOTE)
 CONCESSIONARIA_NOME     = _env_concessionaria or _LOTE_CONCESSIONARIA.get((_lote_num.group(0) if _lote_num else ""), "")
-# Template EAF: env ou nc_artesp/assets/Template_EAF.xlsx (senão assets/templates/)
+# Template EAF: env ou nc_artesp/assets/templates/Template_EAF.xlsx
 _template_eaf_env = _env_str("ARTESP_TEMPLATE_EAF", "")
 _nc_root = Path(__file__).resolve().parent  # nc_artesp/
+_tpl = _nc_root / "assets" / "templates"
 if _template_eaf_env:
     M01_TEMPLATE_EAF = Path(_template_eaf_env)
 else:
     _candidatos_eaf = [
-        _nc_root / "assets" / "Template_EAF.xlsx",
-        _nc_root / "assets" / "Template_EAF.xls",
-        _nc_root / "assets" / "templates" / "Template_EAF.xlsx",
-        _nc_root / "assets" / "templates" / "Template_EAF.xls",
+        _tpl / "Template_EAF.xlsx",
+        _tpl / "Template_EAF.xls",
     ]
-    M01_TEMPLATE_EAF = next((p for p in _candidatos_eaf if p.is_file()), _candidatos_eaf[3])
-# Template do relatório XLSX (Análise PDF). Único: nc_artesp/assets/Template_EAF.xlsx (ou env).
+    M01_TEMPLATE_EAF = next((p for p in _candidatos_eaf if p.is_file()), _candidatos_eaf[0])
+# Template do relatório XLSX (Análise PDF): nc_artesp/assets/templates/Template_EAF.xlsx (ou env).
 _template_relatorio_env = _env_str("ARTESP_TEMPLATE_RELATORIO", "").strip().strip('"').strip("'")
 TEMPLATE_RELATORIO_XLSX = (
     Path(_template_relatorio_env)
     if _template_relatorio_env
-    else _nc_root / "assets" / "Template_EAF.xlsx"
+    else _tpl / "Template_EAF.xlsx"
 )
 NOMES_TEMPLATE_RELATORIO = (
     "Template_Relatório de Fiscalização de Conservação de Rotina - Não Conformidades.xls",
@@ -211,7 +210,7 @@ ART03_ATIVIDADE_PARA_SERVICO_KARTADO: dict[str, str] = {
     "Remoção de árvores ou galhos que não tem risco": "VD - Árvores e Arbustos - Remoção de Galhos",
 }
 
-# Mesmo mapeamento Art_03 → nome de ficheiro (.xlsx em nc_artesp/assets/templates ou fotos_campo/assets).
+# Mesmo mapeamento Art_03 → nome de ficheiro (.xlsx em nc_artesp/assets/templates/ ou fotos_campo/assets/templates/).
 M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO = {
     k: (v if str(v).lower().endswith(".xlsx") else f"{v}.xlsx")
     for k, v in ART03_ATIVIDADE_PARA_SERVICO_KARTADO.items()
@@ -274,24 +273,19 @@ M04_MODELO_ACUMULADO = _nc_root / "assets" / "templates" / "Eventos Acumulado Ar
 def resolver_template_acumulado_kcor_kria() -> Path | None:
     """
     Planilha-base do acumulado no layout Kcor-Kria (A1 = NumItem), independente do Kartado.
-    Ordem: env ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA → assets/_Planilha Modelo Kcor-Kria.XLSX
-    → templates/_Planilha Modelo Kcor-Kria (M03) → M04_MODELO_ACUMULADO → glob *Kcor*Kria* em assets/.
+    Ordem: env ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA → M03_MODELO_KCOR → M04_MODELO_ACUMULADO
+    → glob *Kcor*Kria* em assets/templates/.
     """
     envp = _env_str("ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA", "").strip().strip('"').strip("'")
     if envp:
         p = Path(envp)
         return p if p.is_file() else None
-    for p in (
-        _nc_root / "assets" / "_Planilha Modelo Kcor-Kria.XLSX",
-        _nc_root / "assets" / "_Planilha Modelo Kcor-Kria.xlsx",
-        M03_MODELO_KCOR,
-        M04_MODELO_ACUMULADO,
-    ):
+    for p in (M03_MODELO_KCOR, M04_MODELO_ACUMULADO):
         if p.is_file():
             return p
-    ad = _nc_root / "assets"
-    if ad.is_dir():
-        for g in sorted(ad.glob("*Kcor*Kria*.xls*")):
+    td = _nc_root / "assets" / "templates"
+    if td.is_dir():
+        for g in sorted(td.glob("*Kcor*Kria*.xls*")):
             if g.is_file() and not g.name.startswith("~"):
                 return g
     return None
