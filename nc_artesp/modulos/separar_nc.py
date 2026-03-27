@@ -151,10 +151,6 @@ def _norm_stem_comparar(s: str) -> str:
     return t.casefold()
 
 
-def _nc_assets_templates_dir() -> Path:
-    return Path(__file__).resolve().parent.parent / "assets" / "templates"
-
-
 def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
@@ -239,22 +235,45 @@ def _xlsx_parece_layout_kartado(path_str: str) -> bool:
         return False
 
 
+def _iter_nc_assets_xlsx_kartado_candidatos() -> list[Path]:
+    """
+    .xlsx Kartado sob nc_artesp/assets: subpastas templates/Template/Kartado
+    e ficheiros na raiz de assets (versionados mesmo com templates/ no .gitignore).
+    """
+    nc_assets = Path(__file__).resolve().parent.parent / "assets"
+    out: list[Path] = []
+    for sub in ("templates", "Template", "Kartado"):
+        d = nc_assets / sub
+        if not d.is_dir():
+            continue
+        try:
+            for f in d.rglob("*.xlsx"):
+                out.append(f)
+        except OSError:
+            continue
+    try:
+        for f in nc_assets.glob("*.xlsx"):
+            out.append(f)
+    except OSError:
+        pass
+    return out
+
+
 def _resolver_ficheiro_xlsx_por_nome_em_repo(nome: str) -> Path | None:
-    """Localiza `nome` em nc_artesp/assets/templates (prioridade), fotos_campo/assets ou bundled_templates."""
+    """Localiza `nome` em nc_artesp/assets (templates, Template, raiz), fotos_campo/assets ou repo Kartado/."""
     if not (nome or "").strip():
         return None
     alvo = _norm_stem_comparar(nome)
-    nc_t = _nc_assets_templates_dir()
-    if nc_t.is_dir():
-        try:
-            for f in nc_t.rglob("*.xlsx"):
-                if _deve_excluir_xlsx_template_m01(f):
-                    continue
-                if _norm_stem_comparar(f.name) == alvo:
-                    if _xlsx_parece_layout_kartado(str(f.resolve())):
-                        return f
-        except OSError:
-            pass
+    try:
+        for f in _iter_nc_assets_xlsx_kartado_candidatos():
+            if _deve_excluir_xlsx_template_m01(f):
+                continue
+            if _norm_stem_comparar(f.name) != alvo:
+                continue
+            if _xlsx_parece_layout_kartado(str(f.resolve())):
+                return f
+    except OSError:
+        pass
     try:
         from fotos_campo.core import (
             _ficheiro_xlsx_bundled_por_nome,
@@ -295,6 +314,16 @@ def _listar_candidatos_templates_kartado_cache() -> tuple[Path, ...]:
     ]
     out: list[Path] = []
     for base in bases:
+        # Raiz de assets (ex.: «Dren. - Superficial - Reparo.xlsx» versionado em nc_artesp/assets/)
+        try:
+            for f in base.glob("*.xlsx"):
+                if _deve_excluir_xlsx_template_m01(f):
+                    continue
+                if not _xlsx_parece_layout_kartado(str(f.resolve())):
+                    continue
+                out.append(f)
+        except OSError:
+            pass
         for sub in ("templates", "Template", "Kartado"):
             d = base / sub
             if not d.is_dir():
@@ -1161,7 +1190,8 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
             if template_src is None or not template_src.is_file():
                 raise FileNotFoundError(
                     f"Template Kartado não encontrado para atividade '{tipo_para_tpl}'. "
-                    "Verifique os arquivos em nc_artesp/assets/templates (ou mapeamento M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO)."
+                    "Verifique o .xlsx em nc_artesp/assets/ ou assets/templates/, "
+                    "fotos_campo/assets/Template/, ou o mapeamento M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO."
                 )
             logger.info(f"  Template base: {template_src.name} (atividade={tipo_para_tpl!r})")
     
