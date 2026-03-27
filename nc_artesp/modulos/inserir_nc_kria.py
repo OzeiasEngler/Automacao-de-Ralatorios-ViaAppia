@@ -30,6 +30,7 @@ from utils.helpers import (
     copiar_arquivo,
     renomear_arquivo,
     escrever_bytes_caminho,
+    resolver_path_ficheiro_ci,
     str_caminho_io_windows,
     parse_data,
     encontrar_foto_por_codigo_ou_numero,
@@ -1014,7 +1015,7 @@ def executar_conservacao(pasta_entrada: Path | None = None,
     """M03 conservação: .xlsx formulário → .xlsx Kcor-Kria (1 linha/NC)."""
     pasta_entrada   = pasta_entrada   or M03_ENTRADA
     pasta_imagens   = pasta_imagens   or M03_IMAGENS
-    modelo_kcor     = modelo_kcor     or M03_MODELO_KCOR
+    modelo_kcor     = resolver_path_ficheiro_ci(modelo_kcor or M03_MODELO_KCOR)
     pasta_saida     = pasta_saida     or M03_SAIDA
     pasta_fotos_pdf = pasta_fotos_pdf or M02_FOTOS_PDF
     pasta_fotos_nc  = pasta_fotos_nc  or M02_FOTOS_NC
@@ -1039,7 +1040,7 @@ def executar_meio_ambiente(pasta_entrada: Path | None = None,
     """M07 MA: pasta .xlsx → Kcor-Kria (modo meio_ambiente)."""
     pasta_entrada = pasta_entrada or M07_ENTRADA
     pasta_imagens = pasta_imagens or M07_IMAGENS
-    modelo_kcor   = modelo_kcor   or M03_MODELO_KCOR
+    modelo_kcor   = resolver_path_ficheiro_ci(modelo_kcor or M03_MODELO_KCOR)
     pasta_saida   = pasta_saida   or M07_SAIDA
 
     return _executar_em_pasta(
@@ -1060,7 +1061,7 @@ def executar_meio_ambiente_pdf(
 ) -> list[Path]:
     """M07: PDF MA → Kcor-Kria; imagens do PDF quando possível."""
     pasta_imagens = pasta_imagens or M07_IMAGENS
-    modelo_kcor   = modelo_kcor   or M07_MODELO_KCOR
+    modelo_kcor   = resolver_path_ficheiro_ci(modelo_kcor or M07_MODELO_KCOR)
     pasta_saida   = pasta_saida   or M07_SAIDA
 
     destino = _processar_pdf_meio_ambiente(
@@ -1100,7 +1101,7 @@ def executar_pipeline_meio_ambiente_pdf(
 
     pasta_imagens    = pasta_imagens or M07_IMAGENS
     pasta_saida_kria = pasta_saida_kria or M07_ENTRADA
-    modelo_kcor      = modelo_kcor or M07_MODELO_KCOR
+    modelo_kcor      = resolver_path_ficheiro_ci(modelo_kcor or M07_MODELO_KCOR)
     pasta_saida_kcor = pasta_saida_kcor or M07_SAIDA
 
     garantir_pasta(pasta_imagens)

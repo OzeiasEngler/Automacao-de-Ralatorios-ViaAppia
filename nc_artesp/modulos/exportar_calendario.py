@@ -23,7 +23,12 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from config import M06_PASTA_OUTLOOK
-from utils.helpers import escrever_bytes_caminho, garantir_pasta, str_caminho_io_windows
+from utils.helpers import (
+    escrever_bytes_caminho,
+    garantir_pasta,
+    resolver_path_ficheiro_ci,
+    str_caminho_io_windows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -334,6 +339,8 @@ def executar(arquivo_acumulado: Path,
     Retorna dict com 'eventos', 'ics' (ou None), 'mod08_imagens'.
     """
     resultado = {"eventos": 0, "ics": None, "mod08_imagens": 0}
+
+    arquivo_acumulado = resolver_path_ficheiro_ci(arquivo_acumulado)
 
     if usar_outlook:
         logger.info("Módulo 06: Exportando para calendário Outlook...")

@@ -276,20 +276,42 @@ def resolver_template_acumulado_kcor_kria() -> Path | None:
     """
     Planilha-base do acumulado no layout Kcor-Kria (A1 = NumItem), independente do Kartado.
     Ordem: env ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA → Acumulado.xlsx → M03_MODELO_KCOR
-    → Eventos Acumulado… → glob *Kcor*Kria* em assets/templates/.
+    → Eventos Acumulado… → ficheiros *Kcor*Kria* em assets/templates/ (case-insensitive no Linux).
     """
+    try:
+        from nc_artesp.utils.helpers import resolver_path_ficheiro_ci
+    except ImportError:
+        from utils.helpers import resolver_path_ficheiro_ci
+
+    def _ok(c: Path) -> Path | None:
+        r = resolver_path_ficheiro_ci(c)
+        return r if r.is_file() else None
+
     envp = _env_str("ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA", "").strip().strip('"').strip("'")
     if envp:
-        p = Path(envp)
-        return p if p.is_file() else None
-    for p in (M04_TEMPLATE_ACUMULADO, M03_MODELO_KCOR, M04_MODELO_ACUMULADO):
-        if p.is_file():
-            return p
+        return _ok(Path(envp))
+    for cand in (M04_TEMPLATE_ACUMULADO, M03_MODELO_KCOR, M04_MODELO_ACUMULADO):
+        hit = _ok(cand)
+        if hit is not None:
+            return hit
     td = _nc_root / "assets" / "templates"
     if td.is_dir():
-        for g in sorted(td.glob("*Kcor*Kria*.xls*")):
-            if g.is_file() and not g.name.startswith("~"):
-                return g
+        kcor_kria: list[Path] = []
+        try:
+            for c in td.iterdir():
+                if not c.is_file() or c.name.startswith("~"):
+                    continue
+                if not c.suffix.casefold().startswith(".xls"):
+                    continue
+                n = c.name.casefold()
+                if "kcor" in n and "kria" in n:
+                    kcor_kria.append(c)
+        except OSError:
+            pass
+        for c in sorted(kcor_kria, key=lambda x: x.name.casefold()):
+            hit = _ok(c)
+            if hit is not None:
+                return hit
     return None
 
 

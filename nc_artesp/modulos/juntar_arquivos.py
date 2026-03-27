@@ -26,7 +26,13 @@ from config import (
     CABECALHO_KCOR_KRIA,
     resolver_template_acumulado_kcor_kria,
 )
-from utils.helpers import garantir_pasta, km_mais_metros, parse_data, str_caminho_io_windows
+from utils.helpers import (
+    garantir_pasta,
+    km_mais_metros,
+    parse_data,
+    resolver_path_ficheiro_ci,
+    str_caminho_io_windows,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -584,7 +590,15 @@ def gerar_acumulado_kcor_kria_desde_pasta_eaf(
     if not pasta_eaf.is_dir():
         return False
 
-    tpl = caminho_template if caminho_template and caminho_template.is_file() else resolver_template_acumulado_kcor_kria()
+    tpl = None
+    if caminho_template:
+        tpl = resolver_path_ficheiro_ci(caminho_template)
+        if not tpl.is_file():
+            tpl = None
+    if tpl is None:
+        tpl = resolver_template_acumulado_kcor_kria()
+    if tpl is not None:
+        tpl = resolver_path_ficheiro_ci(tpl)
     if tpl is None or not tpl.is_file():
         logger.warning(
             "Template acumulado Kcor-Kria não encontrado. "

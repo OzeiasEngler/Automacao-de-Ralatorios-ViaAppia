@@ -235,6 +235,38 @@ def truncar_nome_preservando_sufixo_prazo_m01(nome: str, max_chars: int) -> str:
     return stem[:room].rstrip(" -.") + ext
 
 
+def resolver_path_ficheiro_ci(path: Path | str) -> Path:
+    """
+    Resolve o nome real no disco ignorando maiúsculas/minúsculas no **último** componente.
+
+    No Linux (ex.: Render), ``Acumulado.xlsx`` e ``Acumulado.XLSX`` são ficheiros distintos; se o Git
+    tiver ``Acumulado.XLSX`` mas o código construir ``Acumulado.xlsx``, ``Path.is_file()`` falha.
+    Esta função, quando o pai existe, procura no diretório um ficheiro com o mesmo nome por ``casefold()``.
+    """
+    p = Path(path)
+    if not p.name:
+        return p
+    try:
+        if p.is_file():
+            return p
+    except OSError:
+        return p
+    parent = p.parent
+    try:
+        if not parent.is_dir():
+            return p
+    except OSError:
+        return p
+    alvo = p.name.casefold()
+    try:
+        for c in parent.iterdir():
+            if c.is_file() and c.name.casefold() == alvo:
+                return c
+    except OSError:
+        pass
+    return p
+
+
 def str_caminho_io_windows(caminho) -> str:
     """
     Caminho absoluto para ``open()``, ``shutil``, ``ZipFile.extractall``, openpyxl, etc. no Windows.

@@ -33,7 +33,7 @@ from config import (
     M07_MODELO_KCOR,
     M07_SAIDA,
 )
-from utils.helpers import garantir_pasta
+from utils.helpers import garantir_pasta, resolver_path_ficheiro_ci
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ def executar_m03_ma(
     from . import inserir_nc_kria
 
     pasta_imagens = pasta_imagens or M07_IMAGENS
-    modelo_kcor = modelo_kcor or M07_MODELO_KCOR
+    modelo_kcor = resolver_path_ficheiro_ci(modelo_kcor or M07_MODELO_KCOR)
     pasta_saida = pasta_saida or M07_SAIDA
 
     if pdf_bytes is not None:

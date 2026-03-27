@@ -69,6 +69,7 @@ from utils.helpers import (
     timestamp_completo,
     caminho_dentro_limite_windows,
     encontrar_foto_por_codigo_ou_numero,
+    resolver_path_ficheiro_ci,
     str_caminho_io_windows,
 )
 
@@ -991,9 +992,9 @@ def executar(
                     'kartado_pacotes': [ { 'kria': Path, 'imagens': [Path,...], 'zip_stem': str }, ... ] }
     """
     pasta_xls        = pasta_xls        or M01_EXPORTAR
-    modelo_kria      = modelo_kria      or M02_MODELO_KRIA
+    modelo_kria      = resolver_path_ficheiro_ci(modelo_kria or M02_MODELO_KRIA)
     pasta_saida_kria = pasta_saida_kria or M02_SALVAR_FOTO
-    modelo_resposta  = modelo_resposta  or M02_MODELO_RESP
+    modelo_resposta  = resolver_path_ficheiro_ci(modelo_resposta or M02_MODELO_RESP)
     pasta_saida_resp = pasta_saida_resp or M02_PENDENTES
     pasta_fotos_nc   = pasta_fotos_nc   or M02_FOTOS_NC    # nc (N).jpg
     pasta_fotos_pdf  = pasta_fotos_pdf  or M02_FOTOS_PDF   # PDF (N).jpg
@@ -1116,9 +1117,9 @@ def executar_kria_resposta_de_lista(
     (equivalente M2 a partir do PDF, sem planilha EAF).
     Retorna {"kria": Path | None, "resposta": Path | None}.
     """
-    modelo_kria = modelo_kria or M02_MODELO_KRIA
+    modelo_kria = resolver_path_ficheiro_ci(modelo_kria or M02_MODELO_KRIA)
     pasta_saida_kria = pasta_saida_kria or M02_SALVAR_FOTO
-    modelo_resposta = modelo_resposta or M02_MODELO_RESP
+    modelo_resposta = resolver_path_ficheiro_ci(modelo_resposta or M02_MODELO_RESP)
     pasta_saida_resp = pasta_saida_resp or M02_PENDENTES
     pasta_fotos_nc = pasta_fotos_nc or M02_FOTOS_NC
     pasta_fotos_pdf = pasta_fotos_pdf or M02_FOTOS_PDF

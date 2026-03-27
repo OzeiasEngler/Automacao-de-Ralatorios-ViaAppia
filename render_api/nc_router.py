@@ -1011,9 +1011,9 @@ def _ler_asset(nome: str, pasta_base: Path | None = None) -> bytes:
         p = pasta / nome
         if p.is_file():
             return p.read_bytes()
-        nome_lower = nome.lower()
+        nome_cf = nome.casefold()
         for f in pasta.iterdir():
-            if f.is_file() and f.name.lower() == nome_lower:
+            if f.is_file() and f.name.casefold() == nome_cf:
                 return f.read_bytes()
     raise HTTPException(
         status_code=503,
