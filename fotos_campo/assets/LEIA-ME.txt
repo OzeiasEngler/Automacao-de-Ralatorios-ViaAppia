@@ -2,6 +2,9 @@ Relação Total de coordenadas (Rodovia, km, Sentido, Lat, Lon)
 
 Cada módulo tem seu próprio assets. Este é o assets do módulo fotos_campo.
 
+A subpasta assets/Template/ (planilhas modelo de fotos de campo) não é versionada no Git
+(.gitignore). Mantenha uma cópia local ou restaure a partir do backup da equipa.
+
 Coloque aqui os arquivos XLSX ou CSV com os nomes exatos:
 
   - Relação Total - Lote 13.xlsx
