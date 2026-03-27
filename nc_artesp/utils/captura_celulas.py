@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Optional, Union
 from pathlib import Path
 
+from .helpers import str_caminho_io_windows
+
 # Tamanhos (px) dos recortes de imagem por modo (conservação / meio ambiente)
 TAMANHO_CONSERVACAO = (275, 210)   # largura × altura em pixels
 TAMANHO_MA          = (275, 210)
@@ -74,18 +76,19 @@ def exportar_range_como_imagem(
     try:
         import xlwings as xw
         with xw.App(visible=False, add_book=False) as app:
-            wb = app.books.open(str(arquivo))
+            wb = app.books.open(str_caminho_io_windows(arquivo))
             try:
                 ws = wb.sheets[sheet_name]
                 rng = ws.range(range_str)
-                rng.to_png(str(destino))
-                if destino.exists():
+                dest_io = str_caminho_io_windows(destino)
+                rng.to_png(dest_io)
+                if Path(dest_io).exists():
                     # Redimensionar se necessário
                     try:
                         from PIL import Image
-                        img = Image.open(str(destino))
+                        img = Image.open(dest_io)
                         img = img.resize(tamanho, Image.LANCZOS)
-                        img.save(str(destino), "JPEG", quality=90)
+                        img.save(dest_io, "JPEG", quality=90)
                     except Exception:
                         pass
                     return destino

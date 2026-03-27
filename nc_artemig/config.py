@@ -50,6 +50,8 @@ MAPA_RESPONSAVEL_TECNICO_POR_LOTE: dict[str, dict] = {
     "50": {"CONSOL": "Consol Engenharia"},
 }
 
+# Se o ficheiro não existir, `exportar_kcor_planilha` gera um modelo mínimo (mesmas colunas A–Y).
+# Override: variável de ambiente ARTEMIG_MODELO_KCOR_KRIA = caminho absoluto para o .xlsx oficial.
 MODELO_KCOR_KRIA = ASSETS_DIR / "Template" / "templates" / "_Planilha Modelo Kcor-Kria_artemig.xlsx"
 # Formato nome saída = macro Nas01: yyyyMMdd-hhmm - Exportar Kcor.xlsx
 NOME_SAIDA_EXCEL_KCOR_PREFIXO = "Exportar Kcor"
@@ -57,7 +59,7 @@ NOME_SAIDA_EXCEL_KCOR_EXT = ".xlsx"
 
 COL_KCOR_KRIA = {
     "NumItem": 1,           # A
-    "Origem": 2,            # B — "0-QID" ou "Orgão Fiscalizador"
+    "Origem": 2,            # B — sempre "0-QID" no export Python (linhas do modelo antigas são limpas)
     "Motivo": 3,            # C — fixo "Conservação de Rotina"
     "Classificacao": 4,     # D — class_Kcor (ex.: Eng. QID)
     "Tipo": 5,              # E — kcor (patologia mapeada)

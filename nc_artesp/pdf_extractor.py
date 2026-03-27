@@ -1,7 +1,7 @@
 """
-Extração do PDF de NC Constatação: Texto (COD).jpg, PDF (COD).jpg, nc (COD).jpg.
-Dimensões/DPI finais = M02_FOTO_* / M02_FOTO_PDF_* (ARTESP e Artemig lote 50).
-CODIGO = Código da Fiscalização. Requer: pymupdf, pillow.
+Extração do PDF de NC Constatação: nc (COD).jpg e, nos lotes ARTESP, PDF (COD).jpg.
+Artemig (lote 50): só nc (COD).jpg; o PDF integral entra no ZIP em extrair_pdf_para_zip.
+Dimensões nc = M02_FOTO_* (ARTESP e Artemig). Requer: pymupdf, pillow.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+from .utils.helpers import escrever_bytes_caminho
 
 try:
     import fitz          # PyMuPDF
@@ -64,7 +66,12 @@ def _cfg_m02_foto_pdf_preview() -> tuple[int, int, int, int]:
             M02_FOTO_PDF_H,
             M02_FOTO_PDF_W,
         )
-        return (M02_FOTO_PDF_W, M02_FOTO_PDF_H, M02_FOTO_DPI_X, M02_FOTO_DPI_Y)
+        return (
+            int(M02_FOTO_PDF_W),
+            int(M02_FOTO_PDF_H),
+            M02_FOTO_DPI_X,
+            M02_FOTO_DPI_Y,
+        )
     except Exception:
         return (480, 202, NC_IMAGE_DPI_X, NC_IMAGE_DPI_Y)
 
@@ -302,6 +309,49 @@ def _eh_codigo_fiscalizacao_valido(val: str) -> bool:
     return False
 
 
+def _codigos_coincidem(a: str, b: str) -> bool:
+    """Compara códigos de fiscalização (mesmo PDF pode misturar formato)."""
+    xa = (a or "").strip()
+    xb = (b or "").strip()
+    if not xa or not xb:
+        return False
+    if xa == xb:
+        return True
+    da = re.sub(r"\D", "", xa)
+    db = re.sub(r"\D", "", xb)
+    return bool(da) and da == db
+
+
+def _texto_faixa_entre_y(page: "fitz.Page", y0: float, y1: float) -> str:
+    """Texto entre duas linhas horizontais (ex.: entre foto anterior e foto atual)."""
+    if y1 <= y0 + 6:
+        return ""
+    try:
+        clip = fitz.Rect(page.rect.x0 + 1, y0, page.rect.x1 - 1, y1)
+        return (page.get_text("text", clip=clip) or "").strip()
+    except Exception:
+        return ""
+
+
+def _faixa_sugere_nova_nc(texto: str) -> bool:
+    """Entre duas fotos: True só com sinal forte de outro apontamento.
+    «Constatação» solto no corpo do texto quebra o pareamento 2 fotos / mesmo código."""
+    if not (texto or "").strip():
+        return False
+    t = texto
+    if re.search(r"C[oó]digo\s+(da\s+)?Fiscaliza[cç][aã]o", t, re.I):
+        return True
+    if re.search(r"(?m)^\s*C[oó]digo\s*$", t):
+        return True
+    if re.search(r"(?m)^\s*NOTIFICA[ÇC][AÃ]O", t, re.I):
+        return True
+    if re.search(r"(?m)N[ºo°]?\s*da\s*CONSOL", t, re.I):
+        return True
+    if re.search(r"(?m)Tipo\s*:\s*QID\b", t, re.I):
+        return True
+    return False
+
+
 def _extrair_codigo_por_blocos(page: "fitz.Page", clip_rect: "fitz.Rect") -> str:
     """Fallback PDF em tabela: Código da Fiscalização e número na mesma linha (mesmo y)."""
     try:
@@ -486,6 +536,14 @@ def _nome_arquivo_safe(s: str) -> str:
         return sem_comb.encode("latin-1", "replace").decode("latin-1")
 
 
+def nome_pdf_original_seguro_zip(filename: Optional[str]) -> str:
+    """Nome `.pdf` para ZIP/Kcor (sem path, Latin-1). Alinha col. W Exportar Kcor com o ficheiro no ZIP."""
+    raw = Path((filename or "").strip() or "constatacao.pdf").name
+    stem = _nome_arquivo_safe(Path(raw).stem) or "constatacao"
+    stem = re.sub(r"[^\w\-. ]+", "_", stem).strip(" ._") or "constatacao"
+    return f"{stem}.pdf"
+
+
 def _formatar_codigo_arquivo(codigo: str, num_digitos: int = 5) -> str:
     """Código para nome do arquivo (zeros à esquerda); sanitizado para Latin-1."""
     s = (codigo or "").strip()
@@ -503,8 +561,16 @@ def extrair_imagens_pdf(pdf_path: str,
                          dpi: Optional[int] = None,
                          nc_global_start: int = 0,
                          nomear_por_indice_fiscalizacao: bool = False,
-                         pasta_unica: bool = False) -> list:
-    """Extrai Texto (COD).jpg, PDF (COD).jpg e nc (COD).jpg. Se pasta_unica, tudo na mesma pasta."""
+                         pasta_unica: bool = False,
+                         raiz_unica_sem_subpastas: bool = False) -> list:
+    """Extrai nc (COD).jpg; em ARTESP também PDF (COD).jpg (render do bloco texto+foto).
+    Por apontamento: em geral **1 foto** → 1× PDF (COD) + 1× nc (COD); **exceção** várias fotos
+    com o mesmo código seguidas (sem cabeçalho de outro apontamento entre elas) → 1× PDF + N× nc.
+    Várias NCs na mesma página: código por bloco/faixa acima de cada foto; entre fotos, só separa
+    apontamento com sinal forte (ex.: «Código da Fiscalização»), não texto de corpo. Continuação de
+    página e parse_pdf_nc como apoio.
+    pasta_unica: Artemig (lote 50) — só nc na mesma pasta; sem Texto/PDF em JPG.
+    raiz_unica_sem_subpastas: sem pastas nc/ e PDF/; ignorado se pasta_unica ou pastas explícitas."""
     _check_deps()
     dpi = _resolve_dpi_extracao(dpi)
     pdf_path = Path(pdf_path).resolve()
@@ -532,10 +598,13 @@ def extrair_imagens_pdf(pdf_path: str,
         else:
             base = Path(pasta_saida).resolve() if pasta_saida else pdf_path.parent
             base.mkdir(parents=True, exist_ok=True)
-            p_nc = base / "nc"
-            p_pdf = base / "PDF"
-            p_nc.mkdir(parents=True, exist_ok=True)
-            p_pdf.mkdir(parents=True, exist_ok=True)
+            if raiz_unica_sem_subpastas:
+                p_nc = p_pdf = base
+            else:
+                p_nc = base / "nc"
+                p_pdf = base / "PDF"
+                p_nc.mkdir(parents=True, exist_ok=True)
+                p_pdf.mkdir(parents=True, exist_ok=True)
 
     salvos    = []
     nc_global = nc_global_start
@@ -567,8 +636,6 @@ def extrair_imagens_pdf(pdf_path: str,
             page = doc[page_num]
             if usar_indice:
                 ultimo_codigo = None
-            # Uma imagem PDF (texto+foto) por página; página em branco já não gera bloco
-            pdf_imagem_ja_escrita_esta_pagina = False
             try:
                 r_fotos = _obter_rects_fotos(page)
             except Exception as e:
@@ -601,6 +668,16 @@ def extrair_imagens_pdf(pdf_path: str,
             )
             pagina_continuacao = not tem_cabecalho_nc
 
+            rect_topo_codigo = fitz.Rect(
+                page.rect.x0,
+                page.rect.y0,
+                page.rect.x1,
+                min(page.rect.y0 + max(ALTURA_CABECALHO_NC * 2, 165), page.rect.y1),
+            )
+            codigo_topo_pagina = ""
+            if not usar_indice:
+                codigo_topo_pagina = (_extrair_codigo_nc(page, rect_topo_codigo) or "").strip()
+
             if not r_fotos:
                 # Página sem imagens embutidas: só tratar como "uma foto" se o conteúdo não for em branco
                 jpg_teste = _renderizar_jpg(page, page.rect, dpi)
@@ -629,11 +706,10 @@ def extrair_imagens_pdf(pdf_path: str,
                         blocos.append((r, r))
 
             def flush_grupo(bloco_uniao: "fitz.Rect", fotos: list, cod: str):
-                nonlocal pdf_imagem_ja_escrita_esta_pagina
                 if bloco_uniao is None or not cod:
                     return
                 try:
-                    # Uma imagem PDF (texto+foto) por página; nc = todas as fotos. Página em branco não gera bloco.
+                    # PDF (COD).jpg = um por apontamento (flush); várias NCs na mesma página = vários PDFs.
                     fotos_unicas = []
                     vistos_rect = set()
                     for fr in fotos:
@@ -648,8 +724,9 @@ def extrair_imagens_pdf(pdf_path: str,
                         and abs(bloco_uniao.x1 - fotos_unicas[0].x1) < 1
                         and abs(bloco_uniao.y1 - fotos_unicas[0].y1) < 1
                     )
+                    # Página "continuação" (sem cabeçalho no topo) também precisa de PDF (COD).jpg por apontamento.
                     clip_pdf = None
-                    if not pagina_continuacao and fotos_unicas:
+                    if fotos_unicas:
                         if so_foto:
                             fr0 = fotos_unicas[0]
                             clip_pdf = fitz.Rect(
@@ -660,38 +737,18 @@ def extrair_imagens_pdf(pdf_path: str,
                             )
                         elif bloco_uniao is not None:
                             clip_pdf = bloco_uniao
-                    clip_txt = None
-                    if not pagina_continuacao and fotos_unicas:
-                        clip_txt = _rect_texto_acima_fotos(page, fotos_unicas)
-                    if (
-                        pasta_unica
-                        and
-                        clip_txt
-                        and not pdf_imagem_ja_escrita_esta_pagina
-                        and clip_txt.get_area() > 400
-                    ):
-                        jpg_txt = _renderizar_jpg(page, clip_txt, dpi)
-                        if jpg_txt and not _eh_jpg_quase_em_branco(jpg_txt):
-                            nome_t = _nome_unico(f"Texto ({cod}).jpg")
-                            (p_pdf / nome_t).write_bytes(_redimensionar_pdf_ou_texto_jpg(jpg_txt))
-                            salvos.append(str(p_pdf / nome_t))
-                    if (
-                        clip_pdf
-                        and not pdf_imagem_ja_escrita_esta_pagina
-                        and clip_pdf.get_area() > 500
-                    ):
+                    if clip_pdf and not pasta_unica and clip_pdf.get_area() > 500:
                         jpg_pdf = _renderizar_jpg(page, clip_pdf, dpi)
                         if jpg_pdf and not _eh_jpg_quase_em_branco(jpg_pdf):
                             nome = _nome_unico(f"PDF ({cod}).jpg")
-                            (p_pdf / nome).write_bytes(_redimensionar_pdf_ou_texto_jpg(jpg_pdf))
+                            escrever_bytes_caminho(p_pdf / nome, _redimensionar_pdf_ou_texto_jpg(jpg_pdf))
                             salvos.append(str(p_pdf / nome))
-                            pdf_imagem_ja_escrita_esta_pagina = True
                     for fr in fotos_unicas:
                         jpg_foto = _renderizar_jpg(page, fr, dpi)
                         if jpg_foto and not _eh_jpg_quase_em_branco(jpg_foto):
                             jpg_foto = _redimensionar_nc_jpg(jpg_foto)
                             nome = _nome_unico(f"nc ({cod}).jpg")
-                            (p_nc / nome).write_bytes(jpg_foto)
+                            escrever_bytes_caminho(p_nc / nome, jpg_foto)
                             salvos.append(str(p_nc / nome))
                 except Exception as e:
                     logger.warning("Página %s flush_grupo (%s): %s", page_num + 1, cod, e)
@@ -701,31 +758,72 @@ def extrair_imagens_pdf(pdf_path: str,
             grupo_codigo = None
 
             try:
-                for bloco_rect, foto_rect in blocos:
+                for bi, (bloco_rect, foto_rect) in enumerate(blocos):
                     codigo_extraido = _extrair_codigo_nc(page, bloco_rect)
                     if not codigo_extraido:
-                        codigo_extraido = _extrair_codigo_nc(page, page.rect)
+                        y_top_faixa = page.rect.y0 if bi == 0 else (blocos[bi - 1][1].y1 + FOLGA_APOS_FOTO_ANT)
+                        y_bot_faixa = foto_rect.y0
+                        if y_bot_faixa > y_top_faixa + 8:
+                            clip_nc = fitz.Rect(page.rect.x0, y_top_faixa, page.rect.x1, y_bot_faixa)
+                            codigo_extraido = _extrair_codigo_nc(page, clip_nc)
                     if usar_indice:
                         if codigo_extraido or ultimo_codigo is None:
                             nc_global += 1
                             ultimo_codigo = str(nc_global).zfill(5)
                         codigo_nome = ultimo_codigo
                     else:
-                        nc_global += 1
-                        if codigo_extraido:
-                            codigo = codigo_extraido
-                            ultimo_codigo = codigo
-                            if codigo_idx < len(codigos_doc):
+                        # Várias NCs / páginas: não incrementar sequência por cada foto; não consumir
+                        # parse_pdf_nc a cada bloco (evita trocar código no meio da mesma NC).
+                        origem_doc = False
+                        usou_ce_ou_topo = False
+                        if pagina_continuacao and ultimo_codigo:
+                            codigo_raw = ultimo_codigo
+                        elif codigo_extraido:
+                            codigo_raw = codigo_extraido.strip()
+                            usou_ce_ou_topo = True
+                        elif bi == 0 and not pagina_continuacao and codigo_topo_pagina:
+                            codigo_raw = codigo_topo_pagina
+                            usou_ce_ou_topo = True
+                        elif ultimo_codigo:
+                            y_top_m = page.rect.y0 if bi == 0 else (blocos[bi - 1][1].y1 + FOLGA_APOS_FOTO_ANT)
+                            trecho_entre = _texto_faixa_entre_y(page, y_top_m, foto_rect.y0)
+                            if not _faixa_sugere_nova_nc(trecho_entre):
+                                codigo_raw = ultimo_codigo.strip()
+                            elif codigo_idx < len(codigos_doc):
+                                codigo_raw = (codigos_doc[codigo_idx] or "").strip()
                                 codigo_idx += 1
-                        elif codigo_idx < len(codigos_doc) and _eh_codigo_fiscalizacao_valido(codigos_doc[codigo_idx]):
-                            codigo = codigos_doc[codigo_idx]
+                                origem_doc = True
+                            else:
+                                nc_global += 1
+                                codigo_raw = str(nc_global)
+                        elif codigo_idx < len(codigos_doc):
+                            codigo_raw = (codigos_doc[codigo_idx] or "").strip()
                             codigo_idx += 1
-                            ultimo_codigo = codigo
+                            origem_doc = True
                         else:
-                            codigo = ultimo_codigo if ultimo_codigo else str(nc_global)
-                        codigo_nome = _formatar_codigo_arquivo(codigo)
-                    if not codigo_nome or codigo_nome.upper().startswith("LOTE"):
-                        codigo_nome = str(nc_global)
+                            nc_global += 1
+                            codigo_raw = str(nc_global)
+
+                        if not codigo_raw or (isinstance(codigo_raw, str) and codigo_raw.upper().startswith("LOTE")):
+                            nc_global += 1
+                            codigo_raw = str(nc_global)
+
+                        ultimo_codigo = codigo_raw
+                        codigo_nome = _formatar_codigo_arquivo(codigo_raw)
+                        if not codigo_nome or codigo_nome.upper().startswith("LOTE"):
+                            nc_global += 1
+                            codigo_raw = str(nc_global)
+                            ultimo_codigo = codigo_raw
+                            codigo_nome = _formatar_codigo_arquivo(codigo_raw)
+
+                        if (
+                            not origem_doc
+                            and usou_ce_ou_topo
+                            and codigos_doc
+                            and codigo_idx < len(codigos_doc)
+                            and _codigos_coincidem(codigo_raw, codigos_doc[codigo_idx])
+                        ):
+                            codigo_idx += 1
 
                     if grupo_codigo is not None and grupo_codigo != codigo_nome:
                         flush_grupo(grupo_rect, grupo_fotos, grupo_codigo)
@@ -761,8 +859,10 @@ def extrair_imagens_pdf(pdf_path: str,
 
 def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: Optional[int] = None,
                          nomear_por_indice_fiscalizacao: bool = False,
-                         pasta_unica: bool = False) -> tuple[bytes, int]:
-    """PDF → ZIP. pasta_unica: Texto/PDF/nc na mesma pasta (ex.: Artemig lote 50)."""
+                         pasta_unica: bool = False,
+                         raiz_unica_sem_subpastas: bool = False,
+                         nome_pdf_original: Optional[str] = None) -> tuple[bytes, int]:
+    """PDF → ZIP. pasta_unica (Artemig): só nc (*.jpg) + PDF integral. raiz_unica_sem_subpastas: plano ARTESP."""
     _check_deps()
     import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -776,16 +876,23 @@ def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: Optional[int] = None,
             dpi=dpi,
             nomear_por_indice_fiscalizacao=nomear_por_indice_fiscalizacao,
             pasta_unica=pasta_unica,
+            raiz_unica_sem_subpastas=raiz_unica_sem_subpastas,
         )
-        pasta_raiz = pasta_saida.resolve()
+        if pasta_unica:
+            dest_pdf = pasta_saida / nome_pdf_original_seguro_zip(nome_pdf_original)
+            dest_pdf.write_bytes(pdf_bytes)
+            salvos.append(str(dest_pdf.resolve()))
         buf = io.BytesIO()
+        arcs_usados: set[str] = set()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in salvos:
                 fp = Path(f)
-                try:
-                    arc = str(fp.relative_to(pasta_raiz)).replace("\\", "/")
-                except ValueError:
-                    arc = fp.name
+                arc = fp.name
+                n_dup = 1
+                while arc in arcs_usados:
+                    arc = f"{fp.stem}_{n_dup}{fp.suffix or '.jpg'}"
+                    n_dup += 1
+                arcs_usados.add(arc)
                 zf.write(fp, arc)
-        n_ncs = len([f for f in salvos if Path(f).name.startswith("PDF (")])
+        n_ncs = len([f for f in salvos if Path(f).name.lower().startswith("nc (")])
         return buf.getvalue(), n_ncs

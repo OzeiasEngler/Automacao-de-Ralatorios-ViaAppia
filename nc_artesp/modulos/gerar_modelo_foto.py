@@ -22,6 +22,8 @@ duas saídas (sequência macros Artesp 02): Kria e Resposta.
 
 import logging
 import warnings
+import re
+import unicodedata
 from copy import copy
 from datetime import datetime
 from io import BytesIO
@@ -66,6 +68,8 @@ from utils.helpers import (
     timestamp_agora,
     timestamp_completo,
     caminho_dentro_limite_windows,
+    encontrar_foto_por_codigo_ou_numero,
+    str_caminho_io_windows,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,20 +120,93 @@ def _variantes_nome_foto(prefixo: str, num: object) -> list:
         pass
     return out
 
+
+def _numero_opcional_de_celula(num: object) -> int | None:
+    if num is None:
+        return None
+    s = str(num).strip()
+    if not s:
+        return None
+    try:
+        f = float(s.replace(",", "."))
+        if f != int(f):
+            return None
+        return int(f)
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _celula_parece_cabecalho_ou_coordenada(cod: str) -> bool:
+    """Coluna C com rótulo de planilha (Longitude, etc.) — não é código fiscalização."""
+    if not cod:
+        return True
+    s = str(cod).strip().lower()
+    if s in (
+        "longitude", "latitude", "lat", "long", "coordenada", "coordenadas",
+        "northing", "easting", "utm", "código", "codigo", "cod", "id",
+    ):
+        return True
+    if "longitude" in s or "latitude" in s:
+        return True
+    return False
+
+
+def _candidatos_identificador_foto(nc: dict) -> list:
+    """
+    Ordem de tentativa para casar arquivo no disco: código (col C), foto_id e col V.
+    Prioriza o padrão histórico de renomeação por código de fiscalização.
+    """
+    seen: set[str] = set()
+    out: list = []
+
+    def add(v: object) -> None:
+        if v is None:
+            return
+        if isinstance(v, float) and v == int(v):
+            v = int(v)
+        s = str(v).strip()
+        if not s or s == "0":
+            return
+        key = s.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(v)
+
+    cod = (nc.get("codigo") or "").strip() if nc.get("codigo") is not None else ""
+    if cod and not cod.upper().startswith("LOTE") and not _celula_parece_cabecalho_ou_coordenada(cod):
+        add(cod)
+    add(nc.get("foto_id", nc.get("num_foto")))
+    add(nc.get("num_foto"))
+    return out
+
+
 def path_foto_nc(pasta: Path, num: object) -> Path:
     """Foto de campo  →  nc (N).jpg ou nc (00000).jpg   — usada no relatório Kria."""
     if not pasta:
         return Path()
     if not pasta.is_dir():
         return pasta / f"nc ({num}).jpg"
+    bases = []
+    sub_nc = pasta / "nc"
+    if sub_nc.is_dir():
+        bases.append(sub_nc)
+    bases.append(pasta)
     for nome in _variantes_nome_foto("nc", num):
-        direto = pasta / nome
-        if direto.exists():
-            return direto
-        for p in pasta.rglob(nome):
-            if p.is_file():
-                return p
-    return pasta / f"nc ({num}).jpg"
+        for base in bases:
+            direto = base / nome
+            if direto.exists():
+                return direto
+    nu = _numero_opcional_de_celula(num)
+    cs = str(num).strip() if num is not None else ""
+    enr = encontrar_foto_por_codigo_ou_numero(pasta, "nc", codigo=cs or None, numero=nu)
+    if enr is not None and enr.is_file():
+        return enr
+    # Fallback de compatibilidade para prefixo em caixa diferente
+    enr2 = encontrar_foto_por_codigo_ou_numero(pasta, "NC", codigo=cs or None, numero=nu)
+    if enr2 is not None and enr2.is_file():
+        return enr2
+    return bases[0] / f"nc ({num}).jpg"
 
 def path_foto_pdf(pasta: Path, num: object) -> Path:
     """Foto extraída do PDF  →  PDF (N).jpg   — usada no relatório Resposta. Não alterar."""
@@ -137,14 +214,26 @@ def path_foto_pdf(pasta: Path, num: object) -> Path:
         return Path()
     if not pasta.is_dir():
         return pasta / f"PDF ({num}).jpg"
+    bases = []
+    sub_pdf = pasta / "PDF"
+    if sub_pdf.is_dir():
+        bases.append(sub_pdf)
+    bases.append(pasta)
     nome = f"PDF ({num}).jpg"
-    direto = pasta / nome
-    if direto.exists():
-        return direto
-    for p in pasta.rglob(nome):
-        if p.is_file():
-            return p
-    return direto
+    for base in bases:
+        direto = base / nome
+        if direto.exists():
+            return direto
+    nu = _numero_opcional_de_celula(num)
+    cs = str(num).strip() if num is not None else ""
+    enr = encontrar_foto_por_codigo_ou_numero(pasta, "PDF", codigo=cs or None, numero=nu)
+    if enr is not None and enr.is_file():
+        return enr
+    # Fallback de compatibilidade para prefixo em caixa diferente
+    enr2 = encontrar_foto_por_codigo_ou_numero(pasta, "pdf", codigo=cs or None, numero=nu)
+    if enr2 is not None and enr2.is_file():
+        return enr2
+    return bases[0] / nome
 
 
 def path_foto_nc_segunda(pasta: Path, codigo: object) -> Path:
@@ -160,14 +249,19 @@ def path_foto_nc_segunda(pasta: Path, codigo: object) -> Path:
         variantes.append(f"nc ({n:05d})_1.jpg")
     except (TypeError, ValueError):
         pass
+    bases = []
+    if pasta.is_dir():
+        sub_nc = pasta / "nc"
+        if sub_nc.is_dir():
+            bases.append(sub_nc)
+        bases.append(pasta)
+    else:
+        bases.append(pasta.parent)
     for nome in variantes:
-        direto = pasta / nome if pasta.is_dir() else pasta.parent / nome
-        if direto.exists():
-            return direto
-        if pasta.is_dir():
-            for p in pasta.rglob(nome):
-                if p.is_file():
-                    return p
+        for base in bases:
+            direto = base / nome
+            if direto.exists():
+                return direto
     return Path()
 
 
@@ -377,6 +471,42 @@ def _detectar_col_data_reparo(ws, fallback: int = _DR) -> int:
 def _cell(ws, row, col):
     return ws.cell(row=row, column=col).value
 
+
+def _norm_header(s: str) -> str:
+    t = unicodedata.normalize("NFD", str(s or ""))
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", t).strip().lower()
+
+
+def _colunas_por_header(ws) -> dict[str, int]:
+    cols: dict[str, int] = {}
+    for c in range(1, ws.max_column + 1):
+        v = ws.cell(row=1, column=c).value
+        if v is None:
+            continue
+        k = _norm_header(v)
+        if k and k not in cols:
+            cols[k] = c
+    return cols
+
+
+def _extrair_ref_foto_de_nome(nome_foto: str) -> str:
+    s = str(nome_foto or "").strip()
+    if not s:
+        return ""
+    m = re.search(r"\(([^)]+)\)", s)
+    return (m.group(1).strip() if m else s)
+
+
+def _parse_km_para_partes(v) -> tuple[object, str]:
+    s = str(v or "").strip()
+    if not s:
+        return "", ""
+    if "+" in s:
+        a, b = s.split("+", 1)
+        return a.strip(), b.strip()
+    return s, ""
+
 def _detectar_linha_inicio_dados(ws, max_busca: int = 15) -> int:
     """Detecta a primeira linha com código na coluna C (não é cabeçalho). Fallback 5."""
     for r in range(1, min(max_busca + 1, ws.max_row + 1)):
@@ -389,13 +519,23 @@ def _detectar_linha_inicio_dados(ws, max_busca: int = 15) -> int:
         # Pular linhas de cabeçalho
         if s.upper().startswith("CÓDIGO") or "fiscalização" in s.lower() or s.lower() == "cod":
             continue
+        if _celula_parece_cabecalho_ou_coordenada(s):
+            continue
         return r
     return 5
 
 
 def _ler_ncs(ws, linha_inicio: int = 5) -> list:
-    linha_inicio = _detectar_linha_inicio_dados(ws) if linha_inicio == 5 else linha_inicio
-    col_data_reparo = _detectar_col_data_reparo(ws, fallback=_DR)
+    cols_hdr = _colunas_por_header(ws)
+    col_cod_kart = cols_hdr.get("codigo de fiscalizacao") or cols_hdr.get("codigo fiscalizacao")
+    is_layout_kartado = col_cod_kart is not None
+
+    if is_layout_kartado:
+        linha_inicio = 2
+        col_data_reparo = cols_hdr.get("prazo")
+    else:
+        linha_inicio = _detectar_linha_inicio_dados(ws) if linha_inicio == 5 else linha_inicio
+        col_data_reparo = _detectar_col_data_reparo(ws, fallback=_DR)
     ultima = ws.max_row
     for r in range(ultima, linha_inicio - 1, -1):
         if ws.cell(row=r, column=_D).value:
@@ -404,20 +544,38 @@ def _ler_ncs(ws, linha_inicio: int = 5) -> list:
 
     ncs = []
     for r in range(linha_inicio, ultima + 1):
-        cod      = str(_cell(ws, r, _C) or "").strip()
-        data_con = parse_data(_cell(ws, r, _D))
-        hora     = str(_cell(ws, r, _E) or "").strip()
-        rod_raw  = str(_cell(ws, r, _F) or "").strip()
-        km_i_int = _cell(ws, r, _H)
-        km_i_met = str(_cell(ws, r, _I) or "").strip()
-        km_f_int = _cell(ws, r, _J)
-        km_f_met = str(_cell(ws, r, _K) or "").strip()
-        sentido  = str(_cell(ws, r, _L) or "").strip()
-        tipo_nc  = str(_cell(ws, r, _Q) or "").strip()
-        num_foto = _cell(ws, r, _V)
-        data_rep = parse_data(_cell(ws, r, col_data_reparo))
+        if is_layout_kartado:
+            cod = str(_cell(ws, r, col_cod_kart) or "").strip()
+            data_con = parse_data(_cell(ws, r, cols_hdr.get("encontrado em") or 0))
+            hora = ""
+            rod_raw = str(_cell(ws, r, cols_hdr.get("rodovia") or 0) or "").strip()
+            rod_raw = rod_raw.replace("-", " ")
+            km_i_src = _cell(ws, r, cols_hdr.get("km") or 0)
+            km_f_src = _cell(ws, r, cols_hdr.get("km final") or 0)
+            km_i_int, km_i_met = _parse_km_para_partes(km_i_src)
+            km_f_int, km_f_met = _parse_km_para_partes(km_f_src)
+            sentido = str(_cell(ws, r, cols_hdr.get("sentido") or 0) or "").strip()
+            tipo_nc = str(_cell(ws, r, cols_hdr.get("classe") or 0) or "").strip()
+            foto_1_nome = str(_cell(ws, r, cols_hdr.get("foto_1") or 0) or "").strip()
+            num_foto = _extrair_ref_foto_de_nome(foto_1_nome) or cod
+            data_rep = parse_data(_cell(ws, r, col_data_reparo or 0))
+        else:
+            cod      = str(_cell(ws, r, _C) or "").strip()
+            data_con = parse_data(_cell(ws, r, _D))
+            hora     = str(_cell(ws, r, _E) or "").strip()
+            rod_raw  = str(_cell(ws, r, _F) or "").strip()
+            km_i_int = _cell(ws, r, _H)
+            km_i_met = str(_cell(ws, r, _I) or "").strip()
+            km_f_int = _cell(ws, r, _J)
+            km_f_met = str(_cell(ws, r, _K) or "").strip()
+            sentido  = str(_cell(ws, r, _L) or "").strip()
+            tipo_nc  = str(_cell(ws, r, _Q) or "").strip()
+            num_foto = _cell(ws, r, _V)
+            data_rep = parse_data(_cell(ws, r, col_data_reparo))
 
         if not cod:
+            continue
+        if _celula_parece_cabecalho_ou_coordenada(cod):
             continue
 
         rod_info = normalizar_rodovia_eaf(rod_raw, RODOVIAS)
@@ -425,10 +583,13 @@ def _ler_ncs(ws, linha_inicio: int = 5) -> list:
             num_foto_val = int(num_foto) if num_foto is not None and str(num_foto).strip() else 0
         except (TypeError, ValueError):
             num_foto_val = 0
-        # MA: col C = mesmo código da fiscalização que renomeia a foto (nunca "Lote").
-        # Conservação: col V (num_foto). Usar col C quando preenchida e não for Lote.
+        # Todas as fotos seguem identificação por código (col C), conforme fluxo histórico.
+        # Fallback para col V apenas quando o código estiver inválido/ausente.
         cod_ok = (cod and str(cod).strip() and not str(cod).strip().upper().startswith("LOTE"))
-        foto_id = cod if cod_ok else num_foto_val
+        if cod_ok and not _celula_parece_cabecalho_ou_coordenada(cod):
+            foto_id = cod
+        else:
+            foto_id = num_foto_val
         # Prazo em dias = data vencimento (reparo) − data constatação (para coluna L do Kria)
         prazo_dias = None
         if data_con is not None and data_rep is not None:
@@ -459,6 +620,76 @@ def _ler_ncs(ws, linha_inicio: int = 5) -> list:
 
     return ncs
 
+
+def listar_imagens_referenciadas_por_ncs(
+    ncs: list,
+    pasta_fotos_nc: Path | None,
+    pasta_fotos_pdf: Path | None,
+) -> list[Path]:
+    """
+    Caminhos existentes de imagens usadas no modelo Kria (nc/PDF) para a lista de NCs.
+    Usado para empacotar Excel + fotos num ZIP (entrega Kartado).
+    """
+    pn = pasta_fotos_nc if pasta_fotos_nc and pasta_fotos_nc.is_dir() else None
+    pp = pasta_fotos_pdf if pasta_fotos_pdf and pasta_fotos_pdf.is_dir() else None
+    paths: list[Path] = []
+    for nc in ncs:
+        if pn:
+            for cand in _candidatos_identificador_foto(nc):
+                p = path_foto_nc(pn, cand)
+                if p.is_file():
+                    paths.append(p)
+                    break
+            p2 = path_foto_nc_segunda(pn, nc["codigo"])
+            if p2.is_file():
+                paths.append(p2)
+        if pp:
+            for cand in _candidatos_identificador_foto(nc):
+                p3 = path_foto_pdf(pp, cand)
+                if p3.is_file():
+                    paths.append(p3)
+                    break
+    seen: set[str] = set()
+    out: list[Path] = []
+    for p in paths:
+        try:
+            k = str(p.resolve())
+        except OSError:
+            k = str(p)
+        if k not in seen:
+            seen.add(k)
+            out.append(p)
+    return out
+
+
+def _kartado_art03_zip_stem(ncs: list, arquivo_stem: str) -> str:
+    """
+    Stem do .zip alinhado à macro Kartado Art_03_KTD_Inserir_NC_Rot22:
+    ``ArquivoZip = … & serv(1) & ".zip"``.
+
+    - Entrada **layout Kartado** (cabeçalho linha 1): ``tipo_nc`` em ``ncs`` vem da coluna «Classe»
+      (texto tipo «Pav. - Panela_Buraco …») — equivalente ao serv(1) do Kria no Kartado.
+    - Entrada **layout EAF** (Art_022): ``tipo_nc`` é o texto da coluna Q da mãe; o nome do ficheiro
+      costuma seguir o padrão Art_011 ``… (RODOVIA - ABREV) - Prazo - …``; nesse caso usa-se o fallback
+      pelo parêntesis no ``arquivo_stem``.
+    """
+    if ncs:
+        t = (ncs[0].get("tipo_nc") or "").strip()
+        if t:
+            return sanitizar_nome(t, max_len=180).strip() or "pacote"
+    stem = (arquivo_stem or "").strip()
+    if stem:
+        m = re.search(r"\(([^)]+)\)", stem)
+        if m:
+            interior = m.group(1).strip()
+            if " - " in interior:
+                fb = interior.rsplit(" - ", 1)[-1].strip()
+                if fb:
+                    return sanitizar_nome(fb, max_len=180).strip() or "pacote"
+    s = sanitizar_nome(stem, max_len=180).strip() if stem else ""
+    return s or "pacote"
+
+
 # SAÍDA A – Planilha Kria  →  foto: nc (N).jpg
 
 def _gerar_kria(
@@ -484,10 +715,10 @@ def _gerar_kria(
       j+2: C="Vencimento",  D=data_reparo,  F=data_con,  H=relatorio,  L=prazo
     """
     if isinstance(modelo, Path):
-        if not modelo.exists():
+        if not Path(str_caminho_io_windows(modelo)).exists():
             logger.error(f"Modelo Kria não encontrado: {modelo}")
             return None
-        modelo_src = str(modelo)
+        modelo_src = str_caminho_io_windows(modelo)
     else:
         modelo_src = BytesIO(modelo)
 
@@ -503,7 +734,7 @@ def _gerar_kria(
     n_ncs = len(ncs)
     if n_ncs == 0:
         logger.warning("Nenhuma NC para inserir na planilha Kria.")
-        wb.save(str(destino))
+        wb.save(str_caminho_io_windows(destino))
         wb.close()
         return destino
 
@@ -562,15 +793,22 @@ def _gerar_kria(
         ws.cell(row=j + 2, column=8).value  = relatorio
         ws.cell(row=j + 2, column=12).value = prazo_l
 
-        # ── Foto: col C = Código da Fiscalização (ex.: 902531) identifica todas as fotos; fallback col V ──
+        # ── Foto: tenta foto_id, depois col V, depois col C (extrator pode nomear por nº ou por código) ──
         cell_foto = f"C{j - 1}"
-        foto_id = nc.get("foto_id", nc["num_foto"])
-        foto_path = path_foto_nc(pasta_fotos_nc, foto_id)
-        if not foto_path.is_file() and pasta_fotos_pdf_fallback and pasta_fotos_pdf_fallback.is_dir():
-            foto_path = path_foto_nc(pasta_fotos_pdf_fallback, foto_id)
-        foto2_path = path_foto_nc_segunda(pasta_fotos_nc, foto_id)
+        foto_path = Path()
+        for cand in _candidatos_identificador_foto(nc):
+            foto_path = path_foto_nc(pasta_fotos_nc, cand)
+            if foto_path.is_file():
+                break
+            if pasta_fotos_pdf_fallback and pasta_fotos_pdf_fallback.is_dir():
+                foto_path = path_foto_nc(pasta_fotos_pdf_fallback, cand)
+                if foto_path.is_file():
+                    break
+        if not foto_path.is_file():
+            foto_path = path_foto_nc(pasta_fotos_nc, nc.get("foto_id", nc["num_foto"]))
+        foto2_path = path_foto_nc_segunda(pasta_fotos_nc, nc["codigo"])
         if not foto2_path.is_file() and pasta_fotos_pdf_fallback and pasta_fotos_pdf_fallback.is_dir():
-            foto2_path = path_foto_nc_segunda(pasta_fotos_pdf_fallback, foto_id)
+            foto2_path = path_foto_nc_segunda(pasta_fotos_pdf_fallback, nc["codigo"])
         if foto_path.is_file() and foto2_path.is_file():
             _inserir_duas_imagens_ma(ws, cell_foto, foto_path, foto2_path, M02_FOTO_W, M02_FOTO_H)
             logger.debug(f"  [Kria] Duas fotos nc inseridas (MA): {foto_path.name} + {foto2_path.name} → {cell_foto}")
@@ -578,9 +816,12 @@ def _gerar_kria(
             _inserir_imagem(ws, cell_foto, foto_path, M02_FOTO_W, M02_FOTO_H)
             logger.debug(f"  [Kria] Foto nc inserida: {foto_path.name} → {cell_foto}")
         else:
-            logger.warning(f"  [Kria] Foto não encontrada: nc ({foto_id}).jpg")
+            logger.warning(
+                "  [Kria] Foto não encontrada (tentado %s): nc/PDF por identificador",
+                ", ".join(repr(c) for c in _candidatos_identificador_foto(nc)) or "(vazio)",
+            )
 
-    wb.save(str(destino))
+    wb.save(str_caminho_io_windows(destino))
     wb.close()
     logger.info(f"Saída A (Kria) salva: {destino.name}")
     return destino
@@ -606,10 +847,10 @@ def _gerar_resposta(
     NC 2 em diante: duplica bloco 1→28 ABAIXO do anterior e repete o padrão.
     """
     if isinstance(modelo, Path):
-        if not modelo.exists():
+        if not Path(str_caminho_io_windows(modelo)).exists():
             logger.error(f"Modelo de resposta não encontrado: {modelo}")
             return None
-        modelo_src = str(modelo)
+        modelo_src = str_caminho_io_windows(modelo)
     else:
         modelo_src = BytesIO(modelo)
     if not ncs:
@@ -657,14 +898,22 @@ def _gerar_resposta(
     ws.cell(row=1, column=2).value = ""
     ws.cell(row=2, column=2).value = _cabecalho_curto(nc1, dr_str, dc_str)
 
-    # Foto PDF: MA = PDF (codigo).jpg; conservação = PDF (num_foto).jpg
-    foto_id1 = nc1.get("foto_id", nc1["num_foto"])
-    foto1 = path_foto_pdf(pasta_fotos_pdf, foto_id1)
+    # Foto PDF: tenta foto_id, col V, col C (nomes PDF (N).jpg ou PDF (código).jpg)
+    foto1 = Path()
+    for cand in _candidatos_identificador_foto(nc1):
+        foto1 = path_foto_pdf(pasta_fotos_pdf, cand)
+        if foto1.is_file():
+            break
+    if not foto1.is_file():
+        foto1 = path_foto_pdf(pasta_fotos_pdf, nc1.get("foto_id", nc1["num_foto"]))
     if foto1.exists():
         _inserir_imagem(ws, "B2", foto1, M02_FOTO_PDF_W, M02_FOTO_PDF_H)
         logger.debug(f"  [Resposta] Foto PDF inserida: {foto1.name} → B2")
     else:
-        logger.warning(f"  [Resposta] Foto PDF não encontrada: PDF ({foto_id1}).jpg")
+        logger.warning(
+            "  [Resposta] Foto PDF não encontrada (tentado %s)",
+            ", ".join(repr(c) for c in _candidatos_identificador_foto(nc1)) or "(vazio)",
+        )
 
     linha = 1  # ponteiro para o início do bloco atual
 
@@ -696,19 +945,26 @@ def _gerar_resposta(
         ws.cell(row=dst_start,     column=2).value = ""
         ws.cell(row=dst_start + 1, column=2).value = _cabecalho_curto(nc, nc_dr_s, nc_dc_s)
 
-        # Foto PDF: MA = PDF (codigo).jpg; conservação = PDF (num_foto).jpg
-        foto_id_v = nc.get("foto_id", nc["num_foto"])
-        foto_v    = path_foto_pdf(pasta_fotos_pdf, foto_id_v)
+        foto_v = Path()
+        for cand in _candidatos_identificador_foto(nc):
+            foto_v = path_foto_pdf(pasta_fotos_pdf, cand)
+            if foto_v.is_file():
+                break
+        if not foto_v.is_file():
+            foto_v = path_foto_pdf(pasta_fotos_pdf, nc.get("foto_id", nc["num_foto"]))
         cell_foto = f"B{dst_start + 1}"
         if foto_v.exists():
             _inserir_imagem(ws, cell_foto, foto_v, M02_FOTO_PDF_W, M02_FOTO_PDF_H)
             logger.debug(f"  [Resposta] Foto PDF inserida: {foto_v.name} → {cell_foto}")
         else:
-            logger.warning(f"  [Resposta] Foto PDF não encontrada: PDF ({foto_id_v}).jpg")
+            logger.warning(
+                "  [Resposta] Foto PDF não encontrada (tentado %s)",
+                ", ".join(repr(c) for c in _candidatos_identificador_foto(nc)) or "(vazio)",
+            )
 
         linha = dst_start  # avança ponteiro
 
-    wb.save(str(destino))
+    wb.save(str_caminho_io_windows(destino))
     wb.close()
     logger.info(f"Saída B (Resposta) salva: {destino.name}")
     return destino
@@ -731,7 +987,8 @@ def executar(
       - Kria    (Saída A) com fotos  nc (N).jpg
       - Resposta (Saída B) com fotos  PDF (N).jpg
 
-    Retorna dict: { 'kria': [...], 'resposta': [...], 'erros': [...] }
+    Retorna dict: { 'kria': [...], 'resposta': [...], 'erros': [...],
+                    'kartado_pacotes': [ { 'kria': Path, 'imagens': [Path,...], 'zip_stem': str }, ... ] }
     """
     pasta_xls        = pasta_xls        or M01_EXPORTAR
     modelo_kria      = modelo_kria      or M02_MODELO_KRIA
@@ -752,10 +1009,10 @@ def executar(
 
     if not arquivos:
         logger.warning(f"Nenhum XLS encontrado em: {pasta_xls}")
-        return {"kria": [], "resposta": [], "erros": []}
+        return {"kria": [], "resposta": [], "erros": [], "kartado_pacotes": []}
 
     logger.info(f"Módulo 02: {len(arquivos)} arquivo(s) para processar.")
-    resultados = {"kria": [], "resposta": [], "erros": []}
+    resultados: dict = {"kria": [], "resposta": [], "erros": [], "kartado_pacotes": []}
 
     # Carregar modelos uma vez em memória (evita N leituras em disco — acelera muito)
     modelo_kria_bytes = None
@@ -807,6 +1064,13 @@ def executar(
             )
             if arq_kria:
                 resultados["kria"].append(arq_kria)
+                imgs = listar_imagens_referenciadas_por_ncs(
+                    ncs, pasta_fotos_nc, pasta_fotos_pdf
+                )
+                zip_stem = _kartado_art03_zip_stem(ncs, arq.stem)
+                resultados["kartado_pacotes"].append(
+                    {"kria": arq_kria, "imagens": imgs, "zip_stem": zip_stem}
+                )
 
             modelo_resp_eff = modelo_resp_bytes if modelo_resp_bytes is not None else modelo_resposta
             arq_resp = _gerar_resposta(

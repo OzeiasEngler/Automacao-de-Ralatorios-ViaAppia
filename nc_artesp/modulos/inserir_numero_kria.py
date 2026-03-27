@@ -16,7 +16,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from config import M05_COL_NUMERO, M05_SUFIXO
-from utils.helpers import garantir_pasta
+from utils.helpers import garantir_pasta, str_caminho_io_windows
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def executar(arquivo: Path, numero_inicial: int,
     col_idx = _col_idx(coluna)
 
     logger.info(f"Abrindo: {arquivo.name}")
-    wb = load_workbook(str(arquivo))
+    wb = load_workbook(str_caminho_io_windows(arquivo))
     ws = wb.active
 
     # Encontrar última linha com dados (col A)
@@ -72,7 +72,7 @@ def executar(arquivo: Path, numero_inicial: int,
         if callback_progresso and idx % 10 == 0:
             callback_progresso(idx + 1, total, f"Numerando linha {r}...")
 
-    wb.save(str(arquivo))
+    wb.save(str_caminho_io_windows(arquivo))
     wb.close()
 
     logger.info(f"Módulo 05 concluído. {total} evento(s) numerado(s).")

@@ -24,6 +24,15 @@ def _env_int(key: str, default: int) -> int:
     except ValueError:
         return default
 
+
+def _env_bool(key: str, default: bool) -> bool:
+    v = (os.environ.get(key) or "").strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    return default
+
 _BASE = Path(_env_str("ARTESP_NC_BASE", r"C:\AUTOMAÇÃO_MACROS\Macros Kcor Ellen\artesp_nc_v2.0"))
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -78,6 +87,136 @@ NOMES_TEMPLATE_RELATORIO = (
 # Data do reparo = data do envio + N dias quando não informada
 PRAZO_DIAS_APOS_ENVIO   = _env_int("ARTESP_PRAZO_DIAS_APOS_ENVIO", 10)
 
+# ── M01: Separar NC (exportação por grupo / por NC) ──
+# Padrão False (desktop/scripts): um .xlsx por serviço Kartado — cola linhas no template;
+#   mapa col Q → ficheiro = M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO (derivado de ART03 + extensão .xlsx).
+# True (ARTESP_M01_COPIA_PLANILHA_MAE=1): igual macro Art_011 — cópia da planilha-mãe EAF com linhas apagadas.
+# API (FastAPI): por omissão força cópia mãe via ``m01_kartado=false`` nos endpoints; use m01_kartado=true para Kartado.
+M01_COPIA_PLANILHA_MAE = _env_bool("ARTESP_M01_COPIA_PLANILHA_MAE", False)
+
+# Texto exato coluna Q da planilha-mãe EAF → token no nome do ficheiro exportado (Art_011).
+# Manter em sincronia com os ElseIf serv = … em:
+#   nc_artesp/Macros/01 - Art_011_EAF_Separar_Mod_Exc_NC.bas
+M01_SERVICO_ABREV_ART011: dict[str, str] = {
+    "Pichação ao longo da rodovia": "PICHAÇÃO",
+    "Substituição de pano rol. Medianamente comprometido": "PAVIMENTO",
+    "Reparo definitivo com recorte": "REPARO RECORTE",
+    "Remoção de lixo doméstico das instalações": "LIXO INST",
+    "Reparo de elemento de drenagem - manutenção": "REPARO DE DRENAGEM",
+    "Despraguejamento": "DESPRAGUEJAMENTO",
+    "Aceiros": "ACEIRO",
+    "Selagem de trincas": "SELAGEM TRINCA",
+    "Limpeza e varredura de áreas pavimentadas": "LIMPEZA DE PAVIMENTO",
+    "Remoção de lixo e entulho da faixa de domínio": "REMOÇÃO LIXO_ENTULHO",
+    "Defensa metálica (manutenção ou substituição)": "REPARO DE DEFENSA",
+    "Depressão ou recalque de pequena extensão": "PAVIMENTO - DEPRESSÃO",
+    "Buraco ou panela": "PANELA",
+    "Panela ou buraco na faixa rolamento": "PANELA",
+    "Reparo e reposição de cerca": "REPARO CERCA",
+    "Manutenção árvores e arbustos": "MANUTENÇÃO ÁRVORES",
+    "Drenagem fora de  plataforma limpeza geral": "LIMP DRENAGEM FORA PLAT",
+    "Drenagem fora de plataforma limpeza geral": "LIMP DRENAGEM FORA PLAT",
+    "Remoção de árvores ou galhos que não tem risco": "REMOÇÃO DE GALHOS",
+    "Drenagem plataforma limpeza geral": "LIMP DRENAGEM PLAT",
+    "Recomposição de erosão em corte / aterro": "EROSÃO",
+    "Substituição de junta de dilatação": "JUNTA DILATAÇÃO",
+    "Juntas e trincas: Limpeza e Resselagem": "JUNTA DILATAÇÃO - LIMPEZA",
+    "Depressão em encontro de obra de arte": "DEPRESSÃO OAE",
+    "Recuperação do revestimento vegetal": "PLANTIO DE GRAMA",
+    "Remoção de massa verde": "MASSA VERDE",
+    "Drenagem profunda limpeza geral": "LIMP DE DRENAGEM PROF",
+    "Pavimentação/ Passeio/ Alambrado": "PRÉDIO E PÁTIO - OUTROS",
+    "Poda manual ou mecanizada": "PODA DO REVESTIMENTO",
+    "Bueiros limpeza geral": "BUEIROS - LIMPEZA",
+    "Bordos e lajes quebrados reparo definitivo com recorte": "PAVIMENTO RIGIDO",
+    "Correção de degrau entre pista e acostam. não pavimentado": "DEGRAU PISTA_ACOSTAMENTO",
+    "Correção de degrau entre a pista e acostamento": "DEGRAU PISTA_ACOSTAMENTO",
+    "Desobstrução de elemento de drenagem": "DESOBSTRUÇÃO DE DRENAGEM",
+    "Conformação lateral": "CONFORMAÇÃO LATERAL",
+    "Pichações e vandalismo": "PICHAÇÃO",
+    "Hidráulica/ Esgoto/ Drenagem": "HIDR_ESG_DREN",
+    "Barreira rígida manutenção e ou reparo": "BARREIRA RIGIDA",
+    "Reconformação de vias secundárias": "CONFORM. LATERAL",
+    "Louças/ Metais": "PREDIO - LOUÇAS_METAIS",
+}
+
+M01_DICAS_PALAVRA_TEMPLATE_KARTADO: list[tuple[str, str]] = [
+    ("panela", "Panela_Buraco"),
+    ("buraco", "Panela_Buraco"),
+    ("capina", "Capina"),
+    ("dren", "Dren."),
+    ("defensa", "Defensa"),
+    ("eros", "Eros"),
+    ("alambrado", "Alambrado"),
+]
+
+# M01 modo Kartado (templates por atividade): texto da coluna Q da EAF (tipo de NC / atividade)
+# → nome do ficheiro .xlsx do Kartado (ex. «Pav. - Panela_Buraco.xlsx»), alinhado à macro Art_03_KTD / planilhas padrão.
+# Isto NÃO é a coluna «Classe» do Excel layout Kartado: essa coluna (cabeçalho linha 1) serve no M02/ZIP
+# para o stem do .zip, enquanto a chave aqui é sempre o texto da coluna Q da mãe EAF.
+ART03_ATIVIDADE_PARA_SERVICO_KARTADO: dict[str, str] = {
+    "Reparo e reposição de alambrado": "CTA - Alambrado - Danificado",
+    "Reparo e reposição de cerca": "CTA - Cerca - Danificada",
+    "Elemento antiofuscante(substituição ou reposição)": "CTA - Tela Antiofuscante - Danificada",
+    "Barreira rígida manutenção e ou reparo": "DC - Barreira Rígida - Danificada",
+    "Barreira rígida danificada": "DC - Barreira Rígida - Danificada",
+    "Reparo e substituição": "DC - Defensa Metálica_Terminais - Danificada",
+    "Defensa metálica": "DC - Defensa Metálica_Terminais - Danificada",
+    "Defensa metálica (manutenção ou substituição)": "DC - Defensa Metálica_Terminais - Danificada",
+    "Defensa metálica danificada": "DC - Defensa Metálica_Terminais - Danificada",
+    "Bueiros limpeza geral": "Dren. - Caixas - Limpeza",
+    "Drenagem profunda limpeza geral": "Dren. - Linha de Tubo - Limpeza",
+    "Desobstrução de elemento de drenagem": "Dren. - Montante_Jusante - Limpeza",
+    "Drenagem fora de plataforma limpeza geral": "Dren. - Montante_Jusante - Limpeza",
+    "Drenagem fora de  plataforma limpeza geral": "Dren. - Montante_Jusante - Limpeza",
+    "Drenagem plataforma limpeza geral": "Dren. - Superficial - Limpeza",
+    "Drenagem limpeza geral": "Dren. - Superficial - Limpeza",
+    "Reparo de elemento de drenagem - manutenção": "Dren. - Superficial - Reparo",
+    "Reparo de elemento de drenagem em risco a rodovia": "Dren. - Superficial - Reparo",
+    "Reparo de elemento de drenagem  (manutenção)": "Dren. - Superficial - Reparo",
+    "Conformação lateral": "FD - Conformação Lateral",
+    "Despraguejamento": "FD - Controle Fitossanitário",
+    "Recomposição de erosão em corte / aterro": "FD - Erosão",
+    "Remoção material e limpeza plataforma": "FD - Erosão",
+    "Remoção de lixo e entulho da faixa de domínio": "FD - Lixo_Entulho",
+    "Remoção de lixo doméstico das instalações": "FD - Lixo_Entulho",
+    "Pichações e vandalismo": "FD - Pichação",
+    "Pichação ao longo da rodovia": "FD - Pichação",
+    "Hidráulica/ Esgoto/ Drenagem": "FD - Prédio e Pátio",
+    "Pavimentação/ Passeio/ Alambrado": "FD - Prédio e Pátio",
+    "Limpeza ou pintura de superfície exposta ao trafego": "FD - Utilidades Públicas - Limpeza_Reparo",
+    "Substituição de aparelho de apoio": "OAE - Estrutura - Danos",
+    "Guarda-corpo danificado": "OAE - Guarda corpos e Balaústres - Danificado",
+    "Substituição de junta de dilatação": "OAE - Junta de Dilatação",
+    "Juntas e trincas: Limpeza e Resselagem": "OAE - Limpeza",
+    "Correção de degrau entre pista e acostam. não pavimentado": "Pav. - Degrau",
+    "Correção de degrau entre a pista e acostamento": "Pav. - Degrau",
+    "Depressão ou recalque de pequena extensão": "Pav. - Depressão ou Recalque",
+    "Limpeza de áreas pavimentadas": "Pav. - Limpeza",
+    "Limpeza e varredura de áreas pavimentadas": "Pav. - Limpeza",
+    "Panela ou buraco na faixa rolamento": "Pav. - Panela_Buraco",
+    "Buraco ou panela": "Pav. - Panela_Buraco",
+    "Reparo definitivo com recorte": "Pav. - Reparo com recorte",
+    "Bordos e lajes quebrados reparo definitivo com recorte": "Pav. - Reparo de Bordos e Lajes",
+    "Substituição de pano rol. comprometido": "Pav. - Substituição de Pano de Rolamento",
+    "Substituição de pano rol. Medianamente comprometido": "Pav. - Substituição de Pano de Rolamento",
+    "Selagem de trincas": "Pav. - Trincas",
+    "Aceiros": "VD - Vegetação - Aceiro",
+    "Capina": "VD - Vegetação - Capina Vegetação",
+    "Poda manual ou mecanizada": "VD - Vegetação - Poda do Revestimento Vegetal",
+    "Recuperação do revestimento vegetal": "VD - Vegetação - Recuperação do Revestimento (Plantio)",
+    "Remoção de massa verde": "VD - Vegetação - Remoção de Massa Seca",
+    "Corte e poda de árvores e arbustos em risco": "VD - Árvores e Arbustos - Manutenção_Poda Galhos",
+    "Manutenção árvores e arbustos": "VD - Árvores e Arbustos - Manutenção_Poda Galhos",
+    "Remoção de árvores ou galhos que não tem risco": "VD - Árvores e Arbustos - Remoção de Galhos",
+}
+
+# Mesmo mapeamento Art_03 → nome de ficheiro (.xlsx em nc_artesp/assets/templates ou fotos_campo/assets).
+M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO = {
+    k: (v if str(v).lower().endswith(".xlsx") else f"{v}.xlsx")
+    for k, v in ART03_ATIVIDADE_PARA_SERVICO_KARTADO.items()
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MÓDULO 02 — GERAR MODELO FOTO (macro Art_022)
 # Saída Kria:  Arquivos/Arquivo Foto - Conserva/  |  Nome: yyyymmdd-hhmm - {Artesp}.xlsx
@@ -130,6 +269,33 @@ M04_ACUMULADO  = _BASE / "Acumulado" / "Kcor_Acumulado.xlsx"  # arquivo acumulad
 M04_SAIDA      = _BASE / "Arquivos" / "Conservação" / "Acumulado"  # igual à macro
 M04_NOME_SAIDA = "Eventos Acumulado Artesp para Exportar Kria.xlsx"  # nome exato do relatório (macro)
 M04_MODELO_ACUMULADO = _nc_root / "assets" / "templates" / "Eventos Acumulado Artesp para Exportar Kria.xlsx"  # template padrão
+
+
+def resolver_template_acumulado_kcor_kria() -> Path | None:
+    """
+    Planilha-base do acumulado no layout Kcor-Kria (A1 = NumItem), independente do Kartado.
+    Ordem: env ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA → assets/_Planilha Modelo Kcor-Kria.XLSX
+    → templates/_Planilha Modelo Kcor-Kria (M03) → M04_MODELO_ACUMULADO → glob *Kcor*Kria* em assets/.
+    """
+    envp = _env_str("ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA", "").strip().strip('"').strip("'")
+    if envp:
+        p = Path(envp)
+        return p if p.is_file() else None
+    for p in (
+        _nc_root / "assets" / "_Planilha Modelo Kcor-Kria.XLSX",
+        _nc_root / "assets" / "_Planilha Modelo Kcor-Kria.xlsx",
+        M03_MODELO_KCOR,
+        M04_MODELO_ACUMULADO,
+    ):
+        if p.is_file():
+            return p
+    ad = _nc_root / "assets"
+    if ad.is_dir():
+        for g in sorted(ad.glob("*Kcor*Kria*.xls*")):
+            if g.is_file() and not g.name.startswith("~"):
+                return g
+    return None
+
 
 CABECALHO_KCOR_KRIA = [
     "NumItem", "Origem", "Motivo", "Classificação", "Tipo",

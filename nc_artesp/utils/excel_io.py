@@ -8,6 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+from .helpers import str_caminho_io_windows
+
 
 def aplicar_bordas(
     caminho_arquivo: "str | Path",
@@ -27,10 +29,10 @@ def aplicar_bordas(
     from openpyxl.styles import Border, Side
 
     caminho_arquivo = Path(caminho_arquivo)
-    if not caminho_arquivo.exists():
+    if not Path(str_caminho_io_windows(caminho_arquivo)).exists():
         raise FileNotFoundError(f"Arquivo não encontrado: {caminho_arquivo}")
 
-    wb = openpyxl.load_workbook(str(caminho_arquivo))
+    wb = openpyxl.load_workbook(str_caminho_io_windows(caminho_arquivo))
     ws = wb[nome_aba] if nome_aba else wb.active
 
     side = Side(style=estilo)
@@ -40,7 +42,7 @@ def aplicar_bordas(
         for cell in row:
             cell.border = thin_border
 
-    wb.save(str(caminho_arquivo))
+    wb.save(str_caminho_io_windows(caminho_arquivo))
 
 
 def xls_to_xlsx(path_xls: Path, dest: "Path | None" = None) -> Path:
@@ -66,7 +68,7 @@ def xls_to_xlsx(path_xls: Path, dest: "Path | None" = None) -> Path:
     import xlrd
     import openpyxl
 
-    book  = xlrd.open_workbook(str(path_xls))
+    book  = xlrd.open_workbook(str_caminho_io_windows(path_xls))
     sheet = book.sheet_by_index(0)
 
     wb = openpyxl.Workbook()
@@ -95,5 +97,5 @@ def xls_to_xlsx(path_xls: Path, dest: "Path | None" = None) -> Path:
             else:
                 xl_cell.value = cell.value
 
-    wb.save(str(path_xlsx))
+    wb.save(str_caminho_io_windows(path_xlsx))
     return path_xlsx

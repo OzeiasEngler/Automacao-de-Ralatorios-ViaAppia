@@ -1,60 +1,10 @@
 """
 modulos/inserir_nc_kria.py — Equivalente VBA:
-  • Art_03_Inserir_NC_Rot_Salva_apo  → modo='conservacao'
-  • Kria2_Inserir_NC_MA_Salvar_Img   → modo='meio_ambiente'
+  Art_03_Inserir_NC_Rot_Salva_apo (conservação) | Kria2_Inserir_NC_MA_Salvar_Img (MA).
 
-Para cada arquivo XLSX da pasta de entrada (formulário de foto com
-layout de 5 linhas por NC):
-
-  FASE 1 – Exportar imagem do bloco de células
-  ─────────────────────────────────────────────
-  Para cada NC (bloco de 5 linhas, âncora y):
-    • Captura o range C(y-3):F(y+1) como JPG via xlwings (COM) ou fallback Pillow
-    • Nome do JPG: yyyymmdd - hhmmss - n_Roti-NNNNNN-RODOVIA km,metro SENTIDO.jpg
-
-    [só módulo 03] Copia também pdf (N).jpg da pasta PDF para pasta Conservação
-
-  FASE 2 – Montar planilha Kcor-Kria
-  ────────────────────────────────────
-  Abre o modelo _Planilha Modelo Kcor-Kria.XLSX e preenche uma linha por NC.
-  Template: linha 1 = cabeçalhos A–Y, linha 2+ = dados. Preenchimento inicia
-  na coluna A (sem offset) para compatibilidade com importação no sistema Kcor.
-
-  Col | Conservação (mod 03)          | Meio Ambiente (mod 07)
-  ────┼───────────────────────────────┼──────────────────────────────────────
-   A  | sequencial (x)                | sequencial (x)
-   B  | "Artesp"                      | "Artesp"
-   C  | "2"                           | "2"
-   D  | classifica (do mapa serviços) | "Conservação Rotina"
-   E  | serv (tipo NC mapeado)        | "Reclassificar"
-   F  | rodovia (tag)                 | rodovia (tag)
-   G  | kminicial_t                   | kminicial_t
-   H  | kmfinal_t                     | kmfinal_t
-   I  | Sentido                       | Sentido
-   J  | (vazio)                       | (vazio)
-   K  | "Conservação"                 | "Conservação"
-   L  | executor                      | (vazio → offset 2 a partir de K)
-   M  | data (mm/dd/yyyy)             | data (mm/dd/yyyy)
-   N  | (vazio)                       | (vazio)
-   O  | data (mm/dd/yyyy) [DtInicio]  | data (mm/dd/yyyy)
-   P  | embasamento (DtFim)           | (vazio → offset 6 a partir de O)
-   S  | Prazo                         | Prazo
-   T  | Obs Gestor (rel + código)     | Obs Gestor (rel + código)
-   U  | Observações (texto+compl+emb) | Observações (texto+compl+emb)
-   V  | Diretório                     | Diretório
-   W  | arquivo.jpg                   | arquivo.jpg
-
-  FASE 3 – Finalização
-  ─────────────────────
-  • Salva Kcor-Kria em pasta de saída com timestamp
-  • Renomeia o arquivo de entrada para "_Processado - {nome}.xlsx"
-
-Layout do formulário de entrada (âncora y=9 = linha do km, equivale a j+1 do M02 com j=8):
-  y-3 (linha 6)  → B=número NC (col 2)  — início do range de captura C(y-3):F(y+1)
-  y-2 (linha 7)  → G=embasamento/data_reparo (col 7)
-  y-1 (linha 8)  → D=rodovia (col 4), F=sentido (col 6), G=texto/tipo NC (col 7)
-  y   (linha 9)  → D=km inicial (col 4), F=km final (col 6), H=código (col 8), L=foto/complemento (col 12)
-  y+1 (linha 10) → C="Vencimento", D=data reparo (col 4), F=data constatação (col 6), H=relatório (col 8), L=prazo dias (col 12)
+Formulário foto (.xlsx), bloco de M03_BLOCO linhas por NC (âncora M03_LINHA_INICIO) → planilha Kcor-Kria (A–Y).
+Colunas: CABECALHO_KCOR_KRIA em config. Colunas T e U gravadas sem quebra de linha na célula.
+Conservação: col W = «arquivo.jpg;pdf (ref).jpg» como na macro Art_03.
 """
 
 import logging
@@ -79,6 +29,8 @@ from utils.helpers import (
     caminho_dentro_limite_windows,
     copiar_arquivo,
     renomear_arquivo,
+    escrever_bytes_caminho,
+    str_caminho_io_windows,
     parse_data,
     encontrar_foto_por_codigo_ou_numero,
     path_foto_nc,
@@ -98,8 +50,6 @@ from utils.captura_celulas import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Mapeamento colunas Kcor-Kria (macro Kria2_Inserir_NC_MA): A=seq B=Artesp C=2 … V=diretório W=arquivo X=vazio Y=M05
 
 
 def _metros_de_km_t(km_t: str) -> str:
@@ -162,7 +112,7 @@ def gerar_eaf_desde_pdf_ma(
     destino = caminho_dentro_limite_windows(pasta_saida / nome_arquivo)
     import shutil
     shutil.copy2(template_eaf, destino)
-    wb = load_workbook(str(destino))
+    wb = load_workbook(str_caminho_io_windows(destino))
     ws = wb.active
 
     while ws.max_row >= PRIMEIRA_LINHA_DADOS:
@@ -206,7 +156,7 @@ def gerar_eaf_desde_pdf_ma(
         ws.cell(row=row, column=COL_GRUPO_ATIV).value = _g if _g is not None else ""
         ws.cell(row=row, column=COL_RESPONSAVEL).value = (reg.get("nome_fiscal") or "")[:100]
 
-    wb.save(str(destino))
+    wb.save(str_caminho_io_windows(destino))
     wb.close()
     logger.info("Planilha passo 1 (EAF) gerada desde PDF MA: %s (%s NCs)", destino.name, len(registros))
     return destino
@@ -267,7 +217,7 @@ def gerar_eaf_desde_pdfs_ma(
     garantir_pasta(pasta_saida)
     destino = caminho_dentro_limite_windows(pasta_saida / nome_arquivo)
     shutil.copy2(template_eaf, destino)
-    wb = load_workbook(str(destino))
+    wb = load_workbook(str_caminho_io_windows(destino))
     ws = wb.active
 
     while ws.max_row >= PRIMEIRA_LINHA_DADOS:
@@ -347,7 +297,7 @@ def gerar_eaf_desde_pdfs_ma(
                 prazo_val = prazo_val.strftime("%d/%m/%Y") if prazo_val else ""
             ws.cell(row=row, column=col_prazo).value = str(prazo_val)[:50]
 
-    wb.save(str(destino))
+    wb.save(str_caminho_io_windows(destino))
     wb.close()
     logger.info("Planilha passo 1 (EAF) gerada desde %s PDF(s) MA: %s (%s NCs)", len(list_pdf_bytes), destino.name, len(registros))
     return destino
@@ -405,7 +355,7 @@ def _processar_pdf_meio_ambiente(
         from ..pdf_extractor import extrair_imagens_pdf
         with tempfile.TemporaryDirectory() as tmpdir:
             pdf_path = Path(tmpdir) / "meio_ambiente.pdf"
-            pdf_path.write_bytes(pdf_bytes)
+            escrever_bytes_caminho(pdf_path, pdf_bytes)
             extrair_imagens_pdf(
                 str(pdf_path),
                 pasta_saida=str(pasta_imagens),
@@ -413,9 +363,8 @@ def _processar_pdf_meio_ambiente(
                 pasta_saida_pdf=str(pasta_imagens),
             )
     except Exception:
-        pass  # Este módulo prioriza extração de texto; fotos são tratadas no fluxo Extrair PDF
+        pass
 
-    # MA: fotos nomeadas pelo código do PDF (NC.13.1039); Modelo Foto busca por col C
     nomes_arquivo = []
     for seq, reg in enumerate(registros, start=1):
         f = encontrar_foto_por_codigo_ou_numero(
@@ -427,14 +376,12 @@ def _processar_pdf_meio_ambiente(
             )
         nomes_arquivo.append(f.name if f and f.exists() else "")
 
-    # Montar planilha Kcor-Kria (mesma lógica que FASE 2 para meio_ambiente)
     if not modelo_kcor.exists():
         logger.error(f"Modelo Kcor-Kria não encontrado: {modelo_kcor}")
         return None
 
     garantir_pasta(pasta_saida)
-    wb_kcor = load_workbook(str(modelo_kcor))
-    # Template pode ter várias abas; a "ativa" nem sempre é a do layout Kcor-Kria. Identificar pela aba com NumItem em A1 (igual M04).
+    wb_kcor = load_workbook(str_caminho_io_windows(modelo_kcor))
     ws_out = None
     for sheet in wb_kcor.worksheets:
         a1 = sheet.cell(row=1, column=1).value
@@ -446,16 +393,14 @@ def _processar_pdf_meio_ambiente(
     wb_kcor.active = ws_out
     col_data_envio, col_data_reparo = _detectar_colunas_data_kcor(ws_out)
 
-    # Uma linha por NC (r=2,3,…). Nunca pular colunas: importação Kcor exige A–Y contíguo.
+    diretorio_relatorio_macro = str(M07_IMAGENS)
     for seq, (reg, nome_arq) in enumerate(zip(registros, nomes_arquivo), start=1):
-        r = seq + 1  # linha 2 = 1ª NC, linha 3 = 2ª NC, …
+        r = seq + 1
         dt = reg["dt"]
         emb = parse_data(reg["embasamento"])
-        # Regra ARTESP/Kcor: datas em DD/MM/YYYY. strftime %d/%m/%Y evita Excel interpretar como MM/DD.
         dt_str = dt.strftime("%d/%m/%Y") if dt else ""
         emb_str = emb.strftime("%d/%m/%Y") if emb else ""
 
-        # A–Y sempre preenchidas (vazios = ""): macro VBA desliza colunas se alguma ficar em branco.
         ws_out.cell(row=r, column=_K_A).value = seq
         ws_out.cell(row=r, column=_K_B).value = "Artesp"
         ws_out.cell(row=r, column=_K_C).value = "2"
@@ -464,27 +409,29 @@ def _processar_pdf_meio_ambiente(
         ws_out.cell(row=r, column=_K_F).value = reg.get("rod_tag") or ""
         ws_out.cell(row=r, column=_K_G).value = reg.get("kminicial_t") or ""
         ws_out.cell(row=r, column=_K_H).value = reg.get("kmfinal_t") or reg.get("kminicial_t") or ""
-        # Col I: sentido sempre gravado como texto (Leste/Oeste/Norte/Sul/Interna/Externa)
         ws_out.cell(row=r, column=_K_I).value = _sentido_para_texto(reg.get("sentido") or "") or ""
         ws_out.cell(row=r, column=_K_J).value = ""
         ws_out.cell(row=r, column=_K_K).value = "Conservação"
-        ws_out.cell(row=r, column=_K_L).value = ""       # MA: vazio (macro não preenche L)
-        ws_out.cell(row=r, column=col_data_envio).value = dt_str   # M: Data Solicitação (data constatação)
-        ws_out.cell(row=r, column=_K_N).value = ""       # Data Suspensão
-        ws_out.cell(row=r, column=_K_O).value = dt_str   # O: DtInicio_Prog (data constatação)
-        ws_out.cell(row=r, column=col_data_reparo).value = emb_str # P: DtFim_Prog (embasamento)
+        ws_out.cell(row=r, column=_K_L).value = ""
+        ws_out.cell(row=r, column=col_data_envio).value = dt_str
+        ws_out.cell(row=r, column=_K_N).value = ""
+        ws_out.cell(row=r, column=_K_O).value = dt_str
+        ws_out.cell(row=r, column=col_data_reparo).value = emb_str
         _desfazer_merge_colunas_linha(ws_out, r, _K_Q, _K_T)
-        ws_out.cell(row=r, column=_K_Q).value = ""       # Q: vazio (macro MA não preenche)
-        ws_out.cell(row=r, column=_K_R).value = ""       # R: vazio (macro MA não preenche)
-        ws_out.cell(row=r, column=_K_S).value = _prazo_para_numero(reg.get("prazo"))  # S: Prazo (número de dias)
+        ws_out.cell(row=r, column=_K_Q).value = ""
+        ws_out.cell(row=r, column=_K_R).value = ""
+        ws_out.cell(row=r, column=_K_S).value = _prazo_para_numero(reg.get("prazo"))
         obs_txt = _obs_gestor(reg["relatorio"], reg["codigo"], reg.get("resumo"), codigo_fiscalizacao=reg.get("codigo_fiscalizacao"))
-        ws_out.cell(row=r, column=_K_T).value = obs_txt  # T: Observação do gestor (relatório + código)
+        ws_out.cell(row=r, column=_K_T).value = _texto_uma_linha(obs_txt)
         texto_u = " ".join((reg.get("texto") or "").split())
         compl_u = " ".join((reg.get("complemento") or "").split())
         emb_u = " ".join((reg.get("embasamento") or "").split())
-        ws_out.cell(row=r, column=_K_U).value = _observacoes(texto_u, compl_u, emb_u)
+        ws_out.cell(row=r, column=_K_U).value = _texto_uma_linha(
+            _observacoes(texto_u, compl_u, emb_u)
+        )
         _copiar_estilo_linha(ws_out, row_origem=2, row_destino=r, col_fim=25)
-        ws_out.cell(row=r, column=_K_V).value = str(pasta_imagens)
+        # MA: manter diretório canônico do fluxo macro.
+        ws_out.cell(row=r, column=_K_V).value = diretorio_relatorio_macro
         ws_out.cell(row=r, column=_K_W).value = nome_arq
         ws_out.cell(row=r, column=_K_X).value = ""
         ws_out.cell(row=r, column=_K_Y).value = ""
@@ -494,7 +441,7 @@ def _processar_pdf_meio_ambiente(
     nome_saida = f"{timestamp_agora()} - {nome_origem}.xlsx"
     destino_kcor = caminho_dentro_limite_windows(pasta_saida / nome_saida)
     garantir_pasta(destino_kcor.parent)
-    wb_kcor.save(str(destino_kcor))
+    wb_kcor.save(str_caminho_io_windows(destino_kcor))
     wb_kcor.close()
     logger.info(f"  Kcor-Kria (PDF MA) salvo: {destino_kcor.name}")
     return destino_kcor
@@ -507,32 +454,32 @@ _COL_H  = 8   # código (y), relatório (y+1)
 _COL_L  = 12  # complemento/nº foto (y), prazo dias (y+2)
 _COL_C  = 3   # usada apenas para detectar última linha com dado
 
-# Template inicia em A; nenhuma coluna deve ser pulada para importação Kcor
-_K_A  = 1    # NumItem (sequencial)
-_K_B  = 2    # Origem ("Artesp")
-_K_C  = 3    # Motivo ("2")
-_K_D  = 4    # Classificação
-_K_E  = 5    # Tipo NC
-_K_F  = 6    # Rodovia
-_K_G  = 7    # KMi
-_K_H  = 8    # KMf
-_K_I  = 9    # Sentido
-_K_J  = 10   # Local (vazio)
-_K_K  = 11   # Gestor ("Conservação")
-_K_L  = 12   # executor (mod 03 only)
-_K_M  = 13   # Data Solicitação (macro: = data constatação F10)
-_K_N  = 14   # Data Suspensão (vazio)
-_K_O  = 15   # DtInicio_Prog (macro: = data constatação F10)
-_K_P  = 16   # DtFim_Prog (macro: = embasamento G7 = data envio)
-_K_Q  = 17   # DtInicio_Exec (data reparo)
-_K_R  = 18   # DtFim_Exec (data reparo)
-_K_S  = 19   # Prazo (em dias) — número, não data
-_K_T  = 20   # Observação Gestor (relatório + código)
-_K_U  = 21   # Observações (texto + complemento + embasamento)
-_K_V  = 22   # diretório
-_K_W  = 23   # arquivos
-_K_X  = 24   # Indicador (vazio)
-_K_Y  = 25   # Unidade (preenchido pelo M05)
+# Saída Kcor-Kria: colunas 1..25 (A–Y), contíguas para importação.
+_K_A  = 1
+_K_B  = 2
+_K_C  = 3
+_K_D  = 4
+_K_E  = 5
+_K_F  = 6
+_K_G  = 7
+_K_H  = 8
+_K_I  = 9
+_K_J  = 10
+_K_K  = 11
+_K_L  = 12
+_K_M  = 13
+_K_N  = 14
+_K_O  = 15
+_K_P  = 16
+_K_Q  = 17
+_K_R  = 18
+_K_S  = 19
+_K_T  = 20
+_K_U  = 21
+_K_V  = 22
+_K_W  = 23
+_K_X  = 24
+_K_Y  = 25
 
 
 def _cell(ws, row: int, col: int):
@@ -688,18 +635,15 @@ def _nome_arquivo_jpg(data_str: str, n: int, numero: str,
     Formato VBA: yyyymmdd - hhmmss - n_Roti-NNNNNN-RODOVIA km,metro SENTIDO.jpg
     """
     yyyymmdd = _data_nome_yyyymmdd(data_str, nome_origem=nome_origem)
+    hhmmss = datetime.now().strftime("%H%M%S")
     return sanitizar_nome(
-        f"{yyyymmdd} - {timestamp_completo()} - "
+        f"{yyyymmdd} - {hhmmss} - "
         f"{n}_Roti-{numero}-{rodoviat} {kminicial} {sentido}.jpg"
     )
 
 
 def _obs_gestor(relatorio: str, codigo: str, resumo_tecnico: str | None = None, codigo_fiscalizacao: str | None = None) -> str:
-    """
-    Col T (Observação do gestor). Conforme macros Art_03 e Kria2_Inserir_NC_MA:
-    "--> Relatório EAF Conservação Rotina nº: " & relatorio & vbCrLf & "--> Código NC: " & codigo
-    Uma única quebra de linha entre relatório e código (vbCrLf), não duas.
-    """
+    """ObsGestor (col T); texto montado em _obs_gestor; célula final sem CRLF (_texto_uma_linha)."""
     rel = (relatorio or "").strip()
     cod = (codigo or "").strip()
     if resumo_tecnico and resumo_tecnico.strip():
@@ -707,12 +651,16 @@ def _obs_gestor(relatorio: str, codigo: str, resumo_tecnico: str | None = None, 
     return f"--> Relatório EAF Conservação Rotina nº: {rel}\n--> Código NC: {cod}"
 
 
+def _texto_uma_linha(v: str) -> str:
+    raw = str(v or "")
+    if not raw:
+        return ""
+    t = raw.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return " ".join(t.split())
+
+
 def _observacoes(texto: str, complemento: str, embasamento: str) -> str:
-    """
-    Monta o texto da coluna Observações (U). Conforme macros Art_03 e Kria2_Inserir_NC_MA:
-    vbCrLf & vbCr entre texto e '- Data Superação...' ou '- Complemento...';
-    vbCrLf & vbCrLf & vbCr entre '- Complemento...' e '- Embasamento...'.
-    """
+    """Observações (col U); blocos internos; célula final sem CRLF (_texto_uma_linha)."""
     if complemento:
         return (
             f"{texto}\n"
@@ -763,10 +711,9 @@ def _processar_arquivo(arq_path: Path,
 
     logger.info(f"Processando [{modo}]: {arq_path.name}")
 
-    wb_form = load_workbook(str(arq_path), data_only=True)
+    wb_form = load_workbook(str_caminho_io_windows(arq_path), data_only=True)
     ws      = wb_form.active
 
-    # Última linha com dado na col C
     ultima = ws.max_row
     for r in range(ultima, M03_LINHA_INICIO - 1, -1):
         if ws.cell(row=r, column=_COL_C).value is not None:
@@ -774,63 +721,45 @@ def _processar_arquivo(arq_path: Path,
             break
 
     registros = []
-    y = M03_LINHA_INICIO  # âncora da 1ª NC (linha 9)
+    y = M03_LINHA_INICIO
 
-    while y <= ultima + (M03_BLOCO - 2):  # tolerância de y+1
-        # Verificar se há dado na linha âncora
+    while y <= ultima + (M03_BLOCO - 2):
         if not _str(_cell(ws, y, _COL_D)) and not _str(_cell(ws, y, _COL_H)):
             break
 
-        # Layout Kria (âncora j=8 em M02; y=9=j+1 aqui):
-        #   y-3 (j-2=6): B=nº NC                      → numero
-        #   y-2 (j-1=7): G=embasamento (data envio no form)  → embasamento; data reparo para Kcor-Kria col 16 = D10
-        #   y-1 (j=8):   D=rodovia, F=sentido, G=tipo NC (texto)
-        #   y   (j+1=9): D=km_i, F=km_f, H=código NC, L=foto/complemento
-        #   y+1 (j+2=10): C="Vencimento", D=data_reparo, F=data_con, H=nº relatório EAF, L=prazo
-        # Obs. Gestor (col T na saída): "Relatório nº: " <- H(y+1); "Código NC: " <- H(y). Não trocar.
-        relatorio   = _str(_cell(ws, y + 1, _COL_H))   # H(y+1) = H10 — número do relatório EAF
-        codigo      = _str(_cell(ws, y,     _COL_H))   # H(y)   = H9  — código da NC
-        complemento = _str(_cell(ws, y,     _COL_L))   # L(y)   = L9  — complemento/foto
-        embasamento = _str(_cell(ws, y - 2, _COL_G))   # G(y-2) = G7  — data envio (col G do formulário)
-        data_reparo_raw = _str(_cell(ws, y + 1, _COL_D))  # D(y+1) = D10 — data reparo (para col 16 do Kcor-Kria)
-        rod_raw     = _str(_cell(ws, y - 1, _COL_D))   # D(y-1) = D8  — rodovia
-        texto       = _str(_cell(ws, y - 1, _COL_G))   # G(y-1) = G8  — tipo NC / descrição
-        sentido     = _str(_cell(ws, y - 1, _COL_F))   # F(y-1) = F8  — sentido
-        kminicial_t = _str(_cell(ws, y,     _COL_D))   # D(y)   = D9  — km inicial
-        kmfinal_t   = _str(_cell(ws, y,     _COL_F))   # F(y)   = F9  — km final
-        data_raw    = _str(_cell(ws, y + 1, _COL_F))   # F(y+1) = F10 — data constatação
-        prazo       = _cell(ws, y + 1, _COL_L)         # L(y+1) = L10 — prazo em dias (macro: Prazo(i)=Range("L"&y+1)); D10 é data reparo
-        numero_raw  = _cell(ws, y - 3, _COL_B)         # B(y-3) = B6  — nº sequencial
+        relatorio   = _str(_cell(ws, y + 1, _COL_H))
+        codigo      = _str(_cell(ws, y,     _COL_H))
+        complemento = _str(_cell(ws, y,     _COL_L))
+        embasamento = _str(_cell(ws, y - 2, _COL_G))
+        data_reparo_raw = _str(_cell(ws, y + 1, _COL_D))
+        rod_raw     = _str(_cell(ws, y - 1, _COL_D))
+        texto       = _str(_cell(ws, y - 1, _COL_G))
+        sentido     = _str(_cell(ws, y - 1, _COL_F))
+        kminicial_t = _str(_cell(ws, y,     _COL_D))
+        kmfinal_t   = _str(_cell(ws, y,     _COL_F))
+        data_raw    = _str(_cell(ws, y + 1, _COL_F))
+        prazo       = _cell(ws, y + 1, _COL_L)
+        numero_raw  = _cell(ws, y - 3, _COL_B)
 
-        # [Conservação] número da foto (col L linha y é o foto_id no mod 03 original
-        # — porém no mod 03 a foto vem de "Range L & y" que é o complemento.
-        # Revisando: foto(i) = Range("L" & y).Value — sim, complemento e foto
-        # compartilham a col L linha y. No contexto dos dados, complemento é
-        # texto descritivo e foto é um número. Usamos o mesmo campo; se for
-        # numérico, é o nº da foto; senão, é texto de complemento.
         foto_id = None
         try:
             foto_id = int(float(str(complemento))) if complemento else None
-            complemento = ""  # se era número, era o foto_id, não texto
+            complemento = ""
         except (ValueError, TypeError):
-            pass  # é realmente texto de complemento
+            pass
 
-        # Normalizar rodovia
         rod_tag, rod_cod, n = _normalizar_rodovia_formulario(rod_raw)
 
-        # KM inicial formatado para nome de arquivo
         kminicial_arq = km_formato_arquivo(kminicial_t)
 
-        # Número NC formatado
         numero = formatar_numero(numero_raw or 1, 6)
 
-        # Data
         dt = parse_data(data_raw)
         data_str_raw = data_raw
-        data_reparo_dt = parse_data(data_reparo_raw)  # D10 → coluna Data Reparo no Kcor-Kria
+        data_reparo_dt = parse_data(data_reparo_raw)
 
         if eh_conservacao:
-            descricao = texto  # col G y-1 é a descrição do serviço
+            descricao = texto
             nc_info   = SERVICO_NC.get(descricao, None)
             if nc_info:
                 serv_nc, classifica, executor = nc_info
@@ -894,11 +823,10 @@ def _processar_arquivo(arq_path: Path,
     for reg in registros:
         y_anc = reg["y"]
 
-        # Range: C(y-3):F(y+1)  → col C=3, F=6
         row_ini = y_anc - 3
-        col_ini = 3   # C
+        col_ini = 3
         row_fim = y_anc + 1
-        col_fim = 6   # F
+        col_fim = 6
 
         nome_jpg = _nome_arquivo_jpg(
             reg["data_raw"], reg["n"], reg["numero"],
@@ -907,8 +835,6 @@ def _processar_arquivo(arq_path: Path,
         )
         destino_jpg = pasta_imagens / nome_jpg
 
-        # Conservação com foto_id: só usar foto real do PDF/NC, nunca print da planilha.
-        # Busca por código (ex.: PDF (896643).jpg) e por número (ex.: PDF (1).jpg).
         foto_real_existe = False
         foto_pdf = foto_nc = None
         if eh_conservacao and pasta_fotos_pdf and (reg.get("codigo") or reg.get("foto_id") is not None):
@@ -924,8 +850,6 @@ def _processar_arquivo(arq_path: Path,
             foto_real_existe = (foto_pdf is not None) or (foto_nc is not None)
 
         if eh_conservacao:
-            # M03 (Conservação): nunca gerar print da planilha.
-            # Usa somente foto real (PDF (N).jpg / nc (N).jpg) quando existir (por código ou foto_id).
             if pasta_fotos_pdf and foto_real_existe:
                 origem_foto = None
                 if foto_pdf and foto_pdf.exists():
@@ -970,8 +894,7 @@ def _processar_arquivo(arq_path: Path,
 
     garantir_pasta(pasta_saida)
 
-    wb_kcor = load_workbook(str(modelo_kcor))
-    # Template pode ter várias abas; identificar pela que tem NumItem em A1 (evita gravar na aba errada).
+    wb_kcor = load_workbook(str_caminho_io_windows(modelo_kcor))
     ws_out = None
     for sheet in wb_kcor.worksheets:
         a1 = sheet.cell(row=1, column=1).value
@@ -984,6 +907,7 @@ def _processar_arquivo(arq_path: Path,
     col_data_envio, col_data_reparo = _detectar_colunas_data_kcor(ws_out)
     logger.debug(f"Kcor-Kria: col Data Envio={col_data_envio}, col Data Reparo={col_data_reparo}")
 
+    diretorio_relatorio_macro = str(M03_IMAGENS if eh_conservacao else M07_IMAGENS)
     for seq, (reg, nome_arq) in enumerate(zip(registros, nomes_arquivo), start=1):
         r = seq + 1  # linha de saída (linha 2 em diante)
 
@@ -991,19 +915,17 @@ def _processar_arquivo(arq_path: Path,
         emb    = parse_data(reg["embasamento"])
         dt_str = dt.strftime("%d/%m/%Y") if dt else ""
         emb_str = emb.strftime("%d/%m/%Y") if emb else ""
-        # Data envio = G7 (no Kria novo M02 grava data constatação); Data reparo = D10 ou envio + 10 dias.
-        # Se G7 == D10 (arquivo gerado por M02 antigo que gravava data_reparo nos dois), usar data constatação (F10) como envio.
         data_rep_dt = reg.get("data_reparo_dt")
         if data_rep_dt:
             data_reparo_str = data_rep_dt.strftime("%d/%m/%Y")
         elif dt:
-            data_reparo_str = (dt + timedelta(days=PRAZO_DIAS_APOS_ENVIO)).strftime("%d/%m/%Y")  # reparo = envio + 10 dias
+            data_reparo_str = (dt + timedelta(days=PRAZO_DIAS_APOS_ENVIO)).strftime("%d/%m/%Y")
         else:
             data_reparo_str = emb_str
         if reg.get("data_reparo_raw") and _str(reg.get("embasamento")) == _str(reg.get("data_reparo_raw")):
-            envio_str = dt_str  # arquivo já processado com M02 antigo: G7 e D10 iguais → usar constatação como envio
+            envio_str = dt_str
         else:
-            envio_str = emb_str  # G7 = data envio (no Kria novo = data constatação)
+            envio_str = emb_str
 
         ws_out.cell(row=r, column=_K_A).value = seq
         ws_out.cell(row=r, column=_K_B).value = "Artesp"
@@ -1013,29 +935,27 @@ def _processar_arquivo(arq_path: Path,
         ws_out.cell(row=r, column=_K_F).value = reg["rod_tag"]
         ws_out.cell(row=r, column=_K_G).value = reg["kminicial_t"]
         ws_out.cell(row=r, column=_K_H).value = reg.get("kmfinal_t") or reg.get("kminicial_t") or ""
-        # Col I: Artemig (Nas01) já vem expandido; ARTESP/MA usa letra → nome
         if regime_artemig and eh_conservacao:
             sentido_i = (reg.get("sentido") or "").strip()
         else:
             sentido_i = _sentido_para_texto(reg.get("sentido") or "") or ""
         ws_out.cell(row=r, column=_K_I).value = sentido_i[:120]
-        ws_out.cell(row=r, column=_K_J).value = ""  # Local (vazio)
+        ws_out.cell(row=r, column=_K_J).value = ""
         ws_out.cell(row=r, column=_K_K).value = "Conservação"
 
         if eh_conservacao:
             ws_out.cell(row=r, column=_K_L).value = reg["executor"]
-            ws_out.cell(row=r, column=_K_N).value = ""     # Data Suspensão (vazio)
-            ws_out.cell(row=r, column=_K_O).value = dt_str  # DtInicio_Prog (data constatação F10)
-            ws_out.cell(row=r, column=_K_Q).value = ""    # Q: vazio (macro Art_03 não preenche)
-            ws_out.cell(row=r, column=_K_R).value = ""    # R: vazio (macro Art_03 não preenche)
+            ws_out.cell(row=r, column=_K_N).value = ""
+            ws_out.cell(row=r, column=_K_O).value = dt_str
+            ws_out.cell(row=r, column=_K_Q).value = ""
+            ws_out.cell(row=r, column=_K_R).value = ""
         else:
             ws_out.cell(row=r, column=_K_N).value = ""
             ws_out.cell(row=r, column=_K_O).value = dt_str
-            ws_out.cell(row=r, column=_K_Q).value = ""     # Q: vazio (macro MA não preenche)
-            ws_out.cell(row=r, column=_K_R).value = ""    # R: vazio (macro MA não preenche)
+            ws_out.cell(row=r, column=_K_Q).value = ""
+            ws_out.cell(row=r, column=_K_R).value = ""
 
-        # M e P conforme macro: M = Data Solicitação = data constatação (F10), P = Dt.Fim Prog. = data envio (G7)
-        ws_out.cell(row=r, column=_K_M).value = dt_str    # Data Solicitação (data constatação)
+        ws_out.cell(row=r, column=_K_M).value = dt_str
         ws_out.cell(row=r, column=_K_P).value = envio_str
 
         _desfazer_merge_colunas_linha(ws_out, r, _K_Q, _K_T)
@@ -1047,11 +967,23 @@ def _processar_arquivo(arq_path: Path,
             reg["texto"], reg["complemento"], str(emb_u) if emb_u is not None else "",
         )
         ws_out.cell(row=r, column=_K_S).value = _prazo_para_numero(reg.get("prazo"))
-        ws_out.cell(row=r, column=_K_T).value = obs_gestor_txt
-        ws_out.cell(row=r, column=_K_U).value = observacoes_u
+        ws_out.cell(row=r, column=_K_T).value = _texto_uma_linha(obs_gestor_txt)
+        ws_out.cell(row=r, column=_K_U).value = _texto_uma_linha(observacoes_u)
         _copiar_estilo_linha(ws_out, row_origem=2, row_destino=r, col_fim=25)
-        ws_out.cell(row=r, column=_K_V).value = str(pasta_imagens)
-        ws_out.cell(row=r, column=_K_W).value = nome_arq
+        # Coluna "Diretório" deve seguir o caminho padrão das macros (config),
+        # e não a pasta temporária/local da execução atual.
+        ws_out.cell(row=r, column=_K_V).value = diretorio_relatorio_macro
+        # Macro Art_03: coluna W = arquivo(i) & ";pdf (" & foto(i) & ").jpg"
+        # onde foto(i) vem da célula L da planilha de entrada (não usa código fiscal).
+        foto_ref = reg.get("foto_id")
+        if foto_ref is None:
+            foto_ref = _str(reg.get("complemento"))
+        pdf_nome = f"pdf ({foto_ref}).jpg" if foto_ref not in (None, "") else ""
+        if nome_arq and pdf_nome:
+            arquivos_w = f"{nome_arq};{pdf_nome}"
+        else:
+            arquivos_w = nome_arq or pdf_nome
+        ws_out.cell(row=r, column=_K_W).value = arquivos_w
         ws_out.cell(row=r, column=_K_X).value = ""
         ws_out.cell(row=r, column=_K_Y).value = ""
         _forcar_texto_so_data_kcor_cols_m_r(ws_out, r)
@@ -1060,7 +992,7 @@ def _processar_arquivo(arq_path: Path,
     nome_saida = f"{timestamp_agora()} - {arq_path.name}"
     destino_kcor = caminho_dentro_limite_windows(pasta_saida / nome_saida)
     garantir_pasta(destino_kcor.parent)
-    wb_kcor.save(str(destino_kcor))
+    wb_kcor.save(str_caminho_io_windows(destino_kcor))
     wb_kcor.close()
     logger.info(f"  Kcor-Kria salvo: {destino_kcor.name}")
 
@@ -1069,8 +1001,6 @@ def _processar_arquivo(arq_path: Path,
 
     return destino_kcor
 
-
-# FUNÇÕES PÚBLICAS
 
 def executar_conservacao(pasta_entrada: Path | None = None,
                           pasta_imagens: Path | None = None,
@@ -1081,12 +1011,7 @@ def executar_conservacao(pasta_entrada: Path | None = None,
                           forcar_fallback: bool = False,
                           callback_progresso=None,
                           regime_artemig: bool = False) -> list[Path]:
-    """
-    M03 Conservação: formulários Kria (.xlsx) → planilhas Kcor-Kria (.xlsx).
-    Entrada: pasta_entrada (ZIP extraído ou pasta com .xlsx do Modelo Foto), modelo_kcor (template), pastas de fotos opcionais.
-    Saída: lista de Path dos .xlsx gerados em pasta_saida. Cada arquivo = um Kcor-Kria com uma linha por NC.
-    Erros: modelo inexistente → log e retorno sem processar; falha em um arquivo → log e continua.
-    """
+    """M03 conservação: .xlsx formulário → .xlsx Kcor-Kria (1 linha/NC)."""
     pasta_entrada   = pasta_entrada   or M03_ENTRADA
     pasta_imagens   = pasta_imagens   or M03_IMAGENS
     modelo_kcor     = modelo_kcor     or M03_MODELO_KCOR
@@ -1111,10 +1036,7 @@ def executar_meio_ambiente(pasta_entrada: Path | None = None,
                             pasta_fotos_nc: Path | None = None,
                             forcar_fallback: bool = False,
                             callback_progresso=None) -> list[Path]:
-    """
-    Módulo 07: Meio Ambiente.
-    Processa todos os .xlsx da pasta de entrada no modo 'meio_ambiente'.
-    """
+    """M07 MA: pasta .xlsx → Kcor-Kria (modo meio_ambiente)."""
     pasta_entrada = pasta_entrada or M07_ENTRADA
     pasta_imagens = pasta_imagens or M07_IMAGENS
     modelo_kcor   = modelo_kcor   or M03_MODELO_KCOR
@@ -1136,12 +1058,7 @@ def executar_meio_ambiente_pdf(
     pasta_saida: Path | None = None,
     nome_origem: str = "PDF MA",
 ) -> list[Path]:
-    """
-    Módulo 07 (Meio Ambiente) a partir de PDF.
-    Lê todo o texto do PDF, extrai as NCs e gera a planilha Kcor-Kria.
-    As imagens são extraídas do próprio PDF quando possível.
-    Retorna lista com o Path do Kcor-Kria gerado (ou vazia em caso de erro).
-    """
+    """M07: PDF MA → Kcor-Kria; imagens do PDF quando possível."""
     pasta_imagens = pasta_imagens or M07_IMAGENS
     modelo_kcor   = modelo_kcor   or M07_MODELO_KCOR
     pasta_saida   = pasta_saida   or M07_SAIDA
@@ -1212,7 +1129,7 @@ def executar_pipeline_meio_ambiente_pdf(
         from ..pdf_extractor import extrair_imagens_pdf
         with tempfile.TemporaryDirectory() as tmpdir:
             pdf_path = Path(tmpdir) / "meio_ambiente.pdf"
-            pdf_path.write_bytes(pdf_bytes)
+            escrever_bytes_caminho(pdf_path, pdf_bytes)
             extrair_imagens_pdf(
                 str(pdf_path),
                 pasta_saida=str(pasta_imagens),

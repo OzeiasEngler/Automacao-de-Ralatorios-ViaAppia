@@ -89,22 +89,19 @@ serv = Range("Q" & y).Value
 
 
 
-If serv = "Pichação ao longo da rodovia" Then
-            serv = "PICHAÇÃO"
+If serv = "Pichaï¿½ï¿½o ao longo da rodovia" Then
+            serv = "PICHAï¿½ï¿½O"
 
-ElseIf serv = "Substituição de pano rol. Medianamente comprometido" Then
-            serv = "PAVIMENTO"
-            
-ElseIf serv = "Substituição de pano rol. Medianamente comprometido" Then
+ElseIf serv = "Substituiï¿½ï¿½o de pano rol. Medianamente comprometido" Then
             serv = "PAVIMENTO"
             
 ElseIf serv = "Reparo definitivo com recorte" Then
             serv = "REPARO RECORTE"
             
-ElseIf serv = "Remoção de lixo doméstico das instalações" Then
+ElseIf serv = "Remoï¿½ï¿½o de lixo domï¿½stico das instalaï¿½ï¿½es" Then
             serv = "LIXO INST"
 
-ElseIf serv = "Reparo de elemento de drenagem - manutenção" Then
+ElseIf serv = "Reparo de elemento de drenagem - manutenï¿½ï¿½o" Then
             serv = "REPARO DE DRENAGEM"
 
 ElseIf serv = "Despraguejamento" Then
@@ -116,59 +113,59 @@ ElseIf serv = "Aceiros" Then
 ElseIf serv = "Selagem de trincas" Then
             serv = "SELAGEM TRINCA"
             
-ElseIf serv = "Limpeza e varredura de áreas pavimentadas" Then
+ElseIf serv = "Limpeza e varredura de ï¿½reas pavimentadas" Then
             serv = "LIMPEZA DE PAVIMENTO"
 
-ElseIf serv = "Remoção de lixo e entulho da faixa de domínio" Then
-            serv = "REMOÇÃO LIXO_ENTULHO"
+ElseIf serv = "Remoï¿½ï¿½o de lixo e entulho da faixa de domï¿½nio" Then
+            serv = "REMOï¿½ï¿½O LIXO_ENTULHO"
 
-ElseIf serv = "Defensa metálica (manutenção ou substituição)" Then
+ElseIf serv = "Defensa metï¿½lica (manutenï¿½ï¿½o ou substituiï¿½ï¿½o)" Then
             serv = "REPARO DE DEFENSA"
 
-ElseIf serv = "Depressão ou recalque de pequena extensão" Then
-            serv = "PAVIMENTO - DEPRESSÃO"
+ElseIf serv = "Depressï¿½o ou recalque de pequena extensï¿½o" Then
+            serv = "PAVIMENTO - DEPRESSï¿½O"
             
 ElseIf serv = "Panela ou buraco na faixa rolamento" Then
             serv = "PANELA"
 
-ElseIf serv = "Reparo e reposição de cerca" Then
+ElseIf serv = "Reparo e reposiï¿½ï¿½o de cerca" Then
                serv = "REPARO CERCA"
 
-ElseIf serv = "Manutenção árvores e arbustos" Then
-                serv = "MANUTENÇÃO ÁRVORES"
+ElseIf serv = "Manutenï¿½ï¿½o ï¿½rvores e arbustos" Then
+                serv = "MANUTENï¿½ï¿½O ï¿½RVORES"
 
 ElseIf serv = "Drenagem fora de  plataforma limpeza geral" Then
                 serv = "LIMP DRENAGEM FORA PLAT"
 
-ElseIf serv = "Remoção de árvores ou galhos que não tem risco" Then
-                serv = "REMOÇÃO DE GALHOS"
+ElseIf serv = "Remoï¿½ï¿½o de ï¿½rvores ou galhos que nï¿½o tem risco" Then
+                serv = "REMOï¿½ï¿½O DE GALHOS"
 
 ElseIf serv = "Drenagem plataforma limpeza geral" Then
                 serv = "LIMP DRENAGEM PLAT"
 
-ElseIf serv = "Recomposição de erosão em corte / aterro" Then
-                serv = "EROSÃO"
+ElseIf serv = "Recomposiï¿½ï¿½o de erosï¿½o em corte / aterro" Then
+                serv = "EROSï¿½O"
                 
-ElseIf serv = "Substituição de junta de dilatação" Then
-                serv = "JUNTA DILATAÇÃO"
+ElseIf serv = "Substituiï¿½ï¿½o de junta de dilataï¿½ï¿½o" Then
+                serv = "JUNTA DILATAï¿½ï¿½O"
                 
 ElseIf serv = "Juntas e trincas: Limpeza e Resselagem" Then
-                serv = "JUNTA DILATAÇÃO - LIMPEZA"
+                serv = "JUNTA DILATAï¿½ï¿½O - LIMPEZA"
 
-ElseIf serv = "Depressão em encontro de obra de arte" Then
-                serv = "DEPRESSÃO OAE"
+ElseIf serv = "Depressï¿½o em encontro de obra de arte" Then
+                serv = "DEPRESSï¿½O OAE"
                 
-ElseIf serv = "Recuperação do revestimento vegetal" Then
+ElseIf serv = "Recuperaï¿½ï¿½o do revestimento vegetal" Then
                 serv = "PLANTIO DE GRAMA"
                 
-ElseIf serv = "Remoção de massa verde" Then
+ElseIf serv = "Remoï¿½ï¿½o de massa verde" Then
                 serv = "MASSA VERDE"
                 
 ElseIf serv = "Drenagem profunda limpeza geral" Then
                 serv = "LIMP DE DRENAGEM PROF"
                 
-ElseIf serv = "Pavimentação/ Passeio/ Alambrado" Then
-                serv = "PRÉDIO E PÁTIO - OUTROS"
+ElseIf serv = "Pavimentaï¿½ï¿½o/ Passeio/ Alambrado" Then
+                serv = "PRï¿½DIO E Pï¿½TIO - OUTROS"
                 
 ElseIf serv = "Poda manual ou mecanizada" Then
             serv = "PODA DO REVESTIMENTO"
@@ -179,32 +176,32 @@ ElseIf serv = "Bueiros limpeza geral" Then
 ElseIf serv = "Bordos e lajes quebrados reparo definitivo com recorte" Then
             serv = "PAVIMENTO RIGIDO"
             
-ElseIf serv = "Correção de degrau entre pista e acostam. não pavimentado" Then
+ElseIf serv = "Correï¿½ï¿½o de degrau entre pista e acostam. nï¿½o pavimentado" Then
             serv = "DEGRAU PISTA_ACOSTAMENTO"
            
-ElseIf serv = "Correção de degrau entre a pista e acostamento" Then
+ElseIf serv = "Correï¿½ï¿½o de degrau entre a pista e acostamento" Then
             serv = "DEGRAU PISTA_ACOSTAMENTO"
             
-ElseIf serv = "Desobstrução de elemento de drenagem" Then
-            serv = "DESOBSTRUÇÃO DE DRENAGEM"
+ElseIf serv = "Desobstruï¿½ï¿½o de elemento de drenagem" Then
+            serv = "DESOBSTRUï¿½ï¿½O DE DRENAGEM"
                        
-ElseIf serv = "Conformação lateral" Then
-            serv = "CONFORMAÇÃO LATERAL"
+ElseIf serv = "Conformaï¿½ï¿½o lateral" Then
+            serv = "CONFORMAï¿½ï¿½O LATERAL"
             
-        ElseIf serv = "Pichações e vandalismo" Then
-        serv = "PICHAÇÃO"
+        ElseIf serv = "Pichaï¿½ï¿½es e vandalismo" Then
+        serv = "PICHAï¿½ï¿½O"
         
-        ElseIf serv = "Hidráulica/ Esgoto/ Drenagem" Then
+        ElseIf serv = "Hidrï¿½ulica/ Esgoto/ Drenagem" Then
         serv = "HIDR_ESG_DREN"
         
-        ElseIf serv = "Barreira rígida manutenção e ou reparo" Then
+        ElseIf serv = "Barreira rï¿½gida manutenï¿½ï¿½o e ou reparo" Then
         serv = "BARREIRA RIGIDA"
         
-        ElseIf serv = "Reconformação de vias secundárias" Then
+        ElseIf serv = "Reconformaï¿½ï¿½o de vias secundï¿½rias" Then
         serv = "CONFORM. LATERAL"
         
-        ElseIf serv = "Louças/ Metais" Then
-        serv = "PREDIO - LOUÇAS_METAIS"
+        ElseIf serv = "Louï¿½as/ Metais" Then
+        serv = "PREDIO - LOUï¿½AS_METAIS"
         
      
   
@@ -220,15 +217,15 @@ dia = Left(Range("D" & y).Value, 2)
 mes = Right(Left(Range("D" & y).Value, 5), 2)
 ano = Right(Range("D" & y).Value, 4)
     
-spath = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatório EAF - NC\"
+spath = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatï¿½rio EAF - NC\"
 sfile = ActiveWorkbook.Name
     
 'If num < 2000 Then
-'sfile_2 = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatório EAF - NC\Exportar\" & num & " - CONSTATAÇÕES NC LOTE 13 (" & rod & " - " & serv & ") - DATA - " & dia & "-" & mes & "-" & ano & " - P" & ".xls"
+'sfile_2 = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatï¿½rio EAF - NC\Exportar\" & num & " - CONSTATAï¿½ï¿½ES NC LOTE 13 (" & rod & " - " & serv & ") - DATA - " & dia & "-" & mes & "-" & ano & " - P" & ".xls"
 'Else
-'sfile_2 = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatório EAF - NC\Exportar\" & num & " - CONSTATAÇÕES NC LOTE 13 (" & rod & " - " & serv & ") - DATA - " & dia & "-" & mes & "-" & ano & ".xls"
+'sfile_2 = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatï¿½rio EAF - NC\Exportar\" & num & " - CONSTATAï¿½ï¿½ES NC LOTE 13 (" & rod & " - " & serv & ") - DATA - " & dia & "-" & mes & "-" & ano & ".xls"
 'End If
-sfile_2 = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatório EAF - NC\Exportar\" & ano & mes & dia & " - CONSTATAÇÕES NC LOTE 13 (" & rod & " - " & serv & ") - Prazo - " & dia1 & "-" & mes1 & "-" & ano1 & ".xls"
+sfile_2 = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatï¿½rio EAF - NC\Exportar\" & ano & mes & dia & " - CONSTATAï¿½ï¿½ES NC LOTE 13 (" & rod & " - " & serv & ") - Prazo - " & dia1 & "-" & mes1 & "-" & ano1 & ".xls"
 
 
 strPath = sfile_2
@@ -264,9 +261,9 @@ Workbooks(sfile).Activate
 y = y + 1
             Next
             
-'Call Acumulado_Apontamento_Artesp_Rotina_REvisão_2
+'Call Acumulado_Apontamento_Artesp_Rotina_REvisï¿½o_2
             
-MsgBox "Processo Concluído - Arquivos Separados", vbInformation, "Separar Relatórios"
+MsgBox "Processo Concluï¿½do - Arquivos Separados", vbInformation, "Separar Relatï¿½rios"
 
 End Sub
 

@@ -115,18 +115,45 @@ myText = ""
 
 
 mytext2 = ""
+Dim BaseArqFoto As String
+Dim fname_nc As String, fname_nc2 As String
+BaseArqFoto = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\"
 For l = 5 To ultimalinha
 
-fname = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provis�rias - PDF\pdf (" & Foto(l) & ").jpg"
+fname = BaseArqFoto & "Imagens Provis�rias - PDF\pdf (" & Foto(l) & ").jpg"
+fname_nc = BaseArqFoto & "Imagens Provis�rias\nc (" & Foto(l) & ").jpg"
+fname_nc2 = BaseArqFoto & "Imagens Provis�rias\nc (" & Cod_fiscaliza��o(l) & ")_1.jpg"
 
 Set colAttach = reply.Attachments
 Set oAttach = colAttach.Add(fname)
 Set olkPA = oAttach.PropertyAccessor
 olkPA.SetProperty PR_ATTACH_CONTENT_ID, "pdf%20(" & Foto(l) & ").jpg"
 
+' Vistoria de campo / contra-foto executado (Art_022 / M02): nc (N).jpg e nc (cod)_1.jpg
+If Dir(fname_nc) <> "" Then
+    Set oAttach = colAttach.Add(fname_nc)
+    Set olkPA = oAttach.PropertyAccessor
+    olkPA.SetProperty PR_ATTACH_CONTENT_ID, "nc%20(" & Foto(l) & ").jpg"
+End If
+If Dir(fname_nc2) <> "" Then
+    Set oAttach = colAttach.Add(fname_nc2)
+    Set olkPA = oAttach.PropertyAccessor
+    olkPA.SetProperty PR_ATTACH_CONTENT_ID, "nc%20(" & Cod_fiscaliza��o(l) & ")_1.jpg"
+End If
 
 mytext2 = "<b><u>" & mytext2 & Rodovia(l) & " - km " & Km_Inicial(l) & "," & m_Inicial(l) & " " & Sentido(l) & " - Const: " & Data_fiscaliza��o(l) & " - Prazo: " & Data_Reparo(l) & " - " & Atividade(l) & " - Cod. Fisc.: " & Cod_fiscaliza��o(l) & "</u></b><BR><BR>" & _
-"<img src=""cid:pdf%20(" & Foto(l) & ").jpg""height=295 width=711>" & "<BR><BR><BR><BR>"
+"<img src=""cid:pdf%20(" & Foto(l) & ").jpg"" height=295 width=711><BR><BR>"
+If (Dir(fname_nc) <> "" And Dir(fname_nc2) <> "") Then
+    mytext2 = mytext2 & "<table role=""presentation"" width=""711"" cellspacing=""6"" cellpadding=""0"" border=""0""><tr>"
+    mytext2 = mytext2 & "<td width=""50%"" align=""center""><img src=""cid:nc%20(" & Foto(l) & ").jpg"" width=355 height=147></td>"
+    mytext2 = mytext2 & "<td width=""50%"" align=""center""><img src=""cid:nc%20(" & Cod_fiscaliza��o(l) & ")_1.jpg"" width=355 height=147></td>"
+    mytext2 = mytext2 & "</tr></table><BR><BR>"
+ElseIf Dir(fname_nc) <> "" Then
+    mytext2 = mytext2 & "<img src=""cid:nc%20(" & Foto(l) & ").jpg"" width=355 height=147><BR><BR>"
+ElseIf Dir(fname_nc2) <> "" Then
+    mytext2 = mytext2 & "<img src=""cid:nc%20(" & Cod_fiscaliza��o(l) & ")_1.jpg"" width=355 height=147><BR><BR>"
+End If
+mytext2 = mytext2 & "<BR><BR><BR><BR>"
 
 
 Next

@@ -1,4 +1,7 @@
 Attribute VB_Name = "Art_031_EAF_Rotina_Gerar_Kria"
+' Art_031: percorre cada .xlsx ja gerado em Arquivo Foto - Conserva e chama o mesmo passo
+' que o Art_022 (macro xx_Inserir_NaoConformidade_Rotina_Salvar_Imagem_Rev1_Kria).
+' Equivalente Python: gerar_modelo_foto.executar sobre pasta_xls (M02).
 Sub Artesp_031_EAF_Gerar_Mod_Foto_Excel_NC()
 
     Dim newBook As Workbook
@@ -8,7 +11,7 @@ Sub Artesp_031_EAF_Gerar_Mod_Foto_Excel_NC()
     Dim pasta As Workbook
     Dim Wb As Workbook, sfile As String, spath As String
  
-    'Desativa os avisos e atualiação da tela
+    'Desativa os avisos e atualiaï¿½ï¿½o da tela
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
@@ -29,7 +32,7 @@ Call xx_Inserir_NaoConformidade_Rotina_Salvar_Imagem_Rev1_Kria
 sfile = Dir()
 Loop
 
-MsgBox "Processo Concluído - Arquivos de Fotos Gerados", vbInformation, "Gerar Arquivo de Foto"
+MsgBox "Processo Concluï¿½do - Arquivos de Fotos Gerados", vbInformation, "Gerar Arquivo de Foto"
 
 Exit Sub
 

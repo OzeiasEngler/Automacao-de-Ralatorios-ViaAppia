@@ -19,7 +19,7 @@ from config import (
     M02_FOTO_PDF_H,
     SERVICO_ABREV,
 )
-from utils.helpers import garantir_pasta
+from utils.helpers import garantir_pasta, str_caminho_io_windows
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def _redimensionar_e_salvar(
         save_kw = {"quality": 90}
         if dpi:
             save_kw["dpi"] = dpi
-        img_resized.save(str(dest), "JPEG", **save_kw)
+        img_resized.save(str_caminho_io_windows(dest), "JPEG", **save_kw)
         return True
     except Exception as e:
         logger.warning(f"  Erro ao processar imagem: {e}")

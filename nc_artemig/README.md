@@ -29,3 +29,9 @@ Em **`config.py`** estão definidos:
 ## Observação
 
 Arquivos de trabalho (PDFs de exemplo, exportações Kcor, ZIPs) podem ficar na raiz de `nc_artemig/` durante o desenvolvimento; o pipeline em produção usará apenas `assets/`, `malha/` e `templates/`.
+
+## Se o Exportar Kcor / regras Artemig «não surtem efeito»
+
+1. **Reiniciar o servidor** da API (`uvicorn`/Docker) após alterar código — o Python pode manter módulos em memória.
+2. **Modelo XLSX:** o ficheiro `_Planilha Modelo Kcor-Kria_artemig.xlsx` em `assets/Template/templates/` costuma **não** estar no Git. Se não existir, o pipeline **gera um modelo mínimo** (mesmas colunas) e o ZIP passa a incluir **Exportar Kcor** na mesma — cabeçalho HTTP `X-NC-Kcor-Modelo: minimo` e aviso na UI. Para o layout idêntico ao da rede, copie o XLSX oficial para essa pasta ou defina **`ARTEMIG_MODELO_KCOR_KRIA`** (caminho absoluto).
+3. **Lote 50 no menu:** ao analisar, o pipeline força `nc.lote = "50"` e `tipo_artemig = "QID"` em todas as NCs; antes, o parser genérico podia gravar outro «Lote» vindo do texto do PDF e o `exportar_kcor` filtrava tudo fora.

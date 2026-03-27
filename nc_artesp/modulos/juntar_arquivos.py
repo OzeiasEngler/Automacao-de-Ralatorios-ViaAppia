@@ -1,41 +1,53 @@
 """
-modulos/juntar_arquivos.py
-────────────────────────────────────────────────────────────────────────────
-Equivalente VBA: Art_04_EAF_Rot_Juntar_Arquivo_Exportar_Kria
-Desenvolvedor: Ozeias Engler
+modulos/juntar_arquivos.py — Equivalente VBA: Art_04_EAF_Rot_Juntar_Arquivo_Exportar_Kria.
 
-O Módulo Separar NC gera um .xlsx por NC; uma linha de dados por NC (há mais linhas só se houver duas NCs do mesmo tipo).
-O acumulado junta todos em uma planilha:
-  • Coluna A no acumulado = somente contagem de itens: 1 linha → item 1, 2 linhas → itens 1 e 2, etc.
-  • B–Y da NC separada = mesma linha no acumulado (dados válidos).
+Consolida .xlsx Kcor-Kria (saída M03) no acumulado A–Y. Coluna A = sequência.
+Ao gravar, normaliza texto nas colunas T e U (sem quebra de linha na célula).
 """
 
 import logging
+import shutil
+from datetime import datetime, timedelta
 from pathlib import Path
-from datetime import datetime
 
 import openpyxl
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
-from config import M04_ENTRADA, M04_ACUMULADO, M04_SAIDA, M04_NOME_SAIDA, CABECALHO_KCOR_KRIA, NUM_COLUNAS_KCOR_KRIA
-from utils.helpers import garantir_pasta, parse_data, data_yyyymmdd
+from config import (
+    M01_LINHA_INICIO,
+    M04_ACUMULADO,
+    M04_ENTRADA,
+    M04_NOME_SAIDA,
+    M04_SAIDA,
+    NUM_COLUNAS_KCOR_KRIA,
+    PRAZO_DIAS_APOS_ENVIO,
+    SERVICO_NC,
+    CABECALHO_KCOR_KRIA,
+    resolver_template_acumulado_kcor_kria,
+)
+from utils.helpers import garantir_pasta, km_mais_metros, parse_data, str_caminho_io_windows
 
 logger = logging.getLogger(__name__)
 
-# Número total de colunas da planilha Kcor-Kria (compatível VBA)
 NUM_COLUNAS = NUM_COLUNAS_KCOR_KRIA
-
-
-# Ordem canônica A–Y (mesma do config e da macro)
-_CABECALHO_ORDEM = tuple(CABECALHO_KCOR_KRIA)  # 25 nomes
-# Coluna M = Data Solicitação (índice 12 em 0-based)
-_COL_DATA_SOLICITACAO = 13
+_CABECALHO_ORDEM = tuple(CABECALHO_KCOR_KRIA)
+_COL_DATA_SOLICITACAO = 13  # col M, data para sufixo do nome (macro Art_04)
 
 _SIDE_THIN = Side(style="thin", color="000000")
 _BORDA_PADRAO = Border(
     left=_SIDE_THIN, right=_SIDE_THIN, top=_SIDE_THIN, bottom=_SIDE_THIN
 )
+
+
+def _texto_sem_quebra_linha(val):
+    """T/U: uma linha (remove \\r\\n / \\n na gravação do acumulado)."""
+    if val is None:
+        return None
+    if not isinstance(val, str):
+        return val
+    t = val.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return " ".join(t.split())
 
 
 def _normalizar_header(s: str) -> str:
@@ -122,13 +134,12 @@ def criar_base_acumulado(caminho: Path) -> None:
     for c, val in enumerate(CABECALHO_KCOR_KRIA, start=1):
         ws.cell(row=1, column=c).value = val
     caminho.parent.mkdir(parents=True, exist_ok=True)
-    wb.save(str(caminho))
+    wb.save(str_caminho_io_windows(caminho))
     wb.close()
 
 
 def _valor_celula(ws, row: int, col: int, preencher_se_merge: bool = False):
-    """Valor da célula. Em merge, openpyxl retorna None nas células que não são o canto superior-esquerdo.
-    preencher_se_merge=True para W,X,Y: arquivos M03 podem ter essas colunas mescladas; sem isso o acumulado ficaria vazio em 22–25."""
+    """Valor da célula. Em merge, openpyxl devolve None fora do canto; com preencher_se_merge repete o valor do âncora (útil em W–Y do M03)."""
     for merged_range in ws.merged_cells.ranges:
         if row < merged_range.min_row or row > merged_range.max_row:
             continue
@@ -234,7 +245,7 @@ def _ler_arquivo(caminho: Path) -> list[list]:
     remontar dados em colunas erradas quando o arquivo tem ordem diferente ou mescladas.
     Cada linha vira um registro na ordem canônica A–Y (25 colunas).
     """
-    wb = load_workbook(str(caminho), data_only=True)
+    wb = load_workbook(str_caminho_io_windows(caminho), data_only=True)
     ws, ultima = _obter_planilha_e_ultima(wb)
     col_map = _mapear_colunas_pelo_cabecalho(ws)  # [col_A, col_B, ...] 1-based
 
@@ -316,7 +327,7 @@ def executar(pasta_entrada: Path | None = None,
         logger.warning("Acumulado não informado. Envie o arquivo acumulado (relatório da rede) para consolidar.")
         return None
 
-    wb_acum = load_workbook(str(arquivo_acumulado))
+    wb_acum = load_workbook(str_caminho_io_windows(arquivo_acumulado))
     ws_acum = None
     for sheet in wb_acum.worksheets:
         a1 = sheet.cell(row=1, column=1).value
@@ -339,6 +350,8 @@ def executar(pasta_entrada: Path | None = None,
         ws_acum.cell(row=row, column=1).value = idx + 1  # A = contagem
         for col in range(2, NUM_COLUNAS + 1):
             val = registro[col - 1] if (col - 1) < len(registro) else None
+            if col in (20, 21):
+                val = _texto_sem_quebra_linha(val)
             ws_acum.cell(row=row, column=col).value = val
     for row in range(2, 2 + N):
         _aplicar_bordas_linha(ws_acum, row)
@@ -359,7 +372,7 @@ def executar(pasta_entrada: Path | None = None,
     garantir_pasta(destino.parent)
 
     wb_acum.active = ws_acum
-    wb_acum.save(str(destino))
+    wb_acum.save(str_caminho_io_windows(destino))
     wb_acum.close()
     logger.info(f"Módulo 04 concluído. Acumulado salvo: {destino.name}")
 
@@ -367,3 +380,237 @@ def executar(pasta_entrada: Path | None = None,
         callback_progresso(len(arquivos), len(arquivos), "Módulo 04 concluído.")
 
     return destino
+
+
+def _ultima_linha_dados_eaf_codigo(ws, linha_inicio: int, col_codigo: int = 3) -> int:
+    for r in range(ws.max_row, linha_inicio - 1, -1):
+        if ws.cell(row=r, column=col_codigo).value:
+            return r
+    return linha_inicio - 1
+
+
+def _str_eaf(v) -> str:
+    return str(v).strip() if v is not None else ""
+
+
+def _km_celulas_eaf(ws, row: int, col_km: int, col_m: int) -> str:
+    km = ws.cell(row=row, column=col_km).value
+    m = ws.cell(row=row, column=col_m).value
+    if km is None and (m is None or m == ""):
+        return ""
+    try:
+        return km_mais_metros(km, m).replace(" ", "")
+    except Exception:
+        return str(km or "").replace(" ", "")
+
+
+def _eaf_linha_para_registro_kcor(
+    ws,
+    row: int,
+    *,
+    col_data_reparo: int,
+    col_data_envio: int,
+    col_tipo_nc: int,
+) -> list | None:
+    """
+    Uma linha da planilha-mãe EAF → 25 valores (ordem CABECALHO_KCOR_KRIA).
+    Coluna A do acumulado é sequencial no M04; V/W aqui ficam vazios (só o M03 preenche com ficheiros reais).
+    """
+    from . import inserir_nc_kria as ink
+    from .analisar_pdf_ma import _sentido_para_texto
+    from . import separar_nc as sn
+
+    if not sn._cell(ws, row, sn.COL_CODIGO):
+        return None
+
+    descricao = sn._valor_tipo_nc(ws, row, col_tipo_nc)
+    desc_s = _str_eaf(descricao)
+    nc_info = SERVICO_NC.get(desc_s, None)
+    if nc_info:
+        serv_nc, classifica, executor = nc_info
+    else:
+        serv_nc = ""
+        classifica = "Conservação Rotina"
+        executor = "Soluciona - Conserva"
+
+    rod_raw = _str_eaf(sn._cell(ws, row, sn.COL_RODOVIA))
+    rod_tag, _rod_cod, _n = ink._normalizar_rodovia_formulario(rod_raw or " ")
+
+    kmi = _km_celulas_eaf(ws, row, sn.COL_KM_I_FULL, sn.COL_KM_I_M)
+    kmf = _km_celulas_eaf(ws, row, sn.COL_KM_F_FULL, sn.COL_KM_F_M) or kmi
+
+    sentido_raw = sn._cell(ws, row, sn.COL_SENTIDO)
+    sentido_txt = _sentido_para_texto(_str_eaf(sentido_raw)) or ""
+
+    dt = parse_data(sn._cell(ws, row, sn.COL_DATA_CON))
+    dt_str = dt.strftime("%d/%m/%Y") if dt else ""
+
+    data_reparo_raw = sn._cell(ws, row, col_data_reparo)
+    data_reparo_dt = parse_data(data_reparo_raw)
+    emb_raw = sn._cell(ws, row, col_data_envio)
+    emb = parse_data(emb_raw)
+    emb_str = emb.strftime("%d/%m/%Y") if emb else ""
+
+    if data_reparo_dt:
+        data_reparo_str = data_reparo_dt.strftime("%d/%m/%Y")
+    elif dt:
+        data_reparo_str = (dt + timedelta(days=PRAZO_DIAS_APOS_ENVIO)).strftime("%d/%m/%Y")
+    else:
+        data_reparo_str = emb_str
+
+    if data_reparo_raw is not None and emb_raw is not None and _str_eaf(emb_raw) == _str_eaf(data_reparo_raw):
+        envio_str = dt_str
+    else:
+        envio_str = emb_str
+
+    prazo_val = ""
+    if data_reparo_dt and dt:
+        try:
+            prazo_val = (data_reparo_dt - dt).days
+        except TypeError:
+            prazo_val = ""
+
+    comp_cell = sn._cell(ws, row, sn.COL_SEQ_FOTO)
+    complemento = ""
+    try:
+        float(str(comp_cell).replace(",", ".").strip())
+    except (ValueError, TypeError):
+        complemento = _str_eaf(comp_cell)
+
+    codigo = _str_eaf(sn._cell(ws, row, sn.COL_CODIGO))
+    relatorio = ""
+    obs_gestor_txt = ink._obs_gestor(relatorio, codigo)
+    observacoes_u = ink._observacoes(desc_s, complemento, str(emb_raw) if emb_raw is not None else "")
+
+    linha = [None] * NUM_COLUNAS
+    linha[0] = None
+    linha[1] = "Artesp"
+    linha[2] = "2"
+    linha[3] = classifica
+    linha[4] = serv_nc
+    linha[5] = rod_tag
+    linha[6] = kmi
+    linha[7] = kmf
+    linha[8] = sentido_txt[:120]
+    linha[9] = ""
+    linha[10] = "Conservação"
+    linha[11] = executor
+    linha[12] = dt_str
+    linha[13] = ""
+    linha[14] = dt_str
+    linha[15] = envio_str
+    linha[16] = ""
+    linha[17] = ""
+    linha[18] = ink._prazo_para_numero(prazo_val)
+    linha[19] = obs_gestor_txt
+    linha[20] = observacoes_u
+    linha[21] = ""
+    linha[22] = ""
+    linha[23] = ""
+    linha[24] = ""
+    return linha
+
+
+def gerar_acumulado_kcor_kria_desde_pasta_eaf(
+    pasta_eaf: Path,
+    out_path: Path,
+    caminho_template: Path | None = None,
+) -> bool:
+    """
+    Gera acumulado Kcor-Kria a partir de EAF em pasta_eaf (dados a partir de M01_LINHA_INICIO, col C).
+    Usado pelo pipeline web quando não há M03.
+    """
+    from . import separar_nc as sn
+
+    if not pasta_eaf.is_dir():
+        return False
+
+    tpl = caminho_template if caminho_template and caminho_template.is_file() else resolver_template_acumulado_kcor_kria()
+    if tpl is None or not tpl.is_file():
+        logger.warning(
+            "Template acumulado Kcor-Kria não encontrado. "
+            "Coloque _Planilha Modelo Kcor-Kria.XLSX em nc_artesp/assets/ ou defina ARTESP_M04_TEMPLATE_ACUMULADO_KCOR_KRIA."
+        )
+        return False
+
+    ex_ok = (".xlsx", ".xlsm", ".xls")
+    arquivos = sorted(
+        f
+        for f in pasta_eaf.iterdir()
+        if f.is_file() and f.suffix.lower() in ex_ok and not f.name.startswith("~")
+    )
+    if not arquivos:
+        return False
+
+    todos: list[list] = []
+    for fpath in arquivos:
+        try:
+            p = sn._converter_xls_para_xlsx(fpath) if fpath.suffix.lower() == ".xls" else fpath
+            wb = load_workbook(str_caminho_io_windows(p), data_only=True)
+            ws = wb.active
+            ultima = _ultima_linha_dados_eaf_codigo(ws, M01_LINHA_INICIO, sn.COL_CODIGO)
+            if ultima < M01_LINHA_INICIO:
+                wb.close()
+                continue
+            col_data_reparo = sn._detectar_col_data_reparo(ws, fallback=sn.COL_DATA_NC)
+            col_data_envio = sn._detectar_col_data_envio(ws, fallback=19)
+            col_tipo_nc = sn._detectar_col_tipo_nc(ws, fallback=sn.COL_TIPO_NC)
+            for r in range(M01_LINHA_INICIO, ultima + 1):
+                reg = _eaf_linha_para_registro_kcor(
+                    ws,
+                    r,
+                    col_data_reparo=col_data_reparo,
+                    col_data_envio=col_data_envio,
+                    col_tipo_nc=col_tipo_nc,
+                )
+                if reg:
+                    todos.append(reg)
+            wb.close()
+        except Exception as exc:
+            logger.warning("Acumulado EAF→Kcor: ignorar %s (%s)", fpath.name, exc)
+            continue
+
+    if not todos:
+        return False
+
+    garantir_pasta(out_path.parent)
+    shutil.copy2(tpl, out_path)
+
+    from . import inserir_nc_kria as ink
+
+    wb_acum = load_workbook(str_caminho_io_windows(out_path))
+    ws_acum = None
+    for sheet in wb_acum.worksheets:
+        a1 = sheet.cell(row=1, column=1).value
+        if a1 is not None and "numitem" in str(a1).strip().lower():
+            ws_acum = sheet
+            break
+    if ws_acum is None:
+        ws_acum = wb_acum.worksheets[0]
+        logger.debug("Acumulado EAF: primeira aba (A1 sem NumItem).")
+
+    wb_acum.active = ws_acum
+    max_row_acum = ws_acum.max_row
+    N = len(todos)
+
+    for idx, registro in enumerate(todos):
+        row = 2 + idx
+        ink._desfazer_merge_colunas_linha(ws_acum, row, 17, 20)
+        ws_acum.cell(row=row, column=1).value = idx + 1
+        for col in range(2, NUM_COLUNAS + 1):
+            val = registro[col - 1] if (col - 1) < len(registro) else None
+            if col in (20, 21):
+                val = _texto_sem_quebra_linha(val)
+            ws_acum.cell(row=row, column=col).value = val
+        ink._forcar_texto_so_data_kcor_cols_m_r(ws_acum, row)
+        _aplicar_bordas_linha(ws_acum, row)
+
+    for r in range(2 + N, max_row_acum + 1):
+        for c in range(1, NUM_COLUNAS + 1):
+            ws_acum.cell(row=r, column=c).value = None
+        _aplicar_bordas_linha(ws_acum, r)
+
+    wb_acum.save(str_caminho_io_windows(out_path))
+    wb_acum.close()
+    logger.info("Acumulado Kcor-Kria (EAF) gravado: %s (%s linha(s))", out_path.name, N)
+    return True

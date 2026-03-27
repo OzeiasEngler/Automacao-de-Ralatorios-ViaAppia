@@ -27,7 +27,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,19 @@ except ImportError:
 
 LIMIAR_GAP_KM   = 2.0    # gap entre NCs consecutivas (km) para gerar alerta
 PRAZO_EMERG_MAX = 1      # prazo ≤ 1 dia = emergencial (24 h)
+
+
+def _norm_lote_numero(lote: Any) -> str:
+    """Primeiro grupo de dígitos normalizado (ex.: '050' → '50'). Vazio se não houver."""
+    s = str(lote if lote is not None else "").strip()
+    m = re.search(r"\d+", s)
+    if not m:
+        return ""
+    try:
+        return str(int(m.group(0)))
+    except ValueError:
+        return m.group(0)
+
 
 # Carrega o mapa EAF do config (pode ser sobreposto via parâmetro)
 try:
@@ -1228,6 +1241,12 @@ def _limpar_legendas_campo_artemig(s: str) -> str:
         t,
     ):
         return ""
+    try:
+        from nc_artemig.texto_pdf import colapsar_espacos_pdf
+
+        t = colapsar_espacos_pdf(t, multiline=False)
+    except Exception:
+        t = re.sub(r"\s+", " ", (t or "").strip())
     return t[:500] if len(t) > 500 else t
 
 
@@ -1319,8 +1338,21 @@ def _indicador_patologia_de_resto_artemig(resto: str) -> tuple[str, str]:
         return "", ""
     partes = [p.strip() for p in re.split(r"\s{2,}", r) if p.strip()]
     if len(partes) >= 2:
+        a0, a1 = partes[0], partes[1]
+        if re.match(r"(?is)^gerais$", a0) and re.search(r"(?is)par[âa]metros", a1):
+            tail = " ".join(partes[2:]).strip()
+            base = "Gerais (Parâmetros)"
+            merged = f"{base} — {tail}" if tail else base
+            return "", merged[:500]
         return partes[0][:120], " ".join(partes[1:])[:500]
     sp = r.split(None, 3)
+    if len(sp) >= 2 and re.match(r"(?is)^gerais$", sp[0]) and re.search(
+        r"(?is)par[âa]metros", sp[1]
+    ):
+        tail = " ".join(sp[2:]).strip() if len(sp) > 2 else ""
+        base = "Gerais (Parâmetros)"
+        merged = f"{base} — {tail}" if tail else base
+        return "", merged[:500]
     if len(sp) >= 3:
         dois = f"{sp[0]} {sp[1]}"
         if re.match(
@@ -1331,6 +1363,30 @@ def _indicador_patologia_de_resto_artemig(resto: str) -> tuple[str, str]:
     if len(sp) >= 2:
         return sp[0][:120], " ".join(sp[1:])[:500]
     return r[:120], ""
+
+
+def _merge_gerais_parametros_ind_pat(ind: str, pat: str) -> tuple[str, str]:
+    """
+    PDF QID: «Gerais» e «(Parâmetros» em colunas separadas geram Nas01 «pat (ind)» ilegível.
+    Funde numa única linha de patologia para a col. U.
+    """
+    i = (ind or "").strip()
+    p = (pat or "").strip()
+    if re.match(r"(?is)^gerais$", i):
+        m = re.match(r"(?is)^\(?\s*par[âa]metros\b[)\s:.-]*\s*(.*)$", p)
+        if m:
+            resto = (m.group(1) or "").strip()
+            base = "Gerais (Parâmetros)"
+            novo_p = f"{base} — {resto}" if resto else base
+            return "", novo_p[:500]
+        if re.search(r"(?is)par[âa]metros", p):
+            return "", f"Gerais — {p}"[:500]
+    if re.match(r"(?is)^gerais$", p) and re.search(r"(?is)par[âa]metros", i):
+        resto = re.sub(r"(?is)^\(?\s*par[âa]metros\b[)\s:.-]*\s*", "", i).strip()
+        base = "Gerais (Parâmetros)"
+        novo = f"{base} — {resto}" if resto else base
+        return "", novo[:500]
+    return ind, pat
 
 
 def _eh_texto_localizacao_resumo_artemig(s: str) -> bool:
@@ -1379,14 +1435,8 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
         except Exception:
             return 0.0
 
-    tipo_artemig = ""
-    tm = re.search(r"(?mi)^\s*Tipo\s*:?\s*([A-Za-z0-9À-ÿ_\s/-]+)", texto)
-    if tm and (tm.group(1) or "").strip():
-        tipo_artemig = (tm.group(1).strip().split()[0])[:20]
-    if not tipo_artemig and re.search(r"\bQID\b", texto, re.I):
-        tipo_artemig = "QID"
-    if not tipo_artemig and re.search(r"(?i)FISCALIZA[CÇ]", texto):
-        tipo_artemig = "FISCALIZACAO"[:20]
+    # PDFs variam («Tipo: Fiscalização», «Outros Tipo: QID», etc.); col. Tipo do relatório e Kcor ficam sempre QID.
+    tipo_artemig = "QID"
 
     num_consol = _extrair_num_consol_artemig(texto)
 
@@ -1486,6 +1536,7 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
 
     indicador = _limpar_legendas_campo_artemig(indicador)
     patologia = _limpar_legendas_campo_artemig(patologia)
+    indicador, patologia = _merge_gerais_parametros_ind_pat(indicador, patologia)
 
     descricao_m = re.search(r"(?:Descri[çc][aã]o\s*:?\s*)(.*?)(?=LOCALIZA[OÇ][AÃ]O|EAF\s*:)", texto, re.I | re.DOTALL)
     descricao = _limpar_legendas_campo_artemig(
@@ -1584,6 +1635,13 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
     )
     _tipo_panela_art = _is_panela(_blob_pav)
 
+    try:
+        from nc_artemig.texto_pdf import colapsar_espacos_pdf as _cx
+    except Exception:
+
+        def _cx(s, multiline=False):
+            return re.sub(r"\s+", " ", (s or "").strip())
+
     return NcItem(
         codigo=codigo,
         data_con=data_con,
@@ -1595,23 +1653,23 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
         km_fim=km_fim,
         km_ini_str=str(km_ini).replace(".", ","),
         km_fim_str=str(km_fim).replace(".", ","),
-        sentido=sentido,
-        tipo_atividade=tipo_a,
-        grupo_atividade=grp_a,
-        atividade=atv_a,
-        observacao=observacao,
+        sentido=_cx(sentido or "", multiline=False),
+        tipo_atividade=_cx(tipo_a or "", multiline=False),
+        grupo_atividade=_cx(grp_a or "", multiline=False),
+        atividade=_cx(atv_a or "", multiline=False),
+        observacao=_cx(observacao or "", multiline=False),
         prazo_str=prazo_str,
         prazo_dias=prazo_dias,
         emergencial=emerg_p,
         tipo_panela=_tipo_panela_art,
         empresa=_GRUPO_FISCALIZACAO_ARTEMIG,
         grupo=_GRUPO_EAF_ARTEMIG_ANALISE,
-        nome_fiscal=nome_rt,
+        nome_fiscal=_cx(nome_rt or "", multiline=False),
         tipo_artemig=tipo_artemig,
-        sh_artemig=sh_artemig,
+        sh_artemig=_cx(sh_artemig or "", multiline=False),
         num_consol=num_consol,
-        patologia_artemig=(patologia or "")[:500],
-        indicador_artemig=(indicador or "")[:200],
+        patologia_artemig=_cx(patologia or "", multiline=False)[:500],
+        indicador_artemig=_cx(indicador or "", multiline=False)[:200],
     )
 
 
@@ -2135,7 +2193,7 @@ def _concessionaria_por_lote(lote_ou_concessionaria: str) -> str:
 
 def _caminho_template_relatorio_xlsx(lote_selecionado: str | None = None) -> Path:
     """Lote 50: template Artemig (A/B/V); demais: ARTESP_TEMPLATE_RELATORIO."""
-    if (lote_selecionado or "").strip() == "50":
+    if _norm_lote_numero(lote_selecionado) == "50":
         try:
             from nc_artemig.config import TEMPLATE_RELATORIO_ANALISE_PDF
             p = Path(TEMPLATE_RELATORIO_ANALISE_PDF)
@@ -2290,11 +2348,22 @@ def gerar_relatorio_xlsx(
     if not OPENPYXL_OK:
         raise ImportError("openpyxl não instalado: pip install openpyxl")
     template_path = _caminho_template_relatorio_xlsx(lote_selecionado)
-    preencher_colunas_artemig = (
-        (lote_selecionado or "").strip() == "50"
-        and template_path.is_file()
-        and "artemig" in template_path.name.lower()
+    try:
+        from nc_artemig.sanear_pipeline import relatorio_deve_tratar_artemig, sanear_ncs_lote50_consol
+
+        if relatorio_deve_tratar_artemig(lote_selecionado, ncs):
+            sanear_ncs_lote50_consol(ncs, forcar_todas=True)
+    except Exception:
+        pass
+    lo50 = _norm_lote_numero(lote_selecionado) == "50" or any(
+        _norm_lote_numero(getattr(n, "lote", None) or "") == "50" for n in ncs
     )
+    _colapsar_pdf = None
+    if lo50:
+        try:
+            from nc_artemig.texto_pdf import colapsar_espacos_pdf as _colapsar_pdf
+        except ImportError:
+            _colapsar_pdf = None
     CABECALHO_FIM = 4
     PRIMEIRA_LINHA_DADOS = 5
     insere_linha_lote = bool((rotulo_lote_analise or "").strip())
@@ -2411,7 +2480,7 @@ def gerar_relatorio_xlsx(
         ws.cell(row=row_idx, column=col_map["km_fim_str"], value=km_fim_k)
         ws.cell(row=row_idx, column=col_map["km_fim_str"] + 1, value=km_fim_m)
         sent_out = (nc.sentido or "").strip()
-        if preencher_colunas_artemig:
+        if lo50:
             try:
                 from nc_artemig.sentido_kcor import sentido_artemig_para_kcor
                 sent_out = sentido_artemig_para_kcor(nc.rodovia or "", nc.sentido or "")
@@ -2425,15 +2494,21 @@ def gerar_relatorio_xlsx(
         ws.cell(row=row_idx, column=col_map["atividade"], value=(nc.atividade or "").strip())
         ws.cell(row=row_idx, column=18, value=_data_sem_hora_celula(nc.data_con or ""))
         pz_out = (nc.prazo_str or "").strip()
-        if preencher_colunas_artemig:
+        if lo50:
             pz_out = _prazo_str_valido_artemig(pz_out)
         ws.cell(row=row_idx, column=col_map["prazo_str"], value=_coluna_data_reparo_relatorio(pz_out))
         ws.cell(row=row_idx, column=col_map["empresa"], value=(nc.empresa or "").strip())
         ws.cell(row=row_idx, column=col_map["nome_fiscal"], value=(nc.nome_fiscal or "").strip())
-        if preencher_colunas_artemig:
-            ws.cell(row=row_idx, column=1, value=(getattr(nc, "tipo_artemig", None) or "").strip())
-            ws.cell(row=row_idx, column=2, value=(getattr(nc, "sh_artemig", None) or "").strip())
-            ws.cell(row=row_idx, column=22, value=(nc.observacao or "").strip()[:500])
+        if lo50:
+            # Artemig: col. A do template é sempre QID (PDF pode trazer «Fiscalização» ou texto com NBSP).
+            ws.cell(row=row_idx, column=1, value="QID")
+            shv = (getattr(nc, "sh_artemig", None) or "").strip()
+            obsv = (nc.observacao or "").strip()
+            if _colapsar_pdf:
+                shv = _colapsar_pdf(shv, multiline=False)
+                obsv = _colapsar_pdf(obsv, multiline=True)
+            ws.cell(row=row_idx, column=2, value=shv)
+            ws.cell(row=row_idx, column=22, value=obsv[:500])
 
     if ncs and wb is not None and ws is not None and template_path.is_file() and template_path.suffix.lower() == ".xlsx":
         ult = PRIMEIRA_LINHA_DADOS + len(ncs) - 1
@@ -3385,8 +3460,7 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
             _RT_PADRAO = {}
         get_mapa_eaf = lambda l: _MAPA_EAF_PADRAO
         get_mapa_responsavel_tecnico = lambda l: _RT_PADRAO
-    _lote_num = re.search(r"\d+", (lote or "").strip()) if lote else None
-    lote_num = (_lote_num.group(0) if _lote_num else "").strip() or "13"
+    lote_num = _norm_lote_numero(lote) or "13"
     mapa_eaf_lote = get_mapa_eaf(lote_num)
     if lote_num == "50":
         if not mapa_eaf_lote:
@@ -3584,6 +3658,18 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
             if tipo_inf and not (nc.tipo_atividade or "").strip():
                 nc.tipo_atividade = tipo_inf
 
+    # Lote 50 (Artemig): QID + espaços — um só módulo (`nc_artemig.sanear_pipeline`) antes de relatórios.
+    if lote_num == "50" and ncs_total:
+        try:
+            from nc_artemig.sanear_pipeline import sanear_ncs_lote50_consol
+
+            sanear_ncs_lote50_consol(ncs_total, forcar_todas=True)
+        except Exception as ex:
+            logger.warning("sanear_ncs_lote50_consol: %s", ex)
+            for nc in ncs_total:
+                nc.lote = "50"
+                nc.tipo_artemig = "QID"
+
     alertas_km = analisar_gaps(ncs_total, limiar_km=limiar_km, mapa_eaf=mapa_eaf_lote)
     # Regra ARTESP: salto de código ~ apontamento não entregue. Artemig: relatório integral.
     eh_artemig_50 = _pdf_eh_artemig_lote50(ncs_total)
@@ -3702,10 +3788,19 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
             from nc_artemig.exportar_kcor_planilha import gerar_exportar_kcor_xlsx_bytes
             from nc_artemig.config import nome_saida_excel_kcor
 
-            kcor_b = gerar_exportar_kcor_xlsx_bytes(ncs_total)
+            kcor_b, kcor_meta = gerar_exportar_kcor_xlsx_bytes(ncs_total)
+            res["exportar_kcor_meta"] = kcor_meta
             if kcor_b:
                 res["exportar_kcor_xlsx"] = kcor_b
                 res["exportar_kcor_nome"] = nome_saida_excel_kcor()
+            else:
+                res["exportar_kcor_nao_gerado"] = True
+                logger.warning(
+                    "Lote 50: Exportar Kcor não gerado: %s",
+                    kcor_meta.get("motivo") or kcor_meta,
+                )
         except Exception as ex:
+            res["exportar_kcor_nao_gerado"] = True
+            res["exportar_kcor_meta"] = {"ok": False, "motivo": str(ex), "modelo_minimo_gerado": False}
             logger.warning("Lote 50: Exportar Kcor não gerado: %s", ex)
     return pdf_rel, xlsx_bytes, res

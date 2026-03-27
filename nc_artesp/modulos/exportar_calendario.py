@@ -23,7 +23,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from config import M06_PASTA_OUTLOOK
-from utils.helpers import garantir_pasta
+from utils.helpers import escrever_bytes_caminho, garantir_pasta, str_caminho_io_windows
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ def _criar_via_win32com(arquivo_acumulado: Path,
         folder = cal_folder.Folders.Add(pasta_outlook)
         logger.info(f"  Subpasta '{pasta_outlook}' criada no calendário.")
 
-    wb = load_workbook(str(arquivo_acumulado), data_only=True)
+    wb = load_workbook(str_caminho_io_windows(arquivo_acumulado), data_only=True)
     ws = wb.active
 
     ultima = ws.max_row
@@ -167,7 +167,7 @@ def _criar_via_ical(arquivo_acumulado: Path,
     except ImportError:
         raise ImportError("icalendar não instalado. Execute: pip install icalendar")
 
-    wb = load_workbook(str(arquivo_acumulado), data_only=True)
+    wb = load_workbook(str_caminho_io_windows(arquivo_acumulado), data_only=True)
     ws = wb.active
 
     ultima = ws.max_row
@@ -228,7 +228,7 @@ def _criar_via_ical(arquivo_acumulado: Path,
     garantir_pasta(pasta_saida)
     from utils.helpers import timestamp_agora
     destino = pasta_saida / f"{timestamp_agora()} - eventos_kria.ics"
-    destino.write_bytes(cal.to_ical())
+    escrever_bytes_caminho(destino, cal.to_ical())
     logger.info(f"  .ics gerado: {destino.name} ({adicionados} evento(s))")
     return destino
 

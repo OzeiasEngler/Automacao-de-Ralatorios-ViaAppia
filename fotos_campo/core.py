@@ -26,6 +26,7 @@ import logging
 import math
 import os
 import shutil
+import sys
 import tempfile
 import zipfile
 from collections import Counter
@@ -33,6 +34,26 @@ from copy import copy as copy_obj
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
+
+_REPO_ROOT_FC = Path(__file__).resolve().parent.parent
+
+
+def _extrair_zip_para_pasta(zf: zipfile.ZipFile, destino: Path) -> None:
+    """No Windows usa ``\\\\?\\`` via nc_artesp.utils.helpers (caminhos longos)."""
+    if os.name != "nt":
+        destino.mkdir(parents=True, exist_ok=True)
+        zf.extractall(str(destino))
+        return
+    if str(_REPO_ROOT_FC) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT_FC))
+    try:
+        from nc_artesp.utils.helpers import extrair_zipfile_para_pasta
+
+        extrair_zipfile_para_pasta(zf, destino)
+    except Exception:
+        destino.mkdir(parents=True, exist_ok=True)
+        zf.extractall(str(destino))
+
 
 try:
     import openpyxl
@@ -278,7 +299,7 @@ def listar_de_zip(zip_bytes: bytes, log_cb: _LogCb = None) -> Tuple[bytes, int]:
         pasta_fotos = Path(tmpdir) / "fotos"
         pasta_fotos.mkdir()
         with zipfile.ZipFile(str(zip_path)) as zf:
-            zf.extractall(str(pasta_fotos))
+            _extrair_zip_para_pasta(zf, pasta_fotos)
         registros = listar_arquivos_subpastas(str(pasta_fotos), log_cb=log_cb)
         # Ajusta caminhos para relativos (útil na web)
         for reg in registros:
@@ -1221,7 +1242,7 @@ def relatorio_foto2lados_bytes(xlsx_dados_bytes: bytes, xlsx_modelo_bytes: bytes
             pasta_fotos = Path(tmpdir) / "fotos"
             pasta_fotos.mkdir()
             with zipfile.ZipFile(io.BytesIO(zip_fotos_bytes)) as zf:
-                zf.extractall(str(pasta_fotos))
+                _extrair_zip_para_pasta(zf, pasta_fotos)
             # Lista de imagens em ordem determinística (para fallback por posição — primeiro bloco)
             _extensoes_foto = (".jpg", ".jpeg", ".png", ".JPG", ".JPEG", ".PNG")
             lista_arquivos_ordem = sorted(
