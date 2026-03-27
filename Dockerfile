@@ -3,6 +3,8 @@ FROM python:3.11-slim
 # Impede que o Python gere arquivos .pyc e permite logs em tempo real
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
+# Em imagem Docker é normal instalar como root; evita aviso ruidoso do pip no build
+ENV PIP_ROOT_USER_ACTION=ignore
 
 # Dependências de sistema necessárias para geopandas/fiona e pymupdf
 RUN apt-get update && apt-get install -y --no-install-recommends \
