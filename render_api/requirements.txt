@@ -22,3 +22,5 @@ openpyxl
 pymupdf
 pillow
 pdfplumber
+# M06 — Acumulado.xlsx → .ics (icalendar)
+icalendar

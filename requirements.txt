@@ -22,6 +22,8 @@ PyJWT
 openpyxl
 xlrd
 python-dateutil
+# iCalendar (.ics) — M06 / Acumulado.xlsx → eventos.ics
+icalendar
 
 # ── Geração de PDF (relatório de auditoria) ──────────────────────────────────
 reportlab
