@@ -8,12 +8,12 @@ Sub Artesp_022_EAF_Gerar_Mod_Foto_Excel_NC_Rev2()
     Dim pasta As Workbook
     Dim Wb As Workbook, sfile As String, spath As String
  
-    'Desativa os avisos e atualiação da tela
+    'Desativa os avisos e atualia˜˜o da tela
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
 
-    spath = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relatório EAF - NC\Exportar\"
+    spath = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Relat˜rio EAF - NC\Exportar\"
     sfile = Dir(spath & "*.xls")
     
   Do While sfile <> ""
@@ -33,7 +33,7 @@ Sub Artesp_022_EAF_Gerar_Mod_Foto_Excel_NC_Rev2()
     Dim fGIF As String
     Dim margem As Integer
     
-    'Desativa os avisos e atualiação da tela
+    'Desativa os avisos e atualia˜˜o da tela
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
@@ -196,7 +196,7 @@ ActiveCell.FormulaR1C1 = Prazo(x)
 Range("L" & j + 1).Select
 ActiveCell.FormulaR1C1 = foto(x)
 
-s = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provisórias\" & "nc (" & foto(x) & ").jpg"
+s = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provis˜rias\" & "nc (" & foto(x) & ").jpg"
 
 Range("C" & j - 1).Select
  With Range("C" & j - 1)
@@ -226,24 +226,24 @@ mes1 = Left(Right(data(1), 7), 2)
 dia1 = Left(data(1), 2)
 
 
-If nc(1) = "Recomposição de erosão em corte / aterro" Then
-nc(1) = "Recomposição de erosão em corte_aterro"
+If nc(1) = "Recomposi˜˜o de eros˜o em corte / aterro" Then
+nc(1) = "Recomposi˜˜o de eros˜o em corte_aterro"
 
-ElseIf nc(1) = "Pavimentação/ Passeio/ Alambrado" Then
-nc(1) = "Prédio e Pátio"
+ElseIf nc(1) = "Pavimenta˜˜o/ Passeio/ Alambrado" Then
+nc(1) = "Pr˜dio e P˜tio"
 
 
-ElseIf nc(1) = "Hidráulica/ Esgoto/ Drenagem" Then
+ElseIf nc(1) = "Hidr˜ulica/ Esgoto/ Drenagem" Then
 nc(1) = "Hidr_Esg_Dren"
 
 
-ElseIf nc(1) = "Louças/ Metais" Then
-nc(1) = "Predio - Louças_Metais"
+ElseIf nc(1) = "Lou˜as/ Metais" Then
+nc(1) = "Predio - Lou˜as_Metais"
 End If
 
 
 Origem = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Modelo\Modelo.xlsx"
-Destino = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Respostas - _Relatório EAF - NC\Pendentes\" & ano & mes & dia & " - " & Format(Now, "hhmmss") & " - " & rodoviat(1) & " - " & dia1 & "-" & mes1 & "-" & ano1 & " - " & nc(1) & ".xlsx"
+Destino = "L:\ENGENHARIA\CONSERVA\07 - Controles Artesp\_Respostas - _Relat˜rio EAF - NC\Pendentes\" & ano & mes & dia & " - " & Format(Now, "hhmmss") & " - " & rodoviat(1) & " - " & dia1 & "-" & mes1 & "-" & ano1 & " - " & nc(1) & ".xlsx"
 FileCopy Origem, Destino
 
 Workbooks.Open (Destino)
@@ -271,13 +271,13 @@ Range("B" & linha + 1).Value = dia1 & "-" & mes1 & "-" & ano1 & " - " & rodovia(
 
 
 
-v = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provisórias - PDF\" & "pdf (" & foto(h) & ").jpg"
+v = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provis˜rias - PDF\" & "pdf (" & foto(h) & ").jpg"
 
 Range("B" & linha + 1).Select
  With Range("B" & linha + 1)
             Set imgIcon = ActiveSheet.Shapes.AddPicture( _
             fileName:=v, LinkToFile:=False, _
-            SaveWithDocument:=True, Left:=.Left, Top:=.Top, Width:=480, Height:=202)
+            SaveWithDocument:=True, Left:=.Left, Top:=.Top, Width:=960, Height:=404)
             imgIcon.Select
             Selection.ShapeRange.IncrementLeft 0.75
             Selection.ShapeRange.IncrementTop 0.75
@@ -287,13 +287,13 @@ linha = linha + 29
 
 Next
 
-v = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provisórias - PDF\" & "pdf (" & foto(1) & ").jpg"
+v = "L:\ENGENHARIA\CONSERVA\06 - Abertura Externa Evento Kria\Arquivos\Arquivo Foto - Conserva\Imagens Provis˜rias - PDF\" & "pdf (" & foto(1) & ").jpg"
 
 Range("B" & 2).Select
  With Range("B" & 2)
             Set imgIcon = ActiveSheet.Shapes.AddPicture( _
             fileName:=v, LinkToFile:=False, _
-            SaveWithDocument:=True, Left:=.Left, Top:=.Top, Width:=480, Height:=202)
+            SaveWithDocument:=True, Left:=.Left, Top:=.Top, Width:=960, Height:=404)
             imgIcon.Select
             Selection.ShapeRange.IncrementLeft 0.75
             Selection.ShapeRange.IncrementTop 0.75
@@ -308,7 +308,7 @@ ActiveWorkbook.Close
 sfile = Dir()
 Loop
 
-MsgBox "Processo Concluído - Arquivos de Fotos Gerados", vbInformation, "Gerar Arquivo de Foto"
+MsgBox "Processo Conclu˜do - Arquivos de Fotos Gerados", vbInformation, "Gerar Arquivo de Foto"
 Exit Sub
 
 

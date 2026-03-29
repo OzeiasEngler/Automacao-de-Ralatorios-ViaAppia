@@ -76,7 +76,8 @@ from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from starlette.background import BackgroundTask
 try:
     from render_api.job_manager import carregar_job_nc as job_manager_carregar
 except ImportError:
@@ -443,7 +444,7 @@ def _nc_zip_backup_desde_bytes_zip_interno(zip_bytes: bytes, zip_out: Path) -> i
     """
     Grava ``zip_out`` copiando do ZIP em memória apenas membros que são imagens.
     Usado para o backup embutido no pacote final: o ZIP de entrada é o **gerado no servidor**
-    ao extrair os PDFs do fluxo (``_nc_pdf_items_para_zip_imagens_bytes_sync``), não um upload
+    ao extrair os PDFs do fluxo (``_nc_pdf_paths_para_zip_imagens_bytes_sync``), não um upload
     separado de imagens pelo cliente.
     """
     if not zip_bytes or len(zip_bytes) < 22:
@@ -1075,6 +1076,29 @@ def _ler(f: UploadFile) -> bytes:
     return data
 
 
+async def _nc_gravar_upload_pdf_com_limite(upload: UploadFile, dest: Path) -> None:
+    """Grava upload em disco por chunks (evita segurar o PDF inteiro na RAM do event loop)."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    total = 0
+    chunk_sz = 1024 * 1024
+    with dest.open("wb") as out:
+        while True:
+            chunk = await upload.read(chunk_sz)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_BYTES:
+                try:
+                    dest.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise HTTPException(
+                    413,
+                    detail=f"PDF '{upload.filename}' excede {MAX_MB} MB.",
+                )
+            out.write(chunk)
+
+
 def _safe_filename_header(nome: str) -> str:
     """Nome seguro para Content-Disposition (evita erro latin-1 em headers HTTP)."""
     if not nome:
@@ -1093,7 +1117,7 @@ def _stream_zip(
     job_id: Optional[str] = None,
     extra_headers: Optional[dict[str, str]] = None,
 ) -> StreamingResponse:
-    """Stream ZIP; se job_id informado, adiciona header X-NC-Job-Id para o front encadear."""
+    """Stream ZIP a partir de bytes (evitar para ficheiros muito grandes — preferir ``_stream_zip_path``)."""
     headers = {"Content-Disposition": f'attachment; filename="{_safe_filename_header(nome)}"'}
     if job_id:
         headers["X-NC-Job-Id"] = job_id
@@ -1103,6 +1127,29 @@ def _stream_zip(
                 headers[str(k)] = str(v)
     return StreamingResponse(
         io.BytesIO(data), media_type="application/zip",
+        headers=headers,
+    )
+
+
+def _stream_zip_path(
+    zip_path: Path,
+    nome: str,
+    job_id: Optional[str] = None,
+    extra_headers: Optional[dict[str, str]] = None,
+) -> FileResponse:
+    """Envia ZIP a partir do disco (Starlette/FastAPI leem o ficheiro em streaming; não carregam o ZIP inteiro na RAM)."""
+    if not zip_path.is_file():
+        raise HTTPException(status_code=500, detail="ZIP não encontrado para download.")
+    headers = {"Content-Disposition": f'attachment; filename="{_safe_filename_header(nome)}"'}
+    if job_id:
+        headers["X-NC-Job-Id"] = job_id
+    if extra_headers:
+        for k, v in extra_headers.items():
+            if k and v is not None:
+                headers[str(k)] = str(v)
+    return FileResponse(
+        str(zip_path.resolve()),
+        media_type="application/zip",
         headers=headers,
     )
 
@@ -1207,63 +1254,78 @@ def _importar_pdf_extractor():
         )
 
 
-def _nc_pdf_items_para_arquivos_imagens_sync(
-    pdf_items: List[tuple[bytes, str]],
+def _nc_pdf_paths_extrair_para_pasta_sync(
+    pdf_entries: List[tuple[Path, str]],
+    dest_dir: Path,
     lote: str,
     dpi: Optional[int],
     nomear_por_indice: bool,
-) -> dict[str, bytes]:
+) -> None:
     """
-    Mesma composição de ficheiros que POST /nc/extrair-pdf (ZIP com pasta lote_*_n_pdfs_imagens/).
-    Usado internamente por POST /nc/completo para não exigir ZIP intermédio ao cliente.
+    Extrai cada PDF para ``dest_dir`` (nomes achatados, sem ZIP intermédio em RAM).
+    Um diretório temporário por PDF libera bitmaps após cada iteração.
     """
     extrator = _importar_pdf_extractor()
     lote_m = re.search(r"\d+", (lote or "").strip() or "13")
     pasta_unica_artemig = (lote_m.group(0) if lote_m else "") == "50"
-    arquivos: dict[str, bytes] = {}
     # Regra operacional atual: identificação de fotos sempre por CÓDIGO da fiscalização.
     nomear_por_indice = False
-    for pdf_bytes, fname in pdf_items:
-        zip_bytes_i, _ = extrator.extrair_pdf_para_zip(
-            pdf_bytes,
-            dpi=dpi,
-            nomear_por_indice_fiscalizacao=nomear_por_indice,
-            pasta_unica=pasta_unica_artemig,
-            raiz_unica_sem_subpastas=not pasta_unica_artemig,
-            nome_pdf_original=fname,
-        )
-        with zipfile.ZipFile(io.BytesIO(zip_bytes_i)) as zf_i:
-            for name in zf_i.namelist():
-                if name.endswith("/") or not name.strip():
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    nomes_usados: set[str] = set()
+
+    for pdf_path, fname in pdf_entries:
+        with tempfile.TemporaryDirectory(prefix="nc_one_pdf_") as td:
+            sub_out = Path(td) / "saida"
+            sub_out.mkdir(parents=True, exist_ok=True)
+            salvos, _ = extrator.extrair_arquivo_pdf_para_pasta(
+                pdf_path,
+                sub_out,
+                dpi=dpi,
+                nomear_por_indice_fiscalizacao=nomear_por_indice,
+                pasta_unica=pasta_unica_artemig,
+                raiz_unica_sem_subpastas=not pasta_unica_artemig,
+                nome_pdf_original=fname,
+            )
+            for f in salvos:
+                fp = Path(f)
+                if not fp.is_file():
                     continue
-                final = Path(name.replace("\\", "/")).name
+                final = fp.name
                 n_col = 1
-                while final in arquivos:
+                while final in nomes_usados:
                     pth = Path(final)
                     stem2 = f"{pth.stem}_{n_col}{pth.suffix or '.jpg'}"
                     final = stem2
                     n_col += 1
-                arquivos[final] = zf_i.read(name)
-    return arquivos
+                nomes_usados.add(final)
+                shutil.move(str(fp), str(dest_dir / final))
 
 
-def _nc_pdf_items_para_zip_imagens_bytes_sync(
-    pdf_items: List[tuple[bytes, str]],
+def _nc_pdf_paths_para_zip_imagens_bytes_sync(
+    pdf_entries: List[tuple[Path, str]],
     lote: str,
     dpi: Optional[int],
     nomear_por_indice: bool,
 ) -> bytes:
-    arquivos = _nc_pdf_items_para_arquivos_imagens_sync(pdf_items, lote, dpi, nomear_por_indice)
-    n = len(pdf_items)
-    lote_m = re.search(r"\d+", (lote or "").strip() or "13")
-    lote_num = lote_m.group(0) if lote_m else "13"
-    pasta_zip = f"lote_{lote_num}_{n}_pdfs_imagens"
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
-        for nome, data in arquivos.items():
-            arc = f"{pasta_zip}/{nome}".replace("\\", "/")
-            zf_out.writestr(arc, data)
-    return buf.getvalue()
+    """ZIP em RAM só na fase final; PDFs já estão em disco (caminhos em ``pdf_entries``)."""
+    work = Path(tempfile.mkdtemp(prefix="nc_zip_pdf_"))
+    try:
+        out_dir = work / "out"
+        out_dir.mkdir()
+        _nc_pdf_paths_extrair_para_pasta_sync(pdf_entries, out_dir, lote, dpi, nomear_por_indice)
+        n = len(pdf_entries)
+        lote_m = re.search(r"\d+", (lote or "").strip() or "13")
+        lote_num = lote_m.group(0) if lote_m else "13"
+        pasta_zip = f"lote_{lote_num}_{n}_pdfs_imagens"
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
+            for fp in sorted(out_dir.iterdir(), key=lambda x: x.name):
+                if fp.is_file():
+                    arc = f"{pasta_zip}/{fp.name}".replace("\\", "/")
+                    zf_out.write(fp, arc)
+        return buf.getvalue()
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 async def _nc_pdfs_uploads_para_zip_imagens_bytes(
@@ -1272,26 +1334,31 @@ async def _nc_pdfs_uploads_para_zip_imagens_bytes(
     dpi: Optional[int],
     nomear_por_indice: bool,
 ) -> Optional[bytes]:
-    """Lê uploads de PDF e devolve bytes do ZIP de imagens, ou None se não houver PDFs válidos."""
-    pdf_items: List[tuple[bytes, str]] = []
-    for f in pdfs or []:
-        if not (f.filename or "").strip():
-            continue
-        data = await f.read()
-        if len(data) > MAX_BYTES:
-            raise HTTPException(413, detail=f"PDF '{f.filename}' excede {MAX_MB} MB.")
-        pdf_items.append((data, f.filename or "doc.pdf"))
-    if not pdf_items:
-        return None
+    """Grava PDFs em disco por chunks e devolve bytes do ZIP de imagens, ou None se não houver PDFs válidos."""
     if not (lote or "").strip():
         raise HTTPException(400, detail="Selecione o lote ao enviar PDFs.")
-    return await asyncio.to_thread(
-        _nc_pdf_items_para_zip_imagens_bytes_sync,
-        pdf_items,
-        lote,
-        dpi,
-        nomear_por_indice,
-    )
+    root = Path(tempfile.mkdtemp(prefix="nc_zip_upload_"))
+    try:
+        pdf_in = root / "_in"
+        pdf_in.mkdir()
+        pdf_entries: list[tuple[Path, str]] = []
+        for i, f in enumerate(pdfs or []):
+            if not (f.filename or "").strip():
+                continue
+            dest = pdf_in / f"{i}.pdf"
+            await _nc_gravar_upload_pdf_com_limite(f, dest)
+            pdf_entries.append((dest, f.filename or "doc.pdf"))
+        if not pdf_entries:
+            return None
+        return await asyncio.to_thread(
+            _nc_pdf_paths_para_zip_imagens_bytes_sync,
+            pdf_entries,
+            lote,
+            dpi,
+            nomear_por_indice,
+        )
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 async def _nc_pdfs_uploads_para_arquivos_imagens(
@@ -1299,27 +1366,48 @@ async def _nc_pdfs_uploads_para_arquivos_imagens(
     lote: str,
     dpi: Optional[int],
     nomear_por_indice: bool,
-) -> Optional[dict[str, bytes]]:
-    """Lê uploads de PDF e devolve dict {nome_arquivo: bytes} de imagens extraídas."""
-    pdf_items: List[tuple[bytes, str]] = []
+) -> tuple[Optional[Path], Optional[Path]]:
+    """
+    Grava cada PDF em disco (por chunks), extrai imagens para ``out/`` dentro de um mkdtemp.
+    Retorna ``(raiz_tmp, pasta_out)``. Sem PDFs válidos: ``(None, None)``.
+    O chamador deve apagar ``raiz_tmp`` com ``shutil.rmtree(..., ignore_errors=True)`` quando terminar.
+    """
+    entries_files: List[UploadFile] = []
     for f in pdfs or []:
-        if not (f.filename or "").strip():
-            continue
-        data = await f.read()
-        if len(data) > MAX_BYTES:
-            raise HTTPException(413, detail=f"PDF '{f.filename}' excede {MAX_MB} MB.")
-        pdf_items.append((data, f.filename or "doc.pdf"))
-    if not pdf_items:
-        return None
+        if (f.filename or "").strip():
+            entries_files.append(f)
+    if not entries_files:
+        return None, None
     if not (lote or "").strip():
         raise HTTPException(400, detail="Selecione o lote ao enviar PDFs.")
-    return await asyncio.to_thread(
-        _nc_pdf_items_para_arquivos_imagens_sync,
-        pdf_items,
-        lote,
-        dpi,
-        nomear_por_indice,
-    )
+    root = Path(tempfile.mkdtemp(prefix="nc_pdf_img_"))
+    try:
+        pdf_in = root / "_in"
+        pdf_in.mkdir()
+        pdf_entries: list[tuple[Path, str]] = []
+        for i, f in enumerate(entries_files):
+            dest = pdf_in / f"{i}.pdf"
+            await _nc_gravar_upload_pdf_com_limite(f, dest)
+            pdf_entries.append((dest, f.filename or "doc.pdf"))
+        out_dir = root / "out"
+        out_dir.mkdir()
+        await asyncio.to_thread(
+            _nc_pdf_paths_extrair_para_pasta_sync,
+            pdf_entries,
+            out_dir,
+            lote,
+            dpi,
+            nomear_por_indice,
+        )
+        for p, _ in pdf_entries:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        return root, out_dir
+    except Exception:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
 
 
 def _flag_teste_local(val_form: str) -> bool:
@@ -1400,89 +1488,94 @@ async def nc_analisar_pdf(
         nome_pdf = f"{pasta}/Analise_NCs_{slug}.pdf"
         nome_xlsx = f"{pasta}/Relatorio_Fiscalizacao_{slug}.xlsx"
         nome_zip = f"Relatorio_Analise_NCs_{slug}.zip"
-        buf = io.BytesIO()
+        root_an = Path(tempfile.mkdtemp(prefix="nc_analisar_"))
+        zip_disk = root_an / nome_zip
         extrator = None
         if (lote_slug or "").strip() == "50":
             try:
                 extrator = _importar_pdf_extractor()
             except HTTPException:
                 extrator = None
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr(nome_pdf.replace("\\", "/"), pdf_rel)
-            zf.writestr(nome_xlsx.replace("\\", "/"), xlsx_bytes)
-            kcor_b = resumo.get("exportar_kcor_xlsx") or b""
-            kcor_nome = (resumo.get("exportar_kcor_nome") or "").strip()
-            if kcor_b and kcor_nome and (lote_slug or "").strip() == "50":
-                arc_kcor = f"{pasta}/{kcor_nome}".replace("\\", "/")
-                zf.writestr(arc_kcor, kcor_b)
-            if extrator and (lote_slug or "").strip() == "50":
-                usados_stem: set[str] = set()
-                arcs_ja: set[str] = set()
-                varios_pdfs = len(pdfs_bytes) > 1
-                for i, data in enumerate(pdfs_bytes):
-                    fn = (pdfs[i].filename if i < len(pdfs) else None) or f"pdf_{i + 1}.pdf"
-                    try:
-                        zip_i, _ = extrator.extrair_pdf_para_zip(
-                            data,
-                            dpi=None,
-                            nomear_por_indice_fiscalizacao=False,
-                            pasta_unica=True,
-                            raiz_unica_sem_subpastas=False,
-                            nome_pdf_original=fn,
-                        )
-                    except Exception as ex:
-                        logger.warning("nc/analisar-pdf lote 50: extração imagens/PDF %s: %s", fn, ex)
-                        continue
-                    stem0 = Path(fn).stem
-                    stem = "".join(c if c.isalnum() or c in "_-" else "_" for c in stem0) or f"pdf{i + 1}"
-                    base_stem = stem
-                    n_dup = 0
-                    while stem in usados_stem:
-                        n_dup += 1
-                        stem = f"{base_stem}_{n_dup}"
-                    usados_stem.add(stem)
-                    with zipfile.ZipFile(io.BytesIO(zip_i)) as zf_i:
-                        for name in zf_i.namelist():
-                            if name.endswith("/") or not name.strip():
-                                continue
-                            rel = name.replace("\\", "/").lstrip("/")
-                            base_arq = Path(rel).name
-                            nome_no_zip = f"{stem}_{base_arq}" if varios_pdfs else base_arq
-                            arc = f"{pasta}/{nome_no_zip}".replace("\\", "/")
-                            n_col = 1
-                            while arc in arcs_ja:
-                                p = Path(nome_no_zip)
-                                nome_no_zip = f"{p.stem}_{n_col}{p.suffix}"
+        try:
+            with zipfile.ZipFile(zip_disk, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(nome_pdf.replace("\\", "/"), pdf_rel)
+                zf.writestr(nome_xlsx.replace("\\", "/"), xlsx_bytes)
+                kcor_b = resumo.get("exportar_kcor_xlsx") or b""
+                kcor_nome = (resumo.get("exportar_kcor_nome") or "").strip()
+                if kcor_b and kcor_nome and (lote_slug or "").strip() == "50":
+                    arc_kcor = f"{pasta}/{kcor_nome}".replace("\\", "/")
+                    zf.writestr(arc_kcor, kcor_b)
+                if extrator and (lote_slug or "").strip() == "50":
+                    usados_stem: set[str] = set()
+                    arcs_ja: set[str] = set()
+                    varios_pdfs = len(pdfs_bytes) > 1
+                    for i, data in enumerate(pdfs_bytes):
+                        fn = (pdfs[i].filename if i < len(pdfs) else None) or f"pdf_{i + 1}.pdf"
+                        try:
+                            zip_i, _ = extrator.extrair_pdf_para_zip(
+                                data,
+                                dpi=None,
+                                nomear_por_indice_fiscalizacao=False,
+                                pasta_unica=True,
+                                raiz_unica_sem_subpastas=False,
+                                nome_pdf_original=fn,
+                            )
+                        except Exception as ex:
+                            logger.warning("nc/analisar-pdf lote 50: extração imagens/PDF %s: %s", fn, ex)
+                            continue
+                        stem0 = Path(fn).stem
+                        stem = "".join(c if c.isalnum() or c in "_-" else "_" for c in stem0) or f"pdf{i + 1}"
+                        base_stem = stem
+                        n_dup = 0
+                        while stem in usados_stem:
+                            n_dup += 1
+                            stem = f"{base_stem}_{n_dup}"
+                        usados_stem.add(stem)
+                        with zipfile.ZipFile(io.BytesIO(zip_i)) as zf_i:
+                            for name in zf_i.namelist():
+                                if name.endswith("/") or not name.strip():
+                                    continue
+                                rel = name.replace("\\", "/").lstrip("/")
+                                base_arq = Path(rel).name
+                                nome_no_zip = f"{stem}_{base_arq}" if varios_pdfs else base_arq
                                 arc = f"{pasta}/{nome_no_zip}".replace("\\", "/")
-                                n_col += 1
-                            arcs_ja.add(arc)
-                            zf.writestr(arc, zf_i.read(name))
-        zip_bytes = buf.getvalue()
-        hdr_zip: dict[str, str] = {
-            "Content-Disposition": f'attachment; filename="{nome_zip}"',
-            "X-NC-Total":           str(resumo.get("total", 0)),
-            "X-NC-Emergenciais":    str(n_emerg),
-            "X-NC-Alertas":         str(n_alertas),
-            "X-NC-Ocultos":         str(n_ocultos),
-            "X-NC-Arquivos":        str(n_arqs),
-            "X-NC-Relatorio-Dia":   "1" if relatorio_hoje else "0",
-            "X-NC-Zip-Slug":        slug,
-        }
-        if (lote_slug or "").strip() == "50":
-            km = resumo.get("exportar_kcor_meta")
-            if isinstance(km, dict):
-                hdr_zip["X-NC-Kcor-Ok"] = "1" if km.get("ok") else "0"
-                if km.get("ok"):
-                    hdr_zip["X-NC-Kcor-Modelo"] = (
-                        "minimo" if km.get("modelo_minimo_gerado") else "ficheiro"
-                    )
-            else:
-                hdr_zip["X-NC-Kcor-Ok"] = "0"
-        return Response(
-            content=zip_bytes,
-            media_type="application/zip",
-            headers=hdr_zip,
-        )
+                                n_col = 1
+                                while arc in arcs_ja:
+                                    p = Path(nome_no_zip)
+                                    nome_no_zip = f"{p.stem}_{n_col}{p.suffix}"
+                                    arc = f"{pasta}/{nome_no_zip}".replace("\\", "/")
+                                    n_col += 1
+                                arcs_ja.add(arc)
+                                zf.writestr(arc, zf_i.read(name))
+            hdr_zip: dict[str, str] = {
+                "Content-Disposition": f'attachment; filename="{_safe_filename_header(nome_zip)}"',
+                "X-NC-Total":           str(resumo.get("total", 0)),
+                "X-NC-Emergenciais":    str(n_emerg),
+                "X-NC-Alertas":         str(n_alertas),
+                "X-NC-Ocultos":         str(n_ocultos),
+                "X-NC-Arquivos":        str(n_arqs),
+                "X-NC-Relatorio-Dia":   "1" if relatorio_hoje else "0",
+                "X-NC-Zip-Slug":        slug,
+            }
+            if (lote_slug or "").strip() == "50":
+                km = resumo.get("exportar_kcor_meta")
+                if isinstance(km, dict):
+                    hdr_zip["X-NC-Kcor-Ok"] = "1" if km.get("ok") else "0"
+                    if km.get("ok"):
+                        hdr_zip["X-NC-Kcor-Modelo"] = (
+                            "minimo" if km.get("modelo_minimo_gerado") else "ficheiro"
+                        )
+                else:
+                    hdr_zip["X-NC-Kcor-Ok"] = "0"
+            return FileResponse(
+                str(zip_disk),
+                media_type="application/zip",
+                headers=hdr_zip,
+                background=BackgroundTask(lambda r=root_an: shutil.rmtree(r, ignore_errors=True)),
+            )
+        except Exception:
+            shutil.rmtree(root_an, ignore_errors=True)
+            raise
     except HTTPException:
         raise
     except ValueError as e:
@@ -1523,48 +1616,53 @@ async def nc_extrair_pdf(
     _check_auth(request)
     if not (lote or "").strip():
         raise HTTPException(400, "Selecione o lote.")
-    extrator = _importar_pdf_extractor()
     lote_m = re.search(r"\d+", (lote or "").strip() or "13")
-    pasta_unica_artemig = (lote_m.group(0) if lote_m else "") == "50"
     # Regra operacional atual: identificação de fotos sempre por CÓDIGO da fiscalização.
     nomear_por_indice_fiscalizacao = False
     try:
-        arquivos: dict[str, bytes] = {}
-
-        for f in pdfs:
-            pdf_bytes = _ler(f)
-            zip_bytes_i, _ = extrator.extrair_pdf_para_zip(
-                pdf_bytes,
-                dpi=dpi,
-                nomear_por_indice_fiscalizacao=nomear_por_indice_fiscalizacao,
-                pasta_unica=pasta_unica_artemig,
-                raiz_unica_sem_subpastas=not pasta_unica_artemig,
-                nome_pdf_original=f.filename,
+        root = Path(tempfile.mkdtemp(prefix="nc_extrair_pdf_"))
+        try:
+            pdf_in = root / "_in"
+            pdf_in.mkdir()
+            pdf_entries: list[tuple[Path, str]] = []
+            for i, f in enumerate(pdfs):
+                dest = pdf_in / f"{i}.pdf"
+                await _nc_gravar_upload_pdf_com_limite(f, dest)
+                pdf_entries.append((dest, f.filename or f"pdf_{i+1}.pdf"))
+            out_dir = root / "out"
+            out_dir.mkdir()
+            await asyncio.to_thread(
+                _nc_pdf_paths_extrair_para_pasta_sync,
+                pdf_entries,
+                out_dir,
+                lote,
+                dpi,
+                nomear_por_indice_fiscalizacao,
             )
-            with zipfile.ZipFile(io.BytesIO(zip_bytes_i)) as zf_i:
-                for name in zf_i.namelist():
-                    if name.endswith("/") or not name.strip():
-                        continue
-                    final = Path(name.replace("\\", "/")).name
-                    n_col = 1
-                    while final in arquivos:
-                        pth = Path(final)
-                        stem2 = f"{pth.stem}_{n_col}{pth.suffix or '.jpg'}"
-                        final = stem2
-                        n_col += 1
-                    arquivos[final] = zf_i.read(name)
-
-        n = len(pdfs)
-        lote_num = lote_m.group(0) if lote_m else "13"
-        pasta_zip = f"lote_{lote_num}_{n}_pdfs_imagens"
-        nome_zip = f"{pasta_zip}.zip"
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf_out:
-            for nome, data in arquivos.items():
-                arc = f"{pasta_zip}/{nome}".replace("\\", "/")
-                zf_out.writestr(arc, data)
-
-        return _stream_zip(buf.getvalue(), nome_zip)
+            for p, _ in pdf_entries:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+            n = len(pdfs)
+            lote_num = lote_m.group(0) if lote_m else "13"
+            pasta_zip = f"lote_{lote_num}_{n}_pdfs_imagens"
+            nome_zip = f"{pasta_zip}.zip"
+            zip_path = root / nome_zip
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf_out:
+                for fp in sorted(out_dir.iterdir(), key=lambda x: x.name):
+                    if fp.is_file():
+                        arc = f"{pasta_zip}/{fp.name}".replace("\\", "/")
+                        zf_out.write(fp, arc)
+            return FileResponse(
+                str(zip_path),
+                media_type="application/zip",
+                headers={"Content-Disposition": f'attachment; filename="{_safe_filename_header(nome_zip)}"'},
+                background=BackgroundTask(lambda r=root: shutil.rmtree(r, ignore_errors=True)),
+            )
+        except Exception:
+            shutil.rmtree(root, ignore_errors=True)
+            raise
     except HTTPException:
         raise
     except Exception as e:
@@ -1651,61 +1749,62 @@ async def nc_separar(
                     arc = _nc_arcnome_zip_para_extracao_windows(p.name, usados=_used_s)
                     zf.write(p, arc)
 
-        zip_bytes = zip_path_stage1.read_bytes()
         ws.final.mkdir(parents=True, exist_ok=True)
-        (ws.final / "nc_separados.zip").write_bytes(zip_bytes)
+        zip_final_stage1_dest = ws.final / "nc_separados.zip"
+        shutil.copy2(zip_path_stage1, zip_final_stage1_dest)
 
         if entrega_completa:
-            img_arquivos = await _nc_pdfs_uploads_para_arquivos_imagens(
-                pdfs or [],
-                lote,
-                dpi,
-                nomear_por_indice_fiscalizacao,
-            )
-            _touch_job_access(ws)
-            _update_job_json(ws, status="running")
+            img_tmp_root: Optional[Path] = None
             try:
-                out = _nc_executar_pipeline_stage2_interno(
-                    ws,
-                    lote=(lote or "").strip() or None,
-                    imagens_pdf_arquivos=img_arquivos,
+                img_tmp_root, img_out = await _nc_pdfs_uploads_para_arquivos_imagens(
+                    pdfs or [],
+                    lote,
+                    dpi,
+                    nomear_por_indice_fiscalizacao,
                 )
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.error("nc/separar (pipeline): %s", traceback.format_exc())
+                _touch_job_access(ws)
+                _update_job_json(ws, status="running")
                 try:
-                    _update_job_json(
+                    out = _nc_executar_pipeline_stage2_interno(
                         ws,
-                        status="failed",
-                        log_summary={"errors": 1, "warnings": 0, "message": str(e)[:200]},
-                        retain_hours=24.0,
+                        lote=(lote or "").strip() or None,
+                        imagens_pdf_pasta_preparada=img_out,
                     )
-                except Exception:
-                    pass
-                raise HTTPException(500, str(e))
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    logger.error("nc/separar (pipeline): %s", traceback.format_exc())
+                    try:
+                        _update_job_json(
+                            ws,
+                            status="failed",
+                            log_summary={"errors": 1, "warnings": 0, "message": str(e)[:200]},
+                            retain_hours=24.0,
+                        )
+                    except Exception:
+                        pass
+                    raise HTTPException(500, str(e))
 
-            if request.query_params.get("format") == "json":
-                base = _nc_response(
-                    ws,
-                    "final",
-                    download_urls=[f"final/{out['download_zip']}"],
-                    final_files=[out["download_zip"]],
-                    step_label="Separar NC",
-                    next_step_label="—",
-                )
-                base["download_links"] = out.get("download_links")
-                base["download_zip"] = out.get("download_zip")
-                return JSONResponse(base)
+                if request.query_params.get("format") == "json":
+                    base = _nc_response(
+                        ws,
+                        "final",
+                        download_urls=[f"final/{out['download_zip']}"],
+                        final_files=[out["download_zip"]],
+                        step_label="Separar NC",
+                        next_step_label="—",
+                    )
+                    base["download_links"] = out.get("download_links")
+                    base["download_zip"] = out.get("download_zip")
+                    return JSONResponse(base)
 
-            zip_final = ws.final / out["download_zip"]
-            if not zip_final.is_file():
-                raise HTTPException(500, detail="ZIP final não encontrado após o pipeline.")
-            return _stream_zip(
-                zip_final.read_bytes(),
-                out["download_zip"],
-                ws.job_id,
-            )
+                zip_final = ws.final / out["download_zip"]
+                if not zip_final.is_file():
+                    raise HTTPException(500, detail="ZIP final não encontrado após o pipeline.")
+                return _stream_zip_path(zip_final, out["download_zip"], ws.job_id)
+            finally:
+                if img_tmp_root is not None and img_tmp_root.is_dir():
+                    shutil.rmtree(img_tmp_root, ignore_errors=True)
 
         is_final = created or finalize
         if is_final:
@@ -1722,7 +1821,7 @@ async def nc_separar(
                 step_label="Separar NC",
                 next_step_label="E-mail, Modelo Foto",
             ))
-        return _stream_zip(zip_bytes, "nc_separados.zip", ws.job_id)
+        return _stream_zip_path(zip_final_stage1_dest, "nc_separados.zip", ws.job_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -1751,8 +1850,9 @@ async def nc_criar_email_endpoint(
             raise HTTPException(413, f"Arquivo '{xls_zip.filename}' excede {MAX_MB} MB.")
         if imagens_bytes is not None and len(imagens_bytes) > MAX_BYTES:
             raise HTTPException(413, f"Arquivo '{imagens_pdf_zip.filename}' excede {MAX_MB} MB.")
-        with tempfile.TemporaryDirectory(prefix="nc_email_") as tmp:
-            tmp_path = Path(tmp)
+        root = Path(tempfile.mkdtemp(prefix="nc_email_"))
+        try:
+            tmp_path = root
             pasta_xls = tmp_path / DIR_EXPORTAR
             pasta_xls.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(io.BytesIO(xls_bytes), "r") as zf:
@@ -1779,15 +1879,22 @@ async def nc_criar_email_endpoint(
                 pasta_saida_eml=pasta_emails,
             )
             emls = resultado.get("eml") or []
-            buf = io.BytesIO()
-            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zip_path = root / "emails_nc.zip"
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for eml in pasta_emails.rglob("*"):
                     if eml.is_file():
                         zf.write(eml, f"emails/{eml.name}")
-            zip_bytes = buf.getvalue()
+        except Exception:
+            shutil.rmtree(root, ignore_errors=True)
+            raise
         if len(emls) == 0:
             logger.warning("criar-email: nenhum .eml gerado. Verifique o ZIP (XLS com colunas C, U, V preenchidas).")
-        return _stream_zip(zip_bytes, "emails_nc.zip")
+        return FileResponse(
+            str(zip_path),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{_safe_filename_header("emails_nc.zip")}"'},
+            background=BackgroundTask(lambda r=root: shutil.rmtree(r, ignore_errors=True)),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -1859,9 +1966,10 @@ async def nc_gerar_modelo_foto(
             pasta_fotos_pdf=pasta_fotos_pdf,
         )
 
-        buf = io.BytesIO()
+        ws.final.mkdir(parents=True, exist_ok=True)
+        zip_out = ws.final / "modelos_kria.zip"
         n_arquivos_zip = 0
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(zip_out, "w", zipfile.ZIP_DEFLATED) as zf:
             for d in [pasta_kria, pasta_resp]:
                 for f in sorted(d.rglob("*.xlsx")):
                     if f.is_file():
@@ -1870,10 +1978,13 @@ async def nc_gerar_modelo_foto(
                             n_arquivos_zip += 1
                         except Exception as ex:
                             logger.warning("gerar-modelo-foto: não foi possível adicionar ao ZIP %s: %s", f, ex)
-        zip_bytes = buf.getvalue()
 
         # Nunca devolver ZIP vazio: rejeitar por contagem ou por tamanho (ZIP vazio ≈ 22 bytes)
-        if n_arquivos_zip == 0 or len(zip_bytes) < 100:
+        if n_arquivos_zip == 0 or zip_out.stat().st_size < 100:
+            try:
+                zip_out.unlink(missing_ok=True)
+            except OSError:
+                pass
             entradas = list(pasta_xls.rglob("*.xls*"))
             entradas = [f for f in entradas if f.is_file()]
             n_erros = len(resultado.get("erros") or [])
@@ -1891,8 +2002,6 @@ async def nc_gerar_modelo_foto(
             msg += " Confira os logs do servidor para detalhes (ex.: Permission denied, modelo não encontrado)."
             logger.warning("gerar-modelo-foto: %s", msg)
             raise HTTPException(status_code=422, detail=msg)
-        ws.final.mkdir(parents=True, exist_ok=True)
-        (ws.final / "modelos_kria.zip").write_bytes(zip_bytes)
 
         is_final = created or finalize
         if is_final:
@@ -1907,8 +2016,8 @@ async def nc_gerar_modelo_foto(
             resp_count = len(resultado.get("resposta") or [])
             err_count = len(resultado.get("erros") or [])
             pacote_count = len(resultado.get("kartado_pacotes") or [])
-            return _stream_zip(
-                zip_bytes,
+            return _stream_zip_path(
+                zip_out,
                 "modelos_kria.zip",
                 ws.job_id,
                 extra_headers={
@@ -2005,10 +2114,11 @@ async def nc_inserir_ma_pdf(
         )
 
         # ZIP de saída MA: nc_separados_ma.zip com pasta "Separar NC MA"
-        buf = io.BytesIO()
         nome_zip = "nc_separados_ma.zip"
         pasta_raiz = "Separar NC MA"
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        ws.final.mkdir(parents=True, exist_ok=True)
+        zip_ma_out = ws.final / nome_zip
+        with zipfile.ZipFile(zip_ma_out, "w", zipfile.ZIP_DEFLATED) as zf:
             if arqs:
                 for a in arqs:
                     p = Path(a)
@@ -2026,9 +2136,6 @@ async def nc_inserir_ma_pdf(
                     "A planilha EAF está neste ZIP — abra e verifique se há dados a partir da linha 5 (colunas C e Q).\n"
                     "Se a EAF estiver correta, o problema pode ser o template Template_EAF.xlsx em nc_artesp/assets/templates/.",
                 )
-        zip_bytes = buf.getvalue()
-        ws.final.mkdir(parents=True, exist_ok=True)
-        (ws.final / nome_zip).write_bytes(zip_bytes)
         download_urls.append(f"final/{nome_zip}")
 
         is_final = created or finalize
@@ -2038,7 +2145,7 @@ async def nc_inserir_ma_pdf(
         else:
             _update_job_json(ws, status="running", stage="stage1")
         if request.query_params.get("format") == "zip":
-            return _stream_zip(zip_bytes, nome_zip, ws.job_id)
+            return _stream_zip_path(zip_ma_out, nome_zip, ws.job_id)
         return JSONResponse(_nc_response(
             ws, "final" if is_final else "stage1",
             download_urls=download_urls,
@@ -2152,7 +2259,9 @@ async def nc_pipeline_ma_pdf(
             pasta_saida_kcor=pasta_kcor,
             nome_origem=nome_origem,
         )
-        buf = io.BytesIO()
+        nome = "pipeline_ma.zip"
+        ws.final.mkdir(parents=True, exist_ok=True)
+        zip_ma_pipe = ws.final / nome
         raiz_zip_ma = "Pipeline MA"
         adicionados = set()
 
@@ -2171,7 +2280,7 @@ async def nc_pipeline_ma_pdf(
             except Exception:
                 pass
 
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(zip_ma_pipe, "w", zipfile.ZIP_DEFLATED) as zf:
             # Fonte principal: conteúdo das pastas (onde o pipeline grava). Assim o ZIP reflete o que está em disco.
             pastas_zip = [
                 (pasta_eaf, "EAF MA", ("*.xlsx",)),
@@ -2205,10 +2314,6 @@ async def nc_pipeline_ma_pdf(
                 _adicionar_arq(path, "Resposta MA")
             for path in resultado.get("kcor") or []:
                 _adicionar_arq(path, "Kcor-Kria Meio Ambiente")
-        zip_bytes = buf.getvalue()
-        nome = "pipeline_ma.zip"
-        ws.final.mkdir(parents=True, exist_ok=True)
-        (ws.final / nome).write_bytes(zip_bytes)
         is_final = created or finalize
         if is_final:
             _update_job_json(ws, status="finished", stage="final", retain_hours=24 if created else 72)
@@ -2216,7 +2321,7 @@ async def nc_pipeline_ma_pdf(
         else:
             _update_job_json(ws, status="running", stage="stage2")
         if request.query_params.get("format") == "zip":
-            return _stream_zip(zip_bytes, nome, ws.job_id)
+            return _stream_zip_path(zip_ma_pipe, nome, ws.job_id)
         return JSONResponse(_nc_response(
             ws, "final" if is_final else "stage2",
             download_urls=[f"final/{nome}"],
@@ -2290,16 +2395,14 @@ async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: O
                 forcar_fallback=True,
             )
 
-        buf = io.BytesIO()
+        nome = "kcor_conservacao.zip" if modo == "conservacao" else "kcor_ma.zip"
+        ws.final.mkdir(parents=True, exist_ok=True)
+        zip_kcor_out = ws.final / nome
         pasta_zip_ma = "Kcor-Kria Meio Ambiente"  # pasta identificada dentro do ZIP de MA
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(zip_kcor_out, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in pasta_saida.rglob("*.xlsx"):
                 arcname = f"{pasta_zip_ma}/{f.name}" if modo == "meio_ambiente" else f.name
                 zf.write(f, arcname)
-        zip_bytes = buf.getvalue()
-        nome = "kcor_conservacao.zip" if modo == "conservacao" else "kcor_ma.zip"
-        ws.final.mkdir(parents=True, exist_ok=True)
-        (ws.final / nome).write_bytes(zip_bytes)
 
         is_final = created or finalize
         if is_final:
@@ -2310,7 +2413,7 @@ async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: O
             _update_job_json(ws, status="running", stage="stage2")
 
         if request.query_params.get("format") == "zip":
-            return _stream_zip(zip_bytes, nome, ws.job_id)
+            return _stream_zip_path(zip_kcor_out, nome, ws.job_id)
         step_label = "Conservação" if modo == "conservacao" else "Meio Ambiente"
         return JSONResponse(_nc_response(
             ws, "final" if is_final else "stage2",
@@ -2695,6 +2798,7 @@ def _nc_executar_pipeline_stage2_interno(
     lote: Optional[str],
     imagens_pdf_zip_bytes: Optional[bytes] = None,
     imagens_pdf_arquivos: Optional[Dict[str, bytes]] = None,
+    imagens_pdf_pasta_preparada: Optional[Path] = None,
 ) -> dict:
     """
     Pipeline único após M01: e-mail (rascunhos) → M02 (Kria + Resposta) →
@@ -2704,6 +2808,7 @@ def _nc_executar_pipeline_stage2_interno(
     **Pacotes KTD** (M02: modelo Kria + fotos) vão para ``respostas_kria_fotos/Pacotes_KTD/``, não para Kartado/.
     Se existirem imagens PDF extraídas, grava backup e embute no ZIP final em `backup/`.
     imagens_pdf_zip_bytes: mesmo formato que o ZIP devolvido por POST /nc/extrair-pdf (opcional).
+    imagens_pdf_pasta_preparada: diretório com JPG já extraídos (fluxo com baixa retenção em RAM).
     """
     etapa_t0: dict[int, float] = {}
 
@@ -2741,7 +2846,18 @@ def _nc_executar_pipeline_stage2_interno(
 
     pasta_fotos_pdf = work / DIR_IMAGENS_PDF
     _log_etapa(2, total_etapas, "Importar imagens PDF (quando enviadas)")
-    if imagens_pdf_arquivos:
+    if imagens_pdf_pasta_preparada is not None and imagens_pdf_pasta_preparada.is_dir():
+        pasta_fotos_pdf.mkdir(parents=True, exist_ok=True)
+        _purge_dir_contents(pasta_fotos_pdf)
+        _limpar_cache_indices_foto()
+        n_zip_in = 0
+        for item in sorted(imagens_pdf_pasta_preparada.iterdir(), key=lambda x: x.name):
+            if item.is_file():
+                shutil.copy2(item, pasta_fotos_pdf / item.name)
+                n_zip_in += 1
+        if n_zip_in == 0:
+            logger.warning("Imagens PDF pré-extraídas (pasta): 0 ficheiros copiados.")
+    elif imagens_pdf_arquivos:
         pasta_fotos_pdf.mkdir(parents=True, exist_ok=True)
         _purge_dir_contents(pasta_fotos_pdf)
         _limpar_cache_indices_foto()
@@ -3080,35 +3196,40 @@ async def nc_completo(
                     arc = _nc_arcnome_zip_para_extracao_windows(p.name, usados=_used_c)
                     zf.write(p, arc)
 
-        img_arquivos = await _nc_pdfs_uploads_para_arquivos_imagens(
-            pdfs or [],
-            lote,
-            dpi,
-            nomear_por_indice_fiscalizacao,
-        )
-
-        _touch_job_access(ws)
-        _update_job_json(ws, status="running")
+        img_tmp_root: Optional[Path] = None
         try:
-            return _nc_executar_pipeline_stage2_interno(
-                ws,
-                lote=(lote or "").strip() or None,
-                imagens_pdf_arquivos=img_arquivos,
+            img_tmp_root, img_out = await _nc_pdfs_uploads_para_arquivos_imagens(
+                pdfs or [],
+                lote,
+                dpi,
+                nomear_por_indice_fiscalizacao,
             )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error("nc/completo (pipeline): %s", traceback.format_exc())
+
+            _touch_job_access(ws)
+            _update_job_json(ws, status="running")
             try:
-                _update_job_json(
+                return _nc_executar_pipeline_stage2_interno(
                     ws,
-                    status="failed",
-                    log_summary={"errors": 1, "warnings": 0, "message": str(e)[:200]},
-                    retain_hours=24.0,
+                    lote=(lote or "").strip() or None,
+                    imagens_pdf_pasta_preparada=img_out,
                 )
-            except Exception:
-                pass
-            raise HTTPException(500, str(e))
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error("nc/completo (pipeline): %s", traceback.format_exc())
+                try:
+                    _update_job_json(
+                        ws,
+                        status="failed",
+                        log_summary={"errors": 1, "warnings": 0, "message": str(e)[:200]},
+                        retain_hours=24.0,
+                    )
+                except Exception:
+                    pass
+                raise HTTPException(500, str(e))
+        finally:
+            if img_tmp_root is not None and img_tmp_root.is_dir():
+                shutil.rmtree(img_tmp_root, ignore_errors=True)
     except HTTPException:
         raise
     except Exception as e:

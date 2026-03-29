@@ -861,7 +861,7 @@ def _gerar_resposta(
         NÃO utiliza foto nc aqui.
 
     Linha 1  (B1): cabeçalho longo da 1ª NC
-    Linha 2  (B2): cabeçalho curto / âncora da foto PDF (480×202)
+    Linha 2  (B2): cabeçalho curto / âncora da foto PDF (960×404)
     NC 2 em diante: duplica bloco 1→28 ABAIXO do anterior e repete o padrão.
     """
     if isinstance(modelo, Path):

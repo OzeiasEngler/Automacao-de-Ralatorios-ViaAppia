@@ -73,7 +73,7 @@ def _cfg_m02_foto_pdf_preview() -> tuple[int, int, int, int]:
             M02_FOTO_DPI_Y,
         )
     except Exception:
-        return (480, 202, NC_IMAGE_DPI_X, NC_IMAGE_DPI_Y)
+        return (960, 404, NC_IMAGE_DPI_X, NC_IMAGE_DPI_Y)
 
 
 def _resolve_dpi_extracao(dpi: Optional[int]) -> int:
@@ -857,6 +857,39 @@ def extrair_imagens_pdf(pdf_path: str,
     return salvos
 
 
+def extrair_arquivo_pdf_para_pasta(
+    pdf_path: str | Path,
+    pasta_saida: str | Path,
+    dpi: Optional[int] = None,
+    nomear_por_indice_fiscalizacao: bool = False,
+    pasta_unica: bool = False,
+    raiz_unica_sem_subpastas: bool = False,
+    nome_pdf_original: Optional[str] = None,
+) -> tuple[list[str], int]:
+    """
+    Extrai JPGs (e PDF integral se pasta_unica / Artemig) para ``pasta_saida`` sem montar ZIP em RAM.
+    Retorna (lista de caminhos dos ficheiros gerados, contagem de nc (*.jpg)).
+    """
+    _check_deps()
+    pdf_path = Path(pdf_path).resolve()
+    pasta_saida = Path(pasta_saida).resolve()
+    pasta_saida.mkdir(parents=True, exist_ok=True)
+    salvos = extrair_imagens_pdf(
+        str(pdf_path),
+        pasta_saida=str(pasta_saida),
+        dpi=dpi,
+        nomear_por_indice_fiscalizacao=nomear_por_indice_fiscalizacao,
+        pasta_unica=pasta_unica,
+        raiz_unica_sem_subpastas=raiz_unica_sem_subpastas,
+    )
+    if pasta_unica:
+        dest_pdf = pasta_saida / nome_pdf_original_seguro_zip(nome_pdf_original)
+        dest_pdf.write_bytes(pdf_path.read_bytes())
+        salvos.append(str(dest_pdf.resolve()))
+    n_ncs = len([f for f in salvos if Path(f).name.lower().startswith("nc (")])
+    return salvos, n_ncs
+
+
 def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: Optional[int] = None,
                          nomear_por_indice_fiscalizacao: bool = False,
                          pasta_unica: bool = False,
@@ -870,18 +903,15 @@ def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: Optional[int] = None,
         pdf_path.write_bytes(pdf_bytes)
         pasta_saida = Path(tmpdir) / "saida"
         pasta_saida.mkdir()
-        salvos = extrair_imagens_pdf(
-            str(pdf_path),
-            pasta_saida=str(pasta_saida),
+        salvos, n_ncs = extrair_arquivo_pdf_para_pasta(
+            pdf_path,
+            pasta_saida,
             dpi=dpi,
             nomear_por_indice_fiscalizacao=nomear_por_indice_fiscalizacao,
             pasta_unica=pasta_unica,
             raiz_unica_sem_subpastas=raiz_unica_sem_subpastas,
+            nome_pdf_original=nome_pdf_original,
         )
-        if pasta_unica:
-            dest_pdf = pasta_saida / nome_pdf_original_seguro_zip(nome_pdf_original)
-            dest_pdf.write_bytes(pdf_bytes)
-            salvos.append(str(dest_pdf.resolve()))
         buf = io.BytesIO()
         arcs_usados: set[str] = set()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -894,5 +924,4 @@ def extrair_pdf_para_zip(pdf_bytes: bytes, dpi: Optional[int] = None,
                     n_dup += 1
                 arcs_usados.add(arc)
                 zf.write(fp, arc)
-        n_ncs = len([f for f in salvos if Path(f).name.lower().startswith("nc (")])
         return buf.getvalue(), n_ncs

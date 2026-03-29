@@ -1,5 +1,5 @@
 """
-Extrai imagens dos PDFs das NCs, redimensiona (nc 800×500 px, 222×319 DPI; PDF 480×202) e salva
+Extrai imagens dos PDFs das NCs, redimensiona (nc 800×500 px, 222×319 DPI; PDF 960×404) e salva
 nc (N).jpg / PDF (N).jpg. Entrada: PDF pareado com Excel ou pasta de PDFs. Execução: antes do M02.
 """
 
