@@ -450,13 +450,18 @@
       </button>
       <button type="button" class="step-tab" data-step="separar">
         <span class="step-num">1</span>
-        <span class="step-tab-label"><i class="fas fa-cut"></i> Separar NC artesp. Kartado.</span>
-        <span class="step-tab-regime">ARTESP / ARTEMIG</span>
+        <span class="step-tab-label"><i class="fas fa-cut"></i> Separar NC — ARTESP (Kartado)</span>
+        <span class="step-tab-regime">ARTESP (SP)</span>
       </button>
       <button type="button" class="step-tab" data-step="meio-ambiente">
         <span class="step-num" style="font-size:.55rem;width:auto;min-width:18px;padding:0 4px;border-radius:6px">MA</span>
         <span class="step-tab-label"><i class="fas fa-leaf"></i> Meio Ambiente</span>
         <span class="step-tab-regime">ARTESP / ARTEMIG</span>
+      </button>
+      <button type="button" class="step-tab" data-step="separar-artemig" style="border-color:rgba(52,211,153,.35)">
+        <span class="step-num" style="font-size:.55rem;width:auto;min-width:18px;padding:0 4px;border-radius:6px">50</span>
+        <span class="step-tab-label"><i class="fas fa-file-pdf"></i> Separa NC ARTEMIG</span>
+        <span class="step-tab-regime">CONSOL (MG)</span>
       </button>
       <button type="button" class="step-tab step-tab-disabled" disabled data-step="criar-email" aria-disabled="true" title="Em breve Novo Módulo">
         <span class="step-num">✉</span>
@@ -481,11 +486,6 @@
       <button type="button" class="step-tab step-tab-disabled" disabled data-step="inserir-numero" aria-disabled="true" title="Em breve Novo Módulo">
         <span class="step-num">5</span>
         <span class="step-tab-label"><i class="fas fa-hashtag"></i> Em breve Novo Módulo</span>
-        <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
-      </button>
-      <button type="button" class="step-tab step-tab-disabled" disabled data-step="exportar-calendario" aria-disabled="true" title="Em breve Novo Módulo">
-        <span class="step-num">6</span>
-        <span class="step-tab-label"><i class="fas fa-calendar-alt"></i> Em breve Novo Módulo</span>
         <span class="step-tab-regime">Pipeline completo NC ARTESP</span>
       </button>
     </div>
@@ -829,7 +829,7 @@
               </button>
             </div>
             <div id="feedback-separar" style="display:none"></div>
-            <div class="result-area" id="result-separar" style="display:none">
+            <div class="result-area" id="result-separar">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                 <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
                 <strong>NCs separadas com sucesso</strong>
@@ -1267,9 +1267,9 @@
                 <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
                 <strong>Acumulado gerado</strong>
               </div>
-              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">Próxima etapa: <strong>Inserir Nº</strong> ou <strong>Calendário</strong></p>
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px">Próxima etapa: <strong>Inserir Nº</strong></p>
               <button class="btn btn-success" id="download-juntar">
-                <i class="fas fa-download"></i> Baixar XLSX Acumulado (para usar em Inserir Nº ou Calendário)
+                <i class="fas fa-download"></i> Baixar XLSX Acumulado (para usar em Inserir Nº)
               </button>
             </div>
           </div>
@@ -1378,56 +1378,75 @@
         </div>
       </div>
     </div>
-    <div class="step-panel step-panel-form-log" id="panel-exportar-calendario">
+    <div class="step-panel step-panel-form-log" id="panel-separar-artemig">
       <div class="grid-2 pipeline-grid-2">
         <div class="card">
-          <div class="card-header">
-            <i class="fas fa-calendar-alt"></i> Exportar eventos para calendário (.ics)
-            <span class="status-badge idle" id="status-exportar-calendario" style="margin-left:auto">
+          <div class="card-header" style="border-left:3px solid #34d399">
+            <i class="fas fa-file-pdf" style="color:#34d399"></i>
+            Separa NC ARTEMIG (CONSOL · MG)
+            <span class="status-badge idle" id="status-separar-artemig" style="margin-left:auto">
               <i class="fas fa-circle" style="font-size:.5rem"></i> Aguardando
             </span>
           </div>
           <div class="card-body">
             <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:14px">
-              Gera um arquivo <strong>.ics</strong> com um evento por NC.
-              Importável no Outlook, Google Calendar ou Apple Calendar.<br>
-              <strong>Assunto:</strong> TipoNC — Rodovia KM Sentido — Kria: {nº}<br>
-              <strong>Data:</strong> extraída da coluna U (Observações) · <strong>Descrição:</strong> ObsGestor + Dados
+              Fluxo por <strong>PDF</strong> de constatação (lote <strong>50</strong> fixo). O servidor lê o texto do PDF, gera o relatório de análise, o XLSX do relatório, o <strong>Exportar Kcor</strong> quando aplicável e extrai imagens para a pasta do ZIP — igual à <strong>Análise PDF</strong> com lote 50, sem Excel opcional e sem precisar escolher o lote no topo.
             </p>
-
-            <div class="upload-zone" id="zone-m06-acum" style="padding:20px">
-              <input type="file" id="file-m06-acum" accept=".xlsx">
-              <div class="icon" style="font-size:1.5rem;margin-bottom:6px"><i class="fas fa-file-excel"></i></div>
-              <h3>Planilha da etapa <strong>Acumulado</strong></h3>
-              <p style="font-size:.8rem">Use o XLSX da etapa <strong>Acumulado</strong> (coluna Y preenchida)</p>
+            <div class="upload-zone" id="zone-pdf-artemig" style="position:relative;padding:18px;min-height:120px">
+              <input type="file" id="file-pdf-artemig" accept=".pdf" multiple
+                     style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;font-size:0">
+              <div class="icon"><i class="fas fa-file-pdf" style="color:var(--warning)"></i></div>
+              <h3 style="font-size:.95rem">PDFs de NC — Constatação (Artemig)</h3>
+              <p style="font-size:.78rem;margin:0">Arraste ou escolha um ou mais PDFs</p>
             </div>
-            <div class="file-info" id="info-m06-acum">
-              <i class="fas fa-file-excel" style="color:var(--success)"></i>
-              <span id="infotext-m06-acum">nenhum</span>
-              <button type="button" onclick="clearFile('m06-acum')" class="btn btn-outline" style="margin-left:auto;padding:3px 8px;font-size:.7rem"><i class="fas fa-times"></i></button>
+            <div id="lista-pdfs-artemig" style="display:none;margin-top:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                <span style="font-size:.74rem;font-weight:600;color:var(--text-secondary)">
+                  <i class="fas fa-file-pdf" style="color:var(--warning)"></i>
+                  <span id="count-pdfs-artemig">0</span> PDF(s)
+                </span>
+                <button type="button" id="clear-pdfs-artemig" class="btn btn-outline" style="padding:2px 8px;font-size:.7rem">
+                  <i class="fas fa-times"></i> Limpar lista
+                </button>
+              </div>
+              <ul id="ul-pdfs-artemig"
+                  style="list-style:none;max-height:100px;overflow-y:auto;background:var(--bg-surface-3);border-radius:var(--radius-sm);padding:6px 8px;font-size:.74rem;color:var(--text-secondary)">
+              </ul>
             </div>
-
-            <div class="progress-bar-container" id="prog-exportar-calendario">
-              <div class="progress-bar-fill" id="progfill-exportar-calendario"></div>
+            <div class="form-group" style="margin-top:10px;margin-bottom:0">
+              <label style="font-size:.78rem;cursor:pointer;display:flex;align-items:center;gap:6px">
+                <input type="checkbox" id="chk-teste-local-artemig">
+                <span>Teste local — alertas no PDF mesmo se a data não for hoje</span>
+              </label>
             </div>
-
-            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-              <button class="btn btn-primary" id="btn-exportar-calendario" disabled>
-                <i class="fas fa-play"></i> Gerar .ics
+            <div class="progress-bar-container" id="prog-separar-artemig" style="margin-top:12px">
+              <div class="progress-bar-fill" id="progfill-separar-artemig"></div>
+            </div>
+            <div style="margin-top:14px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 14px">
+              <button type="button" class="btn btn-primary" id="btn-separar-artemig" disabled style="background:linear-gradient(135deg,#059669,#047857);border:none">
+                <i class="fas fa-play"></i> Analisar e gerar ZIP
               </button>
-              <button class="btn btn-outline" id="reset-exportar-calendario">
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                <label for="limiar-pdf-artemig" style="font-size:.65rem;color:var(--text-muted);line-height:1.2;margin:0">
+                  Limiar gap (km) para alerta de panela <span style="white-space:nowrap">(padrão: 2)</span>
+                </label>
+                <input type="number" id="limiar-pdf-artemig" class="form-input" title="Limiar em km"
+                       value="2" min="0.5" max="50" step="0.5" style="width:4.25rem;padding:6px 8px;font-size:.85rem">
+              </div>
+              <button type="button" class="btn btn-outline" id="reset-separar-artemig">
                 <i class="fas fa-redo"></i> Limpar
               </button>
             </div>
-            <div id="feedback-exportar-calendario"></div>
-            <div class="result-area" id="result-exportar-calendario">
+            <div id="feedback-separar-artemig"></div>
+            <div class="result-area" id="result-separar-artemig"
+                 style="background:rgba(5,150,105,.08);border-color:rgba(52,211,153,.25)">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                 <i class="fas fa-check-circle" style="color:var(--success);font-size:1.2rem"></i>
-                <strong>Calendário gerado</strong>
-                <span id="info-eventos-calendario" style="font-size:.8rem;color:var(--text-muted)"></span>
+                <strong>Análise concluída (ARTEMIG)</strong>
               </div>
-              <button class="btn btn-success" id="download-exportar-calendario">
-                <i class="fas fa-calendar-alt"></i> Baixar arquivo .ics (Calendário)
+              <div id="resumo-separar-artemig" style="font-size:.8rem;color:var(--text-secondary);margin-bottom:12px"></div>
+              <button type="button" class="btn btn-success" id="download-separar-artemig">
+                <i class="fas fa-file-archive"></i> Baixar ZIP (PDF + XLSX + Kcor + imagens)
               </button>
             </div>
           </div>
@@ -1435,12 +1454,12 @@
         <div class="card">
           <div class="card-header">
             <i class="fas fa-terminal"></i> Log de Processamento
-            <button class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-exportar-calendario')">
+            <button type="button" class="btn btn-outline" style="margin-left:auto;padding:4px 10px;font-size:.72rem" onclick="limparLog('log-separar-artemig')">
               <i class="fas fa-eraser"></i> Limpar
             </button>
           </div>
           <div class="card-body">
-            <div class="log-container" id="log-exportar-calendario">
+            <div class="log-container" id="log-separar-artemig">
               <div class="log-empty"><i class="fas fa-terminal"></i><span>Nenhuma atividade registrada</span></div>
             </div>
           </div>
@@ -1553,13 +1572,13 @@
   const STEP_NAMES = {
     'analisar-pdf': 'Análise PDF',
     'extrair-pdf': 'Extrair PDF',
-    'separar': 'Separar NC artesp. Kartado.',
+    'separar': 'Separar NC — ARTESP (Kartado)',
+    'separar-artemig': 'Separa NC ARTEMIG (PDF · lote 50)',
     'criar-email': 'Em breve Novo Módulo (E-mail)',
     'modelo-foto': 'Em breve Novo Módulo (Modelo Foto)',
     'conservacao': 'Em breve Novo Módulo (Conservação)',
     'juntar': 'Em breve Novo Módulo (Acumulado)',
     'inserir-numero': 'Em breve Novo Módulo (Inserir Nº)',
-    'exportar-calendario': 'Em breve Novo Módulo (Calendário)',
     'meio-ambiente': 'Meio Ambiente',
     'pipeline-completo': 'Pipeline completo',
     'nc-stage2': 'Etapa 2 (start → stage2)'
@@ -1573,7 +1592,7 @@
     'meio-ambiente': 'Acumulado',
     'juntar': '—',
     'inserir-numero': '—',
-    'exportar-calendario': '—',
+    'separar-artemig': 'ZIP com relatório, XLSX, Exportar Kcor e imagens',
     'extrair-pdf': 'E-mail (imagens), Separar NC'
   };
   function getNextStepLabel(stepId) { return NEXT_STEP_LABEL[stepId] || '—'; }
@@ -1607,7 +1626,7 @@
   function _sessaoAtualizarDots() {
     document.querySelectorAll('.tab-sessao-dot').forEach(d => d.remove());
     if (_sessao.pdfs.length > 0) {
-      ['analisar-pdf', 'extrair-pdf'].forEach(step => {
+      ['analisar-pdf', 'extrair-pdf', 'separar-artemig'].forEach(step => {
         const tab = document.querySelector(`[data-step="${step}"]`);
         if (tab && !tab.classList.contains('active')) {
           const dot = document.createElement('span');
@@ -1661,7 +1680,7 @@
   }
 
   function _sessaoOferecer(step) {
-    if ((step === 'analisar-pdf' || step === 'extrair-pdf') && _sessao.pdfs.length > 0) {
+    if ((step === 'analisar-pdf' || step === 'extrair-pdf' || step === 'separar-artemig') && _sessao.pdfs.length > 0) {
       const gestorId = step === 'extrair-pdf' ? 'file-extrair-pdf' : null;
       if (gestorId && _gestores[gestorId]) {
         if (_gestores[gestorId].getFiles().length === 0) {
@@ -1672,6 +1691,12 @@
           const nomes = new Set(_pdfsAnalise.map(f => f.name));
           _sessao.pdfs.forEach(f => { if (!nomes.has(f.name)) _pdfsAnalise.push(f); });
           _renderListaPdfs();
+        }
+      } else if (step === 'separar-artemig') {
+        if (_pdfsArtemig.length === 0) {
+          const nomes = new Set(_pdfsArtemig.map(f => f.name));
+          _sessao.pdfs.forEach(f => { if (!nomes.has(f.name)) _pdfsArtemig.push(f); });
+          _renderListaPdfsArtemig();
         }
       }
     }
@@ -1686,7 +1711,6 @@
     'criar-email': { btnId: 'btn-criar-email', requiredIds: ['file-email-xls'] },
     'juntar': { btnId: 'btn-juntar', requiredIds: ['file-m04-kcor', 'file-m04-acum'] },
     'inserir-numero': { btnId: 'btn-inserir-numero', requiredIds: ['file-m05-acum'] },
-    'exportar-calendario': { btnId: 'btn-exportar-calendario', requiredIds: ['file-m06-acum'] },
     'meio-ambiente': { btnId: 'btn-meio-ambiente', requiredIds: ['file-m07-kria'] },
   };
   document.getElementById('stepTabs').addEventListener('click', (e) => {
@@ -1750,6 +1774,17 @@
       'Gravando workspace / job',
       'Compactando nc_separados.zip'
     ],
+    'separar-artemig': [
+      'Validando PDFs e lote 50 (CONSOL)',
+      'Extraindo texto e blocos por página',
+      'Identificando NCs, códigos e rodovias',
+      'Cruzando com MAPA EAF / regras Artemig (CONSOL)',
+      'Analisando gaps de KM e sequência de códigos',
+      'Classificando emergenciais e alertas',
+      'Gerando PDF de análise (ReportLab)',
+      'Preenchendo planilha Relatório de Fiscalização',
+      'Montando ZIP (PDF + XLSX + Exportar Kcor + imagens)'
+    ],
     'pipeline-completo': [
       'Separando NC (M01) e extraindo imagens dos PDFs',
       'Gerando e-mails e modelos Kria (M02)',
@@ -1801,11 +1836,6 @@
       'Aplicando sufixo e colunas',
       'Gravando XLSX numerado'
     ],
-    'exportar-calendario': [
-      'Lendo prazos e datas na planilha',
-      'Montando eventos iCalendar',
-      'Serializando arquivo .ics'
-    ],
     '_default': ['Autenticando requisição', 'Processando no servidor', 'Finalizando saída']
   };
 
@@ -1816,6 +1846,9 @@
       steps[3] = lo === '50'
         ? 'Cruzando com MAPA EAF / regras Artemig (CONSOL)'
         : 'Cruzando com MAPA EAF / regras ARTESP (lote ' + (lo || '?') + ')';
+    }
+    if (stepId === 'separar-artemig' && steps.length > 3) {
+      steps[3] = 'Cruzando com MAPA EAF / regras Artemig (CONSOL)';
     }
     return steps;
   }
@@ -2001,8 +2034,6 @@
     if (btnJuntar) btnJuntar.disabled = !getFileFromInputOrBlob('file-m04-kcor', ['conservacao', 'meio-ambiente']);
     const btnInserir = document.getElementById('btn-inserir-numero');
     if (btnInserir) btnInserir.disabled = !getFileFromInputOrBlob('file-m05-acum', 'juntar');
-    const btnExportar = document.getElementById('btn-exportar-calendario');
-    if (btnExportar) btnExportar.disabled = !getFileFromInputOrBlob('file-m06-acum', 'juntar');
   }
   function storeBlobForDownload(key, data, filename, mimeType) {
     if (_blobs[key]) { try { URL.revokeObjectURL(_blobs[key].url); } catch (e) {} }
@@ -2072,7 +2103,7 @@
     'zone-analisar-pdf', 'zone-extrair-pdf', 'zone-separar',
     'zone-email-xls', 'zone-email-fotos', 'zone-m02-xls', 'zone-m02-fotos',
     'zone-m03-kria', 'zone-m03-fotos', 'zone-m07-pdf', 'zone-m07-kria',
-    'zone-m04-kcor', 'zone-m04-acum', 'zone-m05-acum', 'zone-m06-acum',
+    'zone-m04-kcor', 'zone-m04-acum', 'zone-m05-acum',
   ];
   function ncAtualizarAnexosHabilitados() {
     var ok = !!ncLoteValor();
@@ -2231,6 +2262,44 @@
     }
   }
   let _pdfsAnalise = [];  // Array de File objects
+  let _pdfsArtemig = [];
+
+  function _renderListaPdfsArtemig() {
+    const lista = document.getElementById('lista-pdfs-artemig');
+    const ul = document.getElementById('ul-pdfs-artemig');
+    const count = document.getElementById('count-pdfs-artemig');
+    const btn = document.getElementById('btn-separar-artemig');
+    if (!lista || !ul || !count) return;
+    if (_pdfsArtemig.length === 0) {
+      lista.style.display = 'none';
+      if (btn) btn.disabled = true;
+      return;
+    }
+    lista.style.display = 'block';
+    count.textContent = String(_pdfsArtemig.length);
+    ul.innerHTML = _pdfsArtemig.map((f, i) =>
+      '<li style="display:flex;align-items:center;gap:8px;padding:3px 0;' +
+      (i < _pdfsArtemig.length - 1 ? 'border-bottom:1px solid var(--border-color)' : '') + '">' +
+      '<i class="fas fa-file-pdf" style="color:var(--warning);flex-shrink:0"></i>' +
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + f.name + '">' + f.name + '</span>' +
+      '<span style="color:var(--text-muted);flex-shrink:0">' + (f.size / 1024).toFixed(0) + ' KB</span>' +
+      '<button type="button" onclick="_removerPdfArtemig(' + i + ')" ' +
+      'style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0 4px;font-size:.85rem" title="Remover">' +
+      '<i class="fas fa-times"></i></button></li>'
+    ).join('');
+    if (btn) btn.disabled = false;
+  }
+
+  function _removerPdfArtemig(idx) {
+    _pdfsArtemig.splice(idx, 1);
+    _renderListaPdfsArtemig();
+    if (_pdfsArtemig.length === 0) {
+      showResult('separar-artemig', false);
+      showFeedback('separar-artemig', '');
+      const r = document.getElementById('resumo-separar-artemig');
+      if (r) r.innerHTML = '';
+    }
+  }
 
   function _renderListaPdfs() {
     const lista   = document.getElementById('lista-pdfs-analise');
@@ -2300,6 +2369,49 @@
       if (novos.length) logMsg('log-analisar-pdf', novos.length + ' arquivo(s) adicionado(s) via arraste.', 'info');
     });
   })();
+
+  document.getElementById('file-pdf-artemig').addEventListener('change', function () {
+    if (!this.files || !this.files.length) return;
+    const novos = Array.from(this.files).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    const nomesAtuais = new Set(_pdfsArtemig.map(f => f.name));
+    novos.forEach(f => { if (!nomesAtuais.has(f.name)) _pdfsArtemig.push(f); });
+    this.value = '';
+    _renderListaPdfsArtemig();
+    const nomesS = new Set(_sessao.pdfs.map(f => f.name));
+    novos.forEach(f => { if (!nomesS.has(f.name)) _sessao.pdfs.push(f); });
+    _sessaoAtualizar();
+    if (novos.length) logMsg('log-separar-artemig', novos.length + ' PDF(s) adicionado(s).', 'info');
+  });
+
+  (function () {
+    const zone = document.getElementById('zone-pdf-artemig');
+    if (!zone) return;
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || !files.length) return;
+      const novos = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+      const nomesAtuais = new Set(_pdfsArtemig.map(f => f.name));
+      novos.forEach(f => { if (!nomesAtuais.has(f.name)) _pdfsArtemig.push(f); });
+      _renderListaPdfsArtemig();
+      const nomesS = new Set(_sessao.pdfs.map(f => f.name));
+      novos.forEach(f => { if (!nomesS.has(f.name)) _sessao.pdfs.push(f); });
+      _sessaoAtualizar();
+      if (novos.length) logMsg('log-separar-artemig', novos.length + ' PDF(s) adicionado(s) via arraste.', 'info');
+    });
+  })();
+
+  document.getElementById('clear-pdfs-artemig').addEventListener('click', () => {
+    _pdfsArtemig = [];
+    _renderListaPdfsArtemig();
+    showResult('separar-artemig', false);
+    showFeedback('separar-artemig', '');
+    const r = document.getElementById('resumo-separar-artemig');
+    if (r) r.innerHTML = '';
+  });
 
   (function () {
     var LOTES_CONCESSIONARIA = { '13': 'Lote 13 Rodovias das Colinas', '21': 'Lote 21 Rodovias do Tietê', '26': 'Lote 26 SP Serra', '50': 'CONSOL' };
@@ -2506,7 +2618,7 @@
   });
 
   document.getElementById('download-analisar-pdf').addEventListener('click', () => triggerDownload('analisar-pdf'));
-  function criarGestorMulti({ inputId, zoneId, listaId, btnId, accept, iconCls, cor }) {
+  function criarGestorMulti({ inputId, zoneId, listaId, btnId, accept, iconCls, cor, semChecagemLote }) {
     let _arquivos = [];
     const input  = document.getElementById(inputId);
     const zone   = document.getElementById(zoneId);
@@ -2566,14 +2678,14 @@
     if (zone) {
       zone.addEventListener('click', function (e) {
         if (e.target.closest('button')) return;
-        if (!ncLoteValor()) return;
+        if (!semChecagemLote && !ncLoteValor()) return;
         if (input && !input.disabled) input.click();
       });
       zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
       zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
       zone.addEventListener('drop', e => {
         e.preventDefault(); zone.classList.remove('dragover');
-        if (!ncLoteValor()) return;
+        if (!semChecagemLote && !ncLoteValor()) return;
         if (e.dataTransfer && e.dataTransfer.files) _add(e.dataTransfer.files);
       });
     }
@@ -2673,7 +2785,6 @@
     listaId: 'lista-multi-separar', btnId: 'btn-separar',
     accept: '.xlsx,.xls', iconCls: 'fas fa-file-excel', cor: 'var(--success)',
   });
-
   // Sync EAFs para sessão quando adicionados diretamente no Separar NC
   document.getElementById('file-separar').addEventListener('change', function () {
     if (this.files && this.files.length) {
@@ -2798,6 +2909,128 @@
     }
     btn.disabled = _gestores['file-separar'].getFiles().length === 0;
   });
+
+  document.getElementById('reset-separar-artemig').addEventListener('click', () => {
+    _pdfsArtemig = [];
+    _renderListaPdfsArtemig();
+    showResult('separar-artemig', false);
+    showFeedback('separar-artemig', '');
+    setProgress('separar-artemig', 0, false);
+    setStatus('separar-artemig', 'idle', 'Aguardando');
+    limparLog('log-separar-artemig');
+    const r = document.getElementById('resumo-separar-artemig');
+    if (r) r.innerHTML = '';
+    try {
+      if (_blobs['separar-artemig']) { URL.revokeObjectURL(_blobs['separar-artemig'].url); delete _blobs['separar-artemig']; }
+      delete _downloadFeito['separar-artemig'];
+    } catch (e) {}
+  });
+
+  document.getElementById('btn-separar-artemig').addEventListener('click', async () => {
+    if (_pdfsArtemig.length === 0) return;
+    const limiar = parseFloat(document.getElementById('limiar-pdf-artemig').value) || 2.0;
+    const logId = 'log-separar-artemig';
+    const btn = document.getElementById('btn-separar-artemig');
+    btn.disabled = true;
+    setStatus('separar-artemig', 'processing', 'Analisando…');
+    setProgress('separar-artemig', 10, true);
+    showResult('separar-artemig', false);
+    showFeedback('separar-artemig', '');
+    const plural = _pdfsArtemig.length > 1 ? _pdfsArtemig.length + ' PDFs' : '"' + _pdfsArtemig[0].name + '"';
+    logMsg(logId, 'ARTEMIG (lote 50): enviando ' + plural + ' para /nc/analisar-pdf…', 'info');
+    var stopLive = _ncStartLivePipelineLog(logId, 'separar-artemig');
+    _uploadIndicatorShow();
+    try {
+      const fd = new FormData();
+      _pdfsArtemig.forEach(f => fd.append('pdfs', f));
+      fd.append('limiar_km', limiar);
+      fd.append('lote', '50');
+      var chkTeste = document.getElementById('chk-teste-local-artemig');
+      if (chkTeste && chkTeste.checked) fd.append('teste_local', '1');
+      setProgress('separar-artemig', 30, true);
+      const r = await fetch('/nc/analisar-pdf', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
+      setProgress('separar-artemig', 75, true);
+      if (r.status === 401) {
+        stopLive();
+        localStorage.removeItem('artesp_token');
+        localStorage.removeItem('artesp_user_email');
+        showLogin('Sessão expirada.');
+        logMsg(logId, 'Sessão expirada.', 'error');
+        setStatus('separar-artemig', 'error', 'Não autenticado');
+        btn.disabled = false;
+        return;
+      }
+      if (!r.ok) {
+        stopLive();
+        const d = await r.json().catch(() => ({}));
+        const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
+        logMsg(logId, 'Erro: ' + msg, 'error');
+        showFeedback('separar-artemig', '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + msg + '</div>');
+        setStatus('separar-artemig', 'error', 'Erro');
+        setProgress('separar-artemig', 0, false);
+        btn.disabled = false;
+        return;
+      }
+      stopLive();
+      logMsg(logId, 'Baixando ZIP…', 'info');
+      const total = r.headers.get('X-NC-Total') || '?';
+      const emerg = r.headers.get('X-NC-Emergenciais') || '0';
+      const gaps = r.headers.get('X-NC-Alertas') || '0';
+      const ocultos = r.headers.get('X-NC-Ocultos') || '0';
+      const narqs = r.headers.get('X-NC-Arquivos') || String(_pdfsArtemig.length);
+      const buffer = await r.arrayBuffer();
+      setProgress('separar-artemig', 95, true);
+      await new Promise(function (res) { _ncReplayPipelineSteps(logId, 'separar-artemig', res); });
+      setProgress('separar-artemig', 100, true);
+      const zipSlug = r.headers.get('X-NC-Zip-Slug') || '';
+      const zipNome = nomeArquivoDoContentDisposition(
+        r.headers.get('Content-Disposition'),
+        zipSlug ? ('Relatorio_Analise_NCs_' + zipSlug + '.zip') : 'Relatorio_Analise_NCs.zip');
+      storeBlobForDownload('separar-artemig', buffer, zipNome, 'application/zip');
+      const resumoEl = document.getElementById('resumo-separar-artemig');
+      if (resumoEl) {
+        var kcorOk = r.headers.get('X-NC-Kcor-Ok');
+        var kcorMod = r.headers.get('X-NC-Kcor-Modelo') || '';
+        var kcorSpan = '';
+        if (kcorOk === '1') {
+          kcorSpan = '<span style="color:#34d399"><i class="fas fa-file-excel"></i> <b>Exportar Kcor</b> no ZIP'
+            + (kcorMod === 'minimo'
+              ? ' <span style="opacity:.9;font-weight:600">(modelo mínimo)</span>'
+              : '')
+            + '</span>';
+        } else if (kcorOk === '0') {
+          kcorSpan = '<span style="color:var(--warning)"><i class="fas fa-file-excel"></i> Exportar Kcor não incluído — ver logs do servidor</span>';
+        }
+        resumoEl.innerHTML =
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;align-items:baseline">' +
+          (zipSlug ? '<span><i class="fas fa-folder" style="color:var(--accent)"></i> Pasta no ZIP: <b>' + zipSlug + '</b></span>' : '') +
+          '<span><i class="fas fa-file-archive" style="color:var(--accent)"></i> PDF análise + XLSX + imagens</span>' +
+          '<span><i class="fas fa-file-pdf" style="color:var(--warning)"></i> <b>' + narqs + '</b> PDF(s)</span>' +
+          '<span><i class="fas fa-clipboard-list" style="color:var(--accent)"></i> <b>' + total + '</b> NCs</span>' +
+          '<span><i class="fas fa-exclamation-triangle" style="color:var(--warning)"></i> <b>' + gaps + '</b> gap(s) KM</span>' +
+          (parseInt(ocultos, 10) > 0 ? '<span style="color:var(--danger);font-weight:700"><i class="fas fa-eye-slash"></i> <b>' + ocultos + '</b> não entregue(s)</span>' : '') +
+          (parseInt(emerg, 10) > 0 ? '<span><i class="fas fa-fire" style="color:var(--danger)"></i> <b>' + emerg + '</b> emergencial(is)</span>' : '') +
+          kcorSpan +
+          '</div>';
+      }
+      logMsg(logId, narqs + ' PDF(s) · ' + total + ' NCs · ' + gaps + ' alerta(s) · ' + emerg + ' emergencial(is)', 'success');
+      logMsg(logId, 'Arquivo: ' + zipNome + (zipSlug ? ' (pasta ' + zipSlug + ')' : '') + '.', 'success');
+      setStatus('separar-artemig', 'done', 'Concluído');
+      showResult('separar-artemig', true);
+    } catch (err) {
+      if (typeof stopLive === 'function') stopLive();
+      logMsg(logId, 'Erro: ' + _msgErroRede(err), 'error');
+      showFeedback('separar-artemig', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
+      setStatus('separar-artemig', 'error', 'Erro');
+      setProgress('separar-artemig', 0, false);
+    } finally {
+      if (typeof stopLive === 'function') stopLive();
+      _uploadIndicatorHide();
+    }
+    btn.disabled = _pdfsArtemig.length === 0;
+  });
+
+  document.getElementById('download-separar-artemig').addEventListener('click', () => triggerDownload('separar-artemig'));
 
   (function bindPipelineCompleto() {
     var eaf = document.getElementById('file-pipeline-completo-eaf');
@@ -3327,84 +3560,6 @@
   });
 
   document.getElementById('download-inserir-numero').addEventListener('click', () => triggerDownload('inserir-numero'));
-  bindFile('file-m06-acum', 'info-m06-acum', 'infotext-m06-acum', 'btn-exportar-calendario', ['file-m06-acum']);
-  document.getElementById('file-m06-acum').addEventListener('change', atualizarBotoesSessao);
-
-  document.getElementById('reset-exportar-calendario').addEventListener('click', () => {
-    clearFile('m06-acum');
-    document.getElementById('btn-exportar-calendario').disabled = true;
-    showResult('exportar-calendario', false);
-    showFeedback('exportar-calendario', '');
-    setProgress('exportar-calendario', 0, false);
-    setStatus('exportar-calendario', 'idle', 'Aguardando');
-    limparLog('log-exportar-calendario');
-    const el = document.getElementById('info-eventos-calendario');
-    if (el) el.textContent = '';
-  });
-
-  document.getElementById('btn-exportar-calendario').addEventListener('click', async () => {
-    const f = getFileFromInputOrBlob('file-m06-acum', 'juntar');
-    if (!f) {
-      showFeedback('exportar-calendario', _downloadFeito['juntar']
-        ? '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Envie a planilha da etapa <strong>Acumulado</strong> (coluna Y preenchida).</div>'
-        : '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Selecione a planilha da etapa <strong>Acumulado</strong> ou execute essa etapa e use o resultado aqui.</div>');
-      logMsg('log-exportar-calendario', 'Selecione o arquivo acumulado antes de gerar o calendário.', 'warning');
-      return;
-    }
-    const stem = (f.name || 'acumulado').replace(/\.xlsx?$/i, '');
-
-    const btn = document.getElementById('btn-exportar-calendario');
-    btn.disabled = true;
-    showFeedback('exportar-calendario', '');
-    setStatus('exportar-calendario', 'processing', 'Gerando .ics...');
-    setProgress('exportar-calendario', 20, true);
-    showResult('exportar-calendario', false);
-    showFeedback('exportar-calendario', '');
-    logMsg('log-exportar-calendario', 'Gerando arquivo iCalendar...', 'info');
-    var stopLiveCal = _ncStartLivePipelineLog('log-exportar-calendario', 'exportar-calendario');
-    _uploadIndicatorShow();
-    try {
-      const fd = new FormData();
-      fd.append('acumulado', f);
-      const r = await fetch('/nc/exportar-calendario', { method: 'POST', headers: getAuthHeader(), body: fd, credentials: 'include' });
-      setProgress('exportar-calendario', 80, true);
-      if (!r.ok) {
-        stopLiveCal();
-        const d = await r.json().catch(() => ({}));
-        const msg = (typeof d.detail === 'string' ? d.detail : JSON.stringify(d.detail)) || r.statusText;
-        logMsg('log-exportar-calendario', 'Erro: ' + msg, 'error');
-        showFeedback('exportar-calendario', '<div class="alert alert-danger">' + msg + '</div>');
-        setStatus('exportar-calendario', 'error', 'Erro');
-        setProgress('exportar-calendario', 0, false);
-        btn.disabled = false; return;
-      }
-      stopLiveCal();
-      logMsg('log-exportar-calendario', 'Baixando .ics...', 'info');
-      const nEventos = r.headers.get('X-NC-Eventos') || '?';
-      const buf = await r.arrayBuffer();
-      setProgress('exportar-calendario', 95, true);
-      await new Promise(function (res) { _ncReplayPipelineSteps('log-exportar-calendario', 'exportar-calendario', res); });
-      setProgress('exportar-calendario', 100, true);
-      storeBlobForDownload('exportar-calendario', buf, stem + '_eventos.ics', 'text/calendar');
-      const info = document.getElementById('info-eventos-calendario');
-      if (info) info.textContent = '— ' + nEventos + ' evento(s)';
-      logMsg('log-exportar-calendario', nEventos + ' evento(s) gerado(s) → ' + stem + '_eventos.ics', 'success');
-      setStatus('exportar-calendario', 'done', 'Concluído');
-      showResult('exportar-calendario', true);
-    } catch (err) {
-      if (typeof stopLiveCal === 'function') stopLiveCal();
-      logMsg('log-exportar-calendario', 'Erro: ' + _msgErroRede(err), 'error');
-      showFeedback('exportar-calendario', '<div class="alert alert-danger">' + _msgErroRede(err) + '</div>');
-      setStatus('exportar-calendario', 'error', 'Erro');
-      setProgress('exportar-calendario', 0, false);
-    } finally {
-      if (typeof stopLiveCal === 'function') stopLiveCal();
-      _uploadIndicatorHide();
-    }
-    btn.disabled = false;
-  });
-
-  document.getElementById('download-exportar-calendario').addEventListener('click', () => triggerDownload('exportar-calendario'));
 
   /* Organizar Imagens (M08) removido — era usado só em macros VBA */
   function updatePuxarRelatorioButton() {

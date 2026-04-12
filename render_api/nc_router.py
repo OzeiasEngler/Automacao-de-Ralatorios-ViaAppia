@@ -134,6 +134,12 @@ _NC_ASSETS = Path(__file__).resolve().parent.parent / "nc_artesp" / "assets" / "
 _FOTOS_ASSETS = Path(__file__).resolve().parent.parent / "fotos_campo" / "assets"
 _NC_ARTEMIG_TEMPLATES = Path(__file__).resolve().parent.parent / "nc_artemig" / "assets" / "Template"
 
+
+def _pastas_artemig_busca() -> list[Path]:
+    """XLSX Artemig estão em Template/templates/; mantém Template/ para retrocompat."""
+    t = _NC_ARTEMIG_TEMPLATES
+    return [p for p in (t / "templates", t) if p.is_dir()]
+
 # ── Nomes de pastas dos relatórios (alinhados às macros nc_artesp/config.py) ───
 DIR_EXPORTAR = "Exportar"
 DIR_IMAGENS_PDF = "Imagens Provisórias - PDF"
@@ -1027,18 +1033,24 @@ def _ler_asset(nome: str, pasta_base: Path | None = None) -> bytes:
 
 def _carregar_modelo_kria(lote: str | None = None) -> bytes:
     if (lote or "").strip() == "50":
-        try:
-            return _ler_asset(_NOME_MODELO_KRIA, _NC_ARTEMIG_TEMPLATES)
-        except HTTPException:
-            pass
+        for pasta in _pastas_artemig_busca():
+            try:
+                return _ler_asset(_NOME_MODELO_KRIA, pasta)
+            except HTTPException:
+                continue
     return _ler_asset(_NOME_MODELO_KRIA)
 
 
 def _carregar_modelo_resp(lote: str | None = None) -> bytes:
-    pasta = _NC_ARTEMIG_TEMPLATES if (lote or "").strip() == "50" else None
+    pastas = _pastas_artemig_busca() if (lote or "").strip() == "50" else []
     for nome in (_NOME_MODELO_RESP, "Modelo Resposta.xlsx", "Modelo_Resposta.xlsx"):
+        for pasta in pastas:
+            try:
+                return _ler_asset(nome, pasta)
+            except HTTPException:
+                continue
         try:
-            return _ler_asset(nome, pasta) if pasta and pasta.is_dir() else _ler_asset(nome)
+            return _ler_asset(nome)
         except HTTPException:
             continue
     raise HTTPException(
@@ -1057,10 +1069,11 @@ def _carregar_modelo_kcor(lote: str | None = None) -> bytes:
                 return p.read_bytes()
         except Exception:
             pass
-        try:
-            return _ler_asset(_NOME_MODELO_KCOR, _NC_ARTEMIG_TEMPLATES)
-        except HTTPException:
-            pass
+        for pasta in _pastas_artemig_busca():
+            try:
+                return _ler_asset(_NOME_MODELO_KCOR, pasta)
+            except HTTPException:
+                continue
     return _ler_asset(_NOME_MODELO_KCOR)
 
 

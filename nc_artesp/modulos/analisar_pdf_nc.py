@@ -2195,10 +2195,25 @@ def _caminho_template_relatorio_xlsx(lote_selecionado: str | None = None) -> Pat
     """Lote 50: template Artemig (A/B/V); demais: ARTESP_TEMPLATE_RELATORIO."""
     if _norm_lote_numero(lote_selecionado) == "50":
         try:
-            from nc_artemig.config import TEMPLATE_RELATORIO_ANALISE_PDF
-            p = Path(TEMPLATE_RELATORIO_ANALISE_PDF)
-            if p.is_file():
-                return p.resolve()
+            from nc_artemig.config import ASSETS_DIR, TEMPLATE_RELATORIO_ANALISE_PDF
+
+            candidatos: list[Path] = []
+            for base in (Path(TEMPLATE_RELATORIO_ANALISE_PDF),):
+                if base not in candidatos:
+                    candidatos.append(base)
+            tpl_root = ASSETS_DIR / "Template"
+            for sub in ("templates",):
+                d = tpl_root / sub
+                if d.is_dir():
+                    q = d / "Template_EAF_artemig.xlsx"
+                    if q not in candidatos:
+                        candidatos.append(q)
+            raiz = tpl_root / "Template_EAF_artemig.xlsx"
+            if raiz not in candidatos:
+                candidatos.append(raiz)
+            for p in candidatos:
+                if p.is_file():
+                    return p.resolve()
         except Exception:
             pass
     from nc_artesp.config import TEMPLATE_RELATORIO_XLSX
@@ -2503,12 +2518,17 @@ def gerar_relatorio_xlsx(
             # Artemig: col. A do template é sempre QID (PDF pode trazer «Fiscalização» ou texto com NBSP).
             ws.cell(row=row_idx, column=1, value="QID")
             shv = (getattr(nc, "sh_artemig", None) or "").strip()
-            obsv = (nc.observacao or "").strip()
             if _colapsar_pdf:
                 shv = _colapsar_pdf(shv, multiline=False)
-                obsv = _colapsar_pdf(obsv, multiline=True)
             ws.cell(row=row_idx, column=2, value=shv)
-            ws.cell(row=row_idx, column=22, value=obsv[:500])
+            consol_v = (getattr(nc, "num_consol", None) or "").strip()
+            if not consol_v:
+                cod = (nc.codigo or "").strip()
+                if cod.upper().startswith("CE") and len(cod) > 2:
+                    consol_v = cod[2:].strip()
+            if _colapsar_pdf:
+                consol_v = _colapsar_pdf(consol_v, multiline=False)
+            ws.cell(row=row_idx, column=22, value=(consol_v or "")[:120])
 
     if ncs and wb is not None and ws is not None and template_path.is_file() and template_path.suffix.lower() == ".xlsx":
         ult = PRIMEIRA_LINHA_DADOS + len(ncs) - 1

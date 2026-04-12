@@ -28,7 +28,7 @@ ASSETS_DIR = _ARTEMIG_ROOT / "assets"
 MALHA_DIR = _ARTEMIG_ROOT / "malha"
 TEMPLATES_DIR = _ARTEMIG_ROOT / "templates"
 # Análise PDF (lote 50): template com col. A Tipo, B SH, V Nº CONSOL (PDF Artemig).
-TEMPLATE_RELATORIO_ANALISE_PDF = ASSETS_DIR / "Template" / "Template_EAF_artemig.xlsx"
+TEMPLATE_RELATORIO_ANALISE_PDF = ASSETS_DIR / "Template" / "templates" / "Template_EAF_artemig.xlsx"
 
 # Grupo EAF 50 = CONSOL (Artemig); trechos MG/BR — não usar mapa ARTESP (lote 13).
 MAPA_EAF_POR_LOTE: dict[str, list] = {
