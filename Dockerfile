@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # Diagnóstico (não falha o build): M04 usa Acumulado.xlsx ou modelo Kcor-Kria em templates/ — ficheiros <2 KiB costumam ser ponteiro LFS.
-RUN python -c "import sys; from pathlib import Path; p=Path('nc_artesp/assets/templates'); xs=(([f for f in p.glob('_Planilha Modelo Kcor-Kria*') if f.is_file()] + ([p/'Acumulado.xlsx'] if (p/'Acumulado.xlsx').is_file() else [])) if p.is_dir() else []); mx=max((f.stat().st_size for f in xs), default=0); print('M04 templates (build):', [(f.name, f.stat().st_size) for f in xs] or 'nenhum', file=sys.stderr); (mx<=2048) and print('WARNING: Acumulado.xlsx ou Kcor-Kria ausente ou <2 KiB (LFS?).', file=sys.stderr)"
+RUN python -c "import sys; from pathlib import Path; p=Path('nc_artesp/assets/templates'); xs=(([f for f in p.glob('_Planilha Modelo Kcor-Kria*') if f.is_file()] + ([p/'Acumulado.xlsx'] if (p/'Acumulado.xlsx').is_file() else [])) if p.is_dir() else []); mx=max((f.stat().st_size for f in xs), default=0); print('Modelos M04 (construção):', [(f.name, f.stat().st_size) for f in xs] or 'nenhum', file=sys.stderr); (mx<=2048) and print('AVISO: Acumulado.xlsx ou Kcor-Kria ausente ou <2 KiB (LFS?).', file=sys.stderr)"
 
 # Não declarar VOLUME /data: o Render gerencia o disco persistente pelo painel.
 # Declarar VOLUME no Dockerfile pode causar shadowing e esconder os dados reais.
