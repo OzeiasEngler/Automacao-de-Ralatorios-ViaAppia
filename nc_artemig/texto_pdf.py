@@ -7,6 +7,29 @@ import unicodedata
 from typing import Any
 
 _NBSP = "\u00a0"
+_ZW_PDF = (
+    "\u200b",
+    "\u200c",
+    "\u200d",
+    "\u2060",
+    "\ufeff",
+    "\u202a",
+    "\u202b",
+    "\u202c",
+    "\u202d",
+    "\u202e",
+)
+
+
+def normalizar_texto_extraido_pdf(s: str) -> str:
+    """NFKC, NBSP→espaço, remove zero-width; CRLF→LF (regex e linhas de tabela Artemig)."""
+    if not s:
+        return ""
+    t = unicodedata.normalize("NFKC", str(s)).replace(_NBSP, " ")
+    for z in _ZW_PDF:
+        t = t.replace(z, "")
+    t = t.replace("\r\n", "\n").replace("\r", "\n")
+    return t
 
 
 def identificador_pdf_sem_whitespace(val: Any) -> str:

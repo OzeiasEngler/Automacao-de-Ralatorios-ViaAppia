@@ -107,6 +107,27 @@ def test_health_check(client: TestClient):
     assert "auth" in data
 
 
+def test_basename_saida_versao_maiuscula():
+    """Nomes de saída usam sufixo de versão em maiúsculas (ex.: R0), alinhado ao padrão ARTESP."""
+    import gerador_artesp_core as core
+
+    assert core.basename_saida("L13", "conserva", 2026, "r0") == "L13_conservacao_2026_R0"
+    assert core.basename_saida("L13", "obras", 2026, "r1") == "L13_obras_2026_R1"
+    assert core.basename_saida("L26", "conserva", 2026, "e", mes=3, tipo="EXECUTADO") == (
+        "L26_conservacao_executado_março_2026_R02"
+    )
+
+
+def test_obter_codigos_rodovias_validos_malha_xlsx():
+    """Lista oficial em assets/malha/rodovias.xlsx carrega e inclui códigos do manual ARTESP."""
+    import gerador_artesp_core as core
+
+    cod = core.obter_codigos_rodovias_validos()
+    assert cod is not None and len(cod) > 100
+    assert core.normalizar_rodovia("SP0000280") in cod
+    assert core.normalizar_rodovia("SPA004257") in cod
+
+
 def test_adicionar_usuario_sucesso(client: TestClient, client_sem_auth: TestClient, tmp_path, monkeypatch):
     """
     Admin adiciona novo usuário via POST /admin/adicionar-usuario.

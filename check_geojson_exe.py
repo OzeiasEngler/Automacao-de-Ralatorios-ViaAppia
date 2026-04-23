@@ -9,13 +9,19 @@ def main():
         path = sys.argv[1]
     else:
         base = os.path.join(os.environ.get("USERPROFILE", ""), "OneDrive", "Ambiente de Trabalho", "ATeste Todos")
+        candidatos = []
         for nome in ("RELATÓRIOS_ARTESP_GEOJSON_2026", "RELATORIOS_ARTESP_GEOJSON_2026"):
-            p = os.path.join(base, nome, "L13", "Anual", "L13_conservacao_2026_r0.geojson")
+            for fn in ("L13_conservacao_2026_R0.geojson", "L13_conservacao_2026_r0.geojson"):
+                candidatos.append(os.path.join(base, nome, "L13", "Anual", fn))
+        path = None
+        for p in candidatos:
             if os.path.exists(p):
                 path = p
                 break
-        else:
-            path = os.path.join(base, "RELATÓRIOS_ARTESP_GEOJSON_2026", "L13", "Anual", "L13_conservacao_2026_r0.geojson")
+        if path is None:
+            path = candidatos[0] if candidatos else os.path.join(
+                base, "RELATÓRIOS_ARTESP_GEOJSON_2026", "L13", "Anual", "L13_conservacao_2026_R0.geojson"
+            )
     if not os.path.exists(path):
         print("Nao encontrado:", path)
         return

@@ -31,8 +31,8 @@ Fluxo completo ARTESP (Excel EAF + PDF só para imagens):
 
 Endpoints:
 POST /nc/completo               – EAF + PDF(s) opcional → ZIP final (inclui backup de imagens embutido)
-  POST /nc/extrair-pdf            – PDF NC Constatação → ZIP com nc(N).jpg e PDF(N).jpg
-  POST /nc/analisar-pdf           – PDF NC Constatação → ZIP (PDF de análise + XLSX template preenchido)
+  POST /nc/extrair-pdf            – PDF NC Constatação → ZIP com nc(N).jpg e PDF(N).jpg; vários PDFs → Constatacoes_unificadas.pdf
+  POST /nc/analisar-pdf           – PDF NC Constatação → ZIP (PDF de análise + XLSX); vários PDFs → Constatacoes_unificadas.pdf
   POST /nc/separar                → M01: EAF → ZIP final no servidor (padrão) ou só XLS (`entrega_completa=false`)
   POST /nc/gerar-modelo-foto      → M02: XLS ZIP + modelos → ZIP Kria + Resposta
   POST /nc/inserir-conservacao    → M03: Kria ZIP → ZIP Kcor-Kria Conservação
@@ -1435,7 +1435,7 @@ def _flag_teste_local(val_form: str) -> bool:
 @router.post(
     "/analisar-pdf",
     summary="Analisar sequência de KMs e tipos de NCs do PDF de Constatação",
-    response_description="ZIP com PDF de análise e XLSX; lote 50 inclui Exportar Kcor + nc/PDF na mesma pasta do relatório.",
+    response_description="ZIP com PDF de análise e XLSX; vários PDFs incluem Constatacoes_unificadas.pdf (uma sequência de páginas). Lote 50: Exportar Kcor + extração nc/PDF na pasta.",
 )
 async def nc_analisar_pdf(
     request: Request,
@@ -1513,6 +1513,17 @@ async def nc_analisar_pdf(
             with zipfile.ZipFile(zip_disk, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr(nome_pdf.replace("\\", "/"), pdf_rel)
                 zf.writestr(nome_xlsx.replace("\\", "/"), xlsx_bytes)
+                if len(pdfs_bytes) > 1:
+                    try:
+                        from nc_artesp.pdf_extractor import FITZ_OK, merge_pdfs_bytes
+
+                        if FITZ_OK:
+                            zf.writestr(
+                                f"{pasta}/Constatacoes_unificadas.pdf".replace("\\", "/"),
+                                merge_pdfs_bytes(pdfs_bytes),
+                            )
+                    except Exception as ex:
+                        logger.warning("nc/analisar-pdf: PDFs constatação unificados: %s", ex)
                 kcor_b = resumo.get("exportar_kcor_xlsx") or b""
                 kcor_nome = (resumo.get("exportar_kcor_nome") or "").strip()
                 if kcor_b and kcor_nome and (lote_slug or "").strip() == "50":
@@ -1601,7 +1612,7 @@ async def nc_analisar_pdf(
 @router.post(
     "/extrair-pdf",
     summary="Extrair imagens do PDF de NC Constatação",
-    response_description="ZIP: uma pasta lote_*; lote 50 = nc + PDF integral; demais = JPG na raiz da pasta (sem subpastas nc/PDF).",
+    response_description="ZIP: uma pasta lote_*; vários PDFs incluem Constatacoes_unificadas.pdf (páginas em sequência). Lote 50 = nc + PDF integral; demais = JPG na raiz.",
 )
 async def nc_extrair_pdf(
     request: Request,
@@ -1638,9 +1649,11 @@ async def nc_extrair_pdf(
             pdf_in = root / "_in"
             pdf_in.mkdir()
             pdf_entries: list[tuple[Path, str]] = []
+            blobs_para_merge: list[bytes] = []
             for i, f in enumerate(pdfs):
                 dest = pdf_in / f"{i}.pdf"
                 await _nc_gravar_upload_pdf_com_limite(f, dest)
+                blobs_para_merge.append(dest.read_bytes())
                 pdf_entries.append((dest, f.filename or f"pdf_{i+1}.pdf"))
             out_dir = root / "out"
             out_dir.mkdir()
@@ -1652,6 +1665,15 @@ async def nc_extrair_pdf(
                 dpi,
                 nomear_por_indice_fiscalizacao,
             )
+            if len(blobs_para_merge) > 1:
+                try:
+                    from nc_artesp.pdf_extractor import FITZ_OK, merge_pdfs_bytes
+
+                    if FITZ_OK:
+                        uni = await asyncio.to_thread(merge_pdfs_bytes, blobs_para_merge)
+                        (out_dir / "Constatacoes_unificadas.pdf").write_bytes(uni)
+                except Exception as ex:
+                    logger.warning("nc/extrair-pdf: PDFs constatação unificados: %s", ex)
             for p, _ in pdf_entries:
                 try:
                     p.unlink()

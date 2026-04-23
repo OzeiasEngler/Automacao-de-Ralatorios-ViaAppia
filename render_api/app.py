@@ -1269,6 +1269,48 @@ def verificar_consistencia_dados(content: bytes, modalidade: str) -> dict:
     if not vazios_km.empty:
         erros.append(f"Existem {len(vazios_km)} linhas com KM Inicial ou Final vazios.")
 
+    try:
+        ki_num = pd.to_numeric(df["km_inicial"], errors="coerce")
+        kf_num = pd.to_numeric(df["km_final"], errors="coerce")
+        ordem_km_invalida = (ki_num.notna()) & (kf_num.notna()) & (kf_num < ki_num)
+        n_km = int(ordem_km_invalida.sum())
+        if n_km:
+            erros.append(f"Existem {n_km} linhas com KM Final menor que KM Inicial.")
+    except Exception:
+        pass
+
+    if "data_inicial" in df.columns and "data_final" in df.columns:
+        n_datas = 0
+        for _, row in df.iterrows():
+            iso_i = core._formatar_data_iso(row.get("data_inicial"))
+            iso_f = core._formatar_data_iso(row.get("data_final"))
+            if not iso_i or not iso_f:
+                continue
+            try:
+                di = datetime.date.fromisoformat(iso_i)
+                df_dt = datetime.date.fromisoformat(iso_f)
+                if df_dt < di:
+                    n_datas += 1
+            except ValueError:
+                continue
+        if n_datas:
+            erros.append(f"Existem {n_datas} linhas com Data Final anterior à Data Inicial.")
+
+    codigos_rod = core.obter_codigos_rodovias_validos()
+    if codigos_rod is not None:
+        try:
+            norm_rod = df["rodovia"].apply(lambda v: core.normalizar_rodovia(v))
+            preench = df["rodovia"].notna() & (df["rodovia"].astype(str).str.strip() != "")
+            fora = preench & (norm_rod != "") & ~norm_rod.isin(codigos_rod)
+            n_rod = int(fora.sum())
+            if n_rod:
+                erros.append(
+                    f"Existem {n_rod} linhas com código de rodovia que não consta em assets/malha/rodovias.xlsx "
+                    "(lista oficial ARTESP)."
+                )
+        except Exception:
+            pass
+
     # Latitude/Longitude: alerta se vazio, erro se texto/vírgula (core normaliza para "Latitude"/"Longitude")
     lat_col = "Latitude" if "Latitude" in df.columns else ("latitude" if "latitude" in df.columns else None)
     lon_col = "Longitude" if "Longitude" in df.columns else ("longitude" if "longitude" in df.columns else None)
@@ -1810,6 +1852,29 @@ def _validar_geojson_schema(geojson_obj, schema_key, lote=None):
     return str(schema_path)
 
 
+def _levantar_se_rodovia_fora_lista_official(geojson_obj):
+    import gerador_artesp_core as core
+
+    codigos = core.obter_codigos_rodovias_validos()
+    if codigos is None:
+        return
+    invalid = []
+    for ft in geojson_obj.get("features") or []:
+        p = ft.get("properties") or {}
+        r = core.normalizar_rodovia(p.get("rodovia"))
+        if r and r not in codigos:
+            invalid.append(r)
+    if not invalid:
+        return
+    uniq = sorted(set(invalid))[:25]
+    extra = len(set(invalid)) - len(uniq)
+    suf = f" (+{extra} outras)" if extra > 0 else ""
+    raise HTTPException(
+        status_code=422,
+        detail="Rodovia(s) fora da lista oficial (assets/malha/rodovias.xlsx): " + ", ".join(uniq) + suf,
+    )
+
+
 def assinar_geojson_api(caminho_arquivo, pfx_path, pfx_password):
     sistema = platform.system()
     if sistema == "Windows":
@@ -2154,13 +2219,14 @@ def processar_relatorio(payload: ProcessarRelatorioPayload, usuario_email: str =
     metadata.setdefault("usuario_email", usuario_email)
 
     schema_usado = _validar_geojson_schema(geojson_obj, payload.template_schema, payload.lote)
+    _levantar_se_rodovia_fora_lista_official(geojson_obj)
 
     nome_arquivo = _normalizar_nome_arquivo(payload.nome_arquivo)
     caminho_saida = _safe_output_path(nome_arquivo)
 
     try:
         with caminho_saida.open("w", encoding="utf-8") as f:
-            json.dump(geojson_obj, f, ensure_ascii=False, indent=2)
+            json.dump(geojson_obj, f, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
         if payload.assinar:
             pfx_password = (os.getenv("ARTESP_PFX_PASSWORD") or "").strip()
@@ -2421,10 +2487,22 @@ def _gerar_relatorio_do_excel(
     pendencias = []
     feat_seq = 0
     total_linhas = len(df)
+    codigos_oficiais = core.obter_codigos_rodovias_validos()
+    # Pré-processar: índice e total de itens por grupo (rodovia, km_inicial, km_final).
+    # Usado para distribuir alfinetes em posições km distintas dentro do trecho.
+    _grp = df.groupby(["rodovia", "km_inicial", "km_final"], sort=False)
+    df = df.copy()
+    df["_item_idx"] = _grp.cumcount()           # 0, 1, 2, ... por grupo
+    df["_item_n"]   = _grp["rodovia"].transform("count")  # total no grupo
     for seq, (idx, row) in enumerate(df.iterrows(), start=1):
         rod = normalizar_rodovia(row.get("rodovia"))
         if not rod:
             pendencias.append({"seq": seq, "rod": row.get("rodovia"), "motivo": "rodovia vazia"})
+            continue
+        if codigos_oficiais is not None and rod not in codigos_oficiais:
+            pendencias.append(
+                {"seq": seq, "rod": rod, "motivo": "rodovia nao consta em rodovias.xlsx (lista oficial ARTESP)"}
+            )
             continue
         if CACHE.tem_sentidos and not usar_geom_por_rodovia:
             if not CACHE.sentidos_disponiveis(rod):
@@ -2489,23 +2567,23 @@ def _gerar_relatorio_do_excel(
                 pendencias.append({"seq": seq, "rod": rod, "motivo": pend_mes})
             continue
 
-        if CACHE.tem_sentidos and not usar_geom_por_rodovia:
-            sentidos = []
-            lote_sigla = lote.get("sigla", "")
-            for loc in locais:
-                if loc in MAPA_LOCAL_PARA_SENTIDO_MALHA:
-                    s_display = MAPA_LOCAL_PARA_SENTIDO_MALHA[loc]
-                    # Malha pode ter sido carregada com mapeamento por rodovia (ex.: SP0000127 Norte=Decrescente)
-                    # ou só por lote (L13 Norte=Crescente). Incluir ambos para achar geometria.
-                    s_rod = (RODOVIA_SENTIDO_PARA_MALHA.get(rod) or {}).get(s_display)
-                    s_lote = (LOTE_SENTIDO_PARA_MALHA.get(lote_sigla) or {}).get(s_display) or s_display
-                    for s_cache in (s_rod, s_lote):
-                        if s_cache is not None and CACHE.contem(rod, s_cache) and s_cache not in sentidos:
-                            sentidos.append(s_cache)
-            if not sentidos:
-                sentidos = CACHE.sentidos_disponiveis(rod) or [None]
-        else:
-            sentidos = [None]
+        lote_sigla = lote.get("sigla", "")
+
+        def _sentido_malha_para_local(loc: str):
+            if not CACHE.tem_sentidos or not loc:
+                return None
+            if loc not in MAPA_LOCAL_PARA_SENTIDO_MALHA:
+                return None
+            s_display = MAPA_LOCAL_PARA_SENTIDO_MALHA[loc]
+            s_rod = (RODOVIA_SENTIDO_PARA_MALHA.get(rod) or {}).get(s_display)
+            s_lote = (LOTE_SENTIDO_PARA_MALHA.get(lote_sigla) or {}).get(s_display) or s_display
+            for s_try in (s_rod, s_lote):
+                if s_try is not None and CACHE.contem(rod, s_try, loc):
+                    return s_try
+            for s_try in CACHE.sentidos_disponiveis(rod) or []:
+                if CACHE.contem(rod, s_try, loc):
+                    return s_try
+            return None
 
         detalhe = _to_string_required(
             row.get("detalhamento_servico"),
@@ -2525,84 +2603,87 @@ def _gerar_relatorio_do_excel(
             data_fin = _formatar_data_iso(row.get("data_final")) or f"{ano}-12-31"
         obs = _to_string_or_null(row.get("observacoes_gerais"))
 
-        geoms = []
-        for sent in sentidos:
-            if abs(kf - ki) < tol_alf and usar_alfinete:
-                pt = extrair_ponto_geom(rod, ki, sentido=sent)
-                if pt:
-                    geoms.append({"type": "Point", "coordinates": pt})
-            else:
-                ln = extrair_linha_geom(rod, ki, kf, sentido=sent)
-                if ln:
-                    geoms.append(ln)
-        geoms = _normalizar_geoms(geoms)
-        if not geoms:
+        # Cor por categoria de item (reconhecida por geojson.io, GitHub, QGIS data-driven)
+        _ITEM_CORES = {
+            "a": "#1565C0",  # azul     — pavimento
+            "b": "#2E7D32",  # verde    — conservação geral
+            "c": "#F57F17",  # laranja  — drenagem/OAE
+            "e": "#6A1B9A",  # roxo     — sinalização
+            "f": "#B71C1C",  # vermelho — emergencial
+        }
+        cor_item = _ITEM_CORES.get((item_norm or "x")[0], "#546E7A")
+
+        # Alfinete no km distribuído dentro do trecho — posição distinta por item.
+        # Divide [ki, kf] em n_itens fatias; cada item ocupa o centro da sua fatia.
+        # Ex.: 34 itens em km 0-32 → espaçamento ~0,94 km; pontos visualmente distintos.
+        _item_idx = int(row.get("_item_idx", 0))
+        _item_n   = max(int(row.get("_item_n",   1)), 1)
+        _step = (kf - ki) / _item_n
+        km_alf = ki + _step * _item_idx + _step / 2   # centro da fatia deste item
+        km_alf = round(min(kf - 1e-6, max(ki + 1e-6, km_alf)), 6)
+        trechos_geom: list[tuple[dict, list]] = []
+        if usar_geom_por_rodovia:
+            pt = extrair_ponto_geom(rod, km_alf, sentido=None, local=None)
+            if pt:
+                trechos_geom.append(({"type": "Point", "coordinates": pt}, list(locais)))
+        else:
+            grupos = {}
+            for loc in locais:
+                s_g = _sentido_malha_para_local(loc) if CACHE.tem_sentidos else None
+                pt = extrair_ponto_geom(rod, km_alf, sentido=s_g, local=loc)
+                if not pt:
+                    pt = extrair_ponto_geom(rod, km_alf, sentido=s_g, local=None)
+                if not pt:
+                    continue
+                key = (round(float(pt[0]), 5), round(float(pt[1]), 5))
+                if key not in grupos:
+                    grupos[key] = ([], [float(pt[0]), float(pt[1])])
+                grupos[key][0].append(loc)
+            for locs_sub, coords in grupos.values():
+                trechos_geom.append(({"type": "Point", "coordinates": coords}, locs_sub))
+
+        if not trechos_geom:
             ki_s = _formatar_km_relatorio(ki) or (f"{ki:.3f}" if ki is not None else "?")
             kf_s = _formatar_km_relatorio(kf) or (f"{kf:.3f}" if kf is not None else "?")
             pendencias.append({"seq": seq, "rod": rod, "motivo": f"sem geometria para {rod} km {ki_s}-{kf_s}"})
             continue
 
-        if len(geoms) == 1:
-            geom_final = geoms[0]
-        else:
-            lines, points = [], []
-            for g in geoms:
-                if g["type"] == "LineString":
-                    lines.append(g["coordinates"])
-                elif g["type"] == "MultiLineString":
-                    lines.extend(g["coordinates"])
-                elif g["type"] == "Point":
-                    points.append(g["coordinates"])
-                elif g["type"] == "MultiPoint":
-                    points.extend(g["coordinates"])
-            if lines:
-                geom_final = {"type": "MultiLineString", "coordinates": lines}
-            elif points:
-                geom_final = {"type": "MultiPoint", "coordinates": points}
+        for geom_final, locais_props in trechos_geom:
+            sentido_str = extrair_sentido(locais_props) if locais_props else "-"
+            feat_seq += 1
+            fid = gerar_id(lote["sigla"], rod, item_norm, ki, kf, sentido_str, feat_seq)
+            _props_base = {
+                "id": fid,
+                "lote": lote["sigla"],
+                "sentido": sentido_str,
+                "rodovia": rod,
+                "detalhamento_servico": detalhe,
+                "unidade": unid,
+                "quantidade": _snap_km(_to_float(row.get("quantidade"))),
+                "km_inicial": _snap_km(ki),
+                "km_final": _snap_km(kf),
+                "local": locais_props,
+                "data_inicial": data_ini,
+                "data_final": data_fin,
+                "observacoes_gerais": obs,
+                "marker-color": cor_item,
+                "marker-size": "medium",
+                "marker-symbol": "",
+                "stroke": cor_item,
+                "stroke-width": 2,
+                "fill": cor_item,
+                "fill-opacity": 0.8,
+            }
+            if is_obras:
+                props = {
+                    **_props_base,
+                    "programa": str(row.get("programa", "") or "").strip().upper(),
+                    "item": int(float(row.get("item") or 0)),
+                    "subitem": int(float(row.get("subitem") or 0)),
+                }
             else:
-                geom_final = geoms[0]
-
-        sentido_str = extrair_sentido(locais) if locais else "-"
-        feat_seq += 1
-        fid = gerar_id(lote["sigla"], rod, item_norm, ki, kf, sentido_str, feat_seq)
-        if is_obras:
-            props = {
-                "id": fid,
-                "lote": lote["sigla"],
-                "sentido": sentido_str,
-                "rodovia": rod,
-                "programa": str(row.get("programa", "") or "").strip().upper(),
-                "item": int(float(row.get("item") or 0)),
-                "subitem": int(float(row.get("subitem") or 0)),
-                "detalhamento_servico": detalhe,
-                "unidade": unid,
-                "quantidade": _snap_km(_to_float(row.get("quantidade"))),
-                "km_inicial": _snap_km(ki),
-                "km_final": _snap_km(kf),
-                "local": locais,
-                "data_inicial": data_ini,
-                "data_final": data_fin,
-                "observacoes_gerais": obs,
-            }
-        else:
-            props = {
-                "id": fid,
-                "lote": lote["sigla"],
-                "sentido": sentido_str,
-                "rodovia": rod,
-                "item": item_norm,
-                "detalhamento_servico": detalhe,
-                "unidade": unid,
-                "quantidade": _snap_km(_to_float(row.get("quantidade"))),
-                "km_inicial": _snap_km(ki),
-                "km_final": _snap_km(kf),
-                "local": locais,
-                "data_inicial": data_ini,
-                "data_final": data_fin,
-                "observacoes_gerais": obs,
-            }
-        # pontos_interesse omitido para reduzir tamanho do GeoJSON (alfinetes desativados)
-        features.append({"type": "Feature", "geometry": geom_final, "properties": props})
+                props = {**_props_base, "item": item_norm}
+            features.append({"type": "Feature", "geometry": geom_final, "properties": props})
         if total_linhas and seq % max(5, total_linhas // 8) == 0:
             pct = min(69, 15 + int(54 * seq / total_linhas))
             prog(f"Gerando features... {feat_seq} trechos de {total_linhas} linhas", pct)
@@ -2656,7 +2737,15 @@ def _gerar_relatorio_do_excel(
 
     # Alfinetes (marcadores) desativados: não expandir pontos_interesse em features Point extras
     # features_principal = apenas trechos (linhas/pontos de trecho), sem features de alfinete
-    features_principal = features
+    # Ordenar por categoria de item: menos comuns primeiro (f, e, c, a) → mais comuns por cima (b).
+    # O mapa renderiza em sequência — o último sobrepõe; 'b' (conservação geral) domina visualmente.
+    _ORDEM_CATEGORIA = {'f': 0, 'e': 1, 'c': 2, 'a': 3, 'b': 4}
+    features_principal = sorted(
+        features,
+        key=lambda ft: _ORDEM_CATEGORIA.get(
+            str(ft.get('properties', {}).get('item') or 'b')[0], 5
+        )
+    )
     prog(f"Features geradas: {len(features_principal)} trechos de {len(df)} linhas", 70)
 
     geojson_obj = {
@@ -2673,12 +2762,15 @@ def _gerar_relatorio_do_excel(
         "features": features_principal,
     }
 
-    # Normalizar properties.local em todas as features para o schema (MARGINAL NORTE → MARGINAL_NORTE)
+    # Normalizar properties.local para o schema (MARGINAL NORTE → MARGINAL_NORTE).
+    # Malha por sentido/local: agrupa na mesma feature os locais que caem no mesmo ponto; várias features se houver pontos distintos.
     for f in geojson_obj["features"]:
         p = f.get("properties") or {}
-        locais_arr = p.get("local")
-        if isinstance(locais_arr, list):
-            p["local"] = [str(x).strip().upper().replace(" ", "_") if x else x for x in locais_arr]
+        loc_val = p.get("local")
+        if isinstance(loc_val, list):
+            p["local"] = [str(x).strip().upper().replace(" ", "_") if x else x for x in loc_val]
+        elif isinstance(loc_val, str):
+            p["local"] = [loc_val.strip().upper().replace(" ", "_")]
 
     # Reduzir tamanho do GeoJSON (step=2, 4 decimais) antes de salvar — garante efeito mesmo no render
     _STEP_REDUCAO = 2

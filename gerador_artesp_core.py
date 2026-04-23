@@ -360,9 +360,9 @@ RODOVIAS_POR_LOTE = {
     "L26": ["SP0000021"],
 }
 
-# Lotes que usam geometria por rodovia (sem sentido no eixo)
+# Lotes que usam geometria por rodovia (sem sentido/local no eixo).
+# L13 removido: malha tem coluna Local igual à L21 — cache por local funciona normalmente.
 LOTE_GEOMETRIA_POR_RODOVIA_SO = {
-    "L13": True,
     "L26": True,
 }
 
@@ -727,6 +727,43 @@ def normalizar_rodovia(nome):
         nums = "".join(filter(str.isdigit, limpo))
         return f"SP{int(nums):07d}" if nums else limpo
     return limpo
+
+
+_RODOVIAS_ARTESP_CODIGOS_SENT = object()
+_RODOVIAS_ARTESP_CODIGOS = _RODOVIAS_ARTESP_CODIGOS_SENT
+
+
+def _carregar_codigos_rodovias_xlsx_interno():
+    if not PANDAS_OK:
+        return None
+    path = _path_asset("malha", "rodovias.xlsx")
+    if not os.path.isfile(path):
+        return None
+    try:
+        df = pd.read_excel(path, sheet_name=0, header=0)
+    except Exception:
+        return None
+    col = None
+    for c in df.columns:
+        if str(c).strip().lower() == "codigo":
+            col = c
+            break
+    if col is None:
+        return None
+    out = set()
+    for v in df[col].dropna():
+        n = normalizar_rodovia(v)
+        if n:
+            out.add(n)
+    return frozenset(out) if out else None
+
+
+def obter_codigos_rodovias_validos():
+    """Códigos normalizados da coluna ``codigo`` em ``assets/malha/rodovias.xlsx`` (lista oficial). None se indisponível."""
+    global _RODOVIAS_ARTESP_CODIGOS
+    if _RODOVIAS_ARTESP_CODIGOS is _RODOVIAS_ARTESP_CODIGOS_SENT:
+        _RODOVIAS_ARTESP_CODIGOS = _carregar_codigos_rodovias_xlsx_interno()
+    return _RODOVIAS_ARTESP_CODIGOS
 
 
 # ══════════════════════════════════════════════════════════
@@ -1897,24 +1934,29 @@ def _path_asset_template(lote_sigla, chave_modalidade, ano=None, versao=None):
     return path
 
 
+def _versao_suffix_arquivo(ver):
+    s = str(ver or "").strip()
+    return s.upper() if s else s
+
+
 def basename_saida(lote_sigla, chave_modalidade, ano, versao, mes=None, tipo=None):
     """
     Gera nome base para arquivos de saída no formato exato:
-    - Anual: L13_conservacao_2026_r0
-    - Executado (mês anterior): L26_conservacao_executado_janeiro_2026_r02
-    - Programado/Mensal (mês seguinte): L13_conservacao_programado_março_2026_r01
+    - Anual: L13_conservacao_2026_R0
+    - Executado (mês anterior): L26_conservacao_executado_janeiro_2026_R02
+    - Programado/Mensal (mês seguinte): L13_conservacao_programado_março_2026_R01
     """
     mod_saida = "conservacao" if (chave_modalidade or "").strip().lower() == "conserva" else (chave_modalidade or "")
     if not mes or tipo not in ("MENSAL", "EXECUTADO"):
-        return f"{lote_sigla}_{mod_saida}_{ano}_{versao}"
+        return f"{lote_sigla}_{mod_saida}_{ano}_{_versao_suffix_arquivo(versao)}"
     mes_nome = MESES_NOME_SAIDA.get(int(mes), f"{int(mes):02d}")
     if tipo == "EXECUTADO":
         ver = "r02" if versao == "e" else versao
-        return f"{lote_sigla}_{mod_saida}_executado_{mes_nome}_{ano}_{ver}"
+        return f"{lote_sigla}_{mod_saida}_executado_{mes_nome}_{ano}_{_versao_suffix_arquivo(ver)}"
     if tipo == "MENSAL":
         ver = "r01" if versao == "m" else versao
-        return f"{lote_sigla}_{mod_saida}_programado_{mes_nome}_{ano}_{ver}"
-    return f"{lote_sigla}_{mod_saida}_{ano}_{versao}_{mes:02d}"
+        return f"{lote_sigla}_{mod_saida}_programado_{mes_nome}_{ano}_{_versao_suffix_arquivo(ver)}"
+    return f"{lote_sigla}_{mod_saida}_{ano}_{_versao_suffix_arquivo(versao)}_{mes:02d}"
 
 
 def criar_saida(base_dir, ano, lote_sigla, tipo=None, subpasta_mes=None):

@@ -1,6 +1,7 @@
 """
 Extração do PDF de NC Constatação: nc (COD).jpg e, nos lotes ARTESP, PDF (COD).jpg.
 Artemig (lote 50): só nc (COD).jpg; o PDF integral entra no ZIP em extrair_pdf_para_zip.
+``merge_pdfs_bytes`` concatena vários PDFs num único ficheiro (páginas em sequência) para o ZIP da API.
 Dimensões nc = M02_FOTO_* (ARTESP e Artemig). Requer: pymupdf, pillow.
 """
 
@@ -84,6 +85,26 @@ def _resolve_dpi_extracao(dpi: Optional[int]) -> int:
         return int(M02_EXTRACAO_RENDER_DPI)
     except Exception:
         return 150
+
+
+def merge_pdfs_bytes(parts: list[bytes]) -> bytes:
+    """Concatena PDFs num só documento (páginas na ordem dos ficheiros). Requer PyMuPDF."""
+    blobs = [p for p in (parts or []) if p and len(p) > 80]
+    if not blobs:
+        return b""
+    if len(blobs) == 1:
+        return blobs[0]
+    if not FITZ_OK:
+        raise RuntimeError("merge_pdfs_bytes requer pymupdf (pip install pymupdf)")
+    merged = fitz.open()
+    try:
+        for raw in blobs:
+            with fitz.open(stream=raw, filetype="pdf") as src:
+                merged.insert_pdf(src)
+        return merged.tobytes(deflate=True)
+    finally:
+        merged.close()
+
 
 # Quadros em branco: fração mínima de pixels "não brancos" para considerar como foto real
 _UMBRAL_BRANCO = 250

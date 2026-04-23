@@ -161,10 +161,10 @@
     }
 
     var params = new URLSearchParams(window.location.search);
-    var geojsonFile = params.get('geojson') || params.get('geo') || 'L13_conservacao_2026_r0.geojson';
+    var geojsonFile = params.get('geojson') || params.get('geo') || 'L13_conservacao_2026_R0.geojson';
     var nome = (geojsonFile.replace(/^.*[/\\]/, '') || '').trim();
     if (nome && !/\.geojson$/i.test(nome)) nome += '.geojson';
-    fetch('/outputs/' + encodeURIComponent(nome || 'L13_conservacao_2026_r0.geojson'), { credentials: 'include' })
+    fetch('/outputs/' + encodeURIComponent(nome || 'L13_conservacao_2026_R0.geojson'), { credentials: 'include' })
         .then(function(r) {
             if (!r.ok) throw new Error(r.statusText);
             return r.json();
