@@ -47,6 +47,8 @@ desktop.ini
 # Artefactos locais que não pertencem ao repo
 **/*PERSONAL.XLSB
 **/gerar-arvore-de-arquivos-e-diretorios-no-excel.xlsm
+nc_artemig/Arquivos/
+render_api/web/*.code-workspace
 
 # Dados, Logs e Saídas
 *.log
