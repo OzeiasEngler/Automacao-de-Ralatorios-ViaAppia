@@ -133,7 +133,8 @@ class NcItem:
     patologia_artemig: str = ""  # mapeamento Nas01 → col. Tipo (Kcor)
     indicador_artemig: str = ""
     artemig_pdf_stem: str = ""  # nome do PDF sem .p/Exportar Kcor col. V/W
-    artemig_kcor_paginas_jpg: list = field(default_factory=list)  # páginas c/ foto → CE_n.jpg
+    artemig_kcor_paginas_jpg: list = field(default_factory=list)  # páginas c/ foto (heurística legada)
+    artemig_kcor_nomes_arquivos: list = field(default_factory=list)  # nomes reais nc (cod).jpg / _N.jpg → col. W
 
 
 
@@ -1103,8 +1104,13 @@ def _validar_lotes_pdf_vs_selecionado(
 
 def _data_artemig_dd_mm_yyyy(s: str) -> str:
     """DD/MM/AA ou DD/MM/AAAA → DD/MM/AAAA (ano com 2 dígitos: 00–69 → 20xx)."""
-    s = (s or "").strip()
-    m = re.match(r"(\d{2})/(\d{2})/(\d{2}|\d{4})$", s)
+    try:
+        from nc_artemig.texto_pdf import limpeza_profunda, normalizar_texto_extraido_pdf
+
+        s = limpeza_profunda(normalizar_texto_extraido_pdf(s or ""))
+    except ImportError:
+        s = re.sub(r"\s+", " ", (s or "").replace("\xa0", " ").strip())
+    m = re.search(r"(\d{2})/(\d{2})/(\d{2}|\d{4})\b", s)
     if not m:
         return s
     d, mo, y = m.group(1), m.group(2), m.group(3)
@@ -1118,6 +1124,7 @@ def _prazo_artemig(texto: str, data_con: str) -> tuple[str, Optional[int], bool]
     """
     Artemig: data de reprovação (se houver), senão prazo em dias, senão data em linha
     útil após «Prazo para Atendimento» (nunca legenda «à Notificação:»).
+    Com «Remendo Emergencial» antes de «Remendo Técnico», usa só o primeiro bloco (ex.: 24 h, não os 15 dias).
     """
     prazo_str = ""
     prazo_dias: Optional[int] = None
@@ -1146,12 +1153,16 @@ def _prazo_artemig(texto: str, data_con: str) -> tuple[str, Optional[int], bool]
                 prazo_dias = _prazo_dias(data_con, prazo_str)
 
     pm = re.search(r"Prazo\s+para\s+Atendimento", texto, re.I)
-    janela = texto[pm.end() : pm.end() + 450] if pm else texto
-    em_m = re.search(
-        r"em\s+at[eé]\s+(\d+)\s*dias?\s*(úteis|uteis|corridos)?",
-        janela,
-        re.I,
-    ) or re.search(r"em\s+at[eé]\s+(\d+)\s*dias?", texto, re.I)
+    janela = texto[pm.end() : pm.end() + 800] if pm else texto
+    if pm:
+        m_rt = re.search(r"(?i)remendo\s+t[eé]cnico", janela)
+        m_re = re.search(r"(?i)remendo\s+emergencial", janela)
+        if m_rt is not None and m_re is not None and m_re.start() < m_rt.start():
+            janela = janela[: m_rt.start()]
+    _em_ate_ndias = (
+        r"em\s+at[eé]?\s+(\d{1,3})\s*(?:\([^)]{0,200}\)\s*)?dias?\s*(?:úteis|uteis|corridos)?"
+    )
+    em_m = re.search(_em_ate_ndias, janela, re.I) or re.search(_em_ate_ndias, texto, re.I)
     if not prazo_str and em_m and data_con:
         n = int(em_m.group(1))
         if d0:
@@ -1160,6 +1171,42 @@ def _prazo_artemig(texto: str, data_con: str) -> tuple[str, Optional[int], bool]
     elif not prazo_str and em_m:
         prazo_str = f"em até {em_m.group(1)} dias"
         prazo_dias = int(em_m.group(1))
+    if prazo_dias is None and not prazo_str:
+        hor_scope = janela if pm else texto
+        hor_m = re.search(
+            r"em\s+at[eé]?\s+(\d+)\s*(?:\([^)]{0,200}\)\s*)?horas?\b",
+            hor_scope,
+            re.I,
+        )
+        if not hor_m:
+            hor_m = re.search(
+                r"em\s+at[eé]?\s+(\d+)\s*(?:\([^)]{0,200}\)\s*)?horas?\b",
+                texto,
+                re.I,
+            )
+        if hor_m:
+            nh = int(hor_m.group(1))
+            nh = max(1, min(nh, 24 * 14))
+            dias = max(1, (nh + 23) // 24)
+            prazo_dias = dias
+            if d0:
+                prazo_str = (d0.date() + timedelta(days=dias)).strftime("%d/%m/%Y")
+            else:
+                prazo_str = f"em até {nh} horas"
+    if prazo_dias is None and not prazo_str and pm:
+        m_prazo_nd = re.search(
+            r"(?i)(?:prazo\s+m[aá]ximo\s+de|no\s+prazo\s+(?:m[aá]ximo\s+)?de)\s+"
+            r"(\d{1,3})\s*(?:\([^)]{0,200}\))?\s*dias?",
+            janela,
+        )
+        if m_prazo_nd:
+            n = int(m_prazo_nd.group(1))
+            if 1 <= n <= 366:
+                prazo_dias = n
+                if d0:
+                    prazo_str = (d0.date() + timedelta(days=n)).strftime("%d/%m/%Y")
+                else:
+                    prazo_str = f"em até {n} dias"
     if not prazo_str:
         for raw in (janela.split("\n") if pm else []):
             ln = (raw or "").strip()
@@ -1336,6 +1383,20 @@ def _indicador_patologia_de_resto_artemig(resto: str) -> tuple[str, str]:
     r = _cortar_resto_tabela_antes_localizacao_artemig(resto)
     if not r:
         return "", ""
+    r = re.sub(r"\s+", " ", r).strip()
+    r = re.sub(
+        r"(?is)^gerais\s+(?:par[âãa]metros|parametros)\b\s*",
+        "Parâmetros Gerais ",
+        r,
+    )
+    m_sep = re.search(
+        r"(?i)\s+(?=(?:Buracos|Panelas)\s+e/ou\b)",
+        r,
+    )
+    if m_sep is not None and 4 <= m_sep.start() <= 1200:
+        return r[: m_sep.start()].strip()[:2000], r[m_sep.start() :].strip()[:2000]
+    if re.search(r"(?i)(?:buracos|panelas)\s+e/ou\b", r) and not re.search(r"\s+/\s+", r):
+        return "", r.strip()[:2000]
     partes = [p.strip() for p in re.split(r"\s{2,}", r) if p.strip()]
     if len(partes) >= 2:
         a0, a1 = partes[0], partes[1]
@@ -1343,8 +1404,8 @@ def _indicador_patologia_de_resto_artemig(resto: str) -> tuple[str, str]:
             tail = " ".join(partes[2:]).strip()
             base = "Gerais (Parâmetros)"
             merged = f"{base} — {tail}" if tail else base
-            return "", merged[:500]
-        return partes[0][:120], " ".join(partes[1:])[:500]
+            return "", merged[:2000]
+        return partes[0][:2000], " ".join(partes[1:])[:2000]
     sp = r.split(None, 3)
     if len(sp) >= 2 and re.match(r"(?is)^gerais$", sp[0]) and re.search(
         r"(?is)par[âa]metros", sp[1]
@@ -1352,17 +1413,28 @@ def _indicador_patologia_de_resto_artemig(resto: str) -> tuple[str, str]:
         tail = " ".join(sp[2:]).strip() if len(sp) > 2 else ""
         base = "Gerais (Parâmetros)"
         merged = f"{base} — {tail}" if tail else base
-        return "", merged[:500]
+        return "", merged[:2000]
     if len(sp) >= 3:
-        dois = f"{sp[0]} {sp[1]}"
+        dois = f"{sp[0]} {sp[1]}".strip()
+        pat_tail = " ".join(sp[2:]).strip() if len(sp) > 2 else ""
+        if re.match(r"(?i)^(?:par[âãa]metros|parametros)\s+gerais$", dois):
+            return dois[:2000], pat_tail[:2000]
+        if re.match(r"(?i)^drenagem\s+\S+$", dois):
+            return dois[:2000], pat_tail[:2000]
+        if re.match(r"(?i)^sinaliza[çc][aã]o\s+\S+$", dois):
+            return dois[:2000], pat_tail[:2000]
         if re.match(
-            r"(?i)(Parâmetros|Drenagem|Pavimento|Sinaliza|Defensa|Limpeza|Seguran)",
+            r"(?i)(?:Parâmetros|Parametros|Drenagem|Pavimento|Sinaliza|Defensa|Limpeza|Seguran)",
             dois,
-        ):
-            return dois[:120], (sp[2] if len(sp) > 2 else "")[:500]
+        ) and not re.match(r"(?i)^(?:par[âãa]metros|parametros)\s+gerais$", dois):
+            return dois[:2000], (sp[2] if len(sp) > 2 else "")[:2000]
+    if len(sp) == 2:
+        dois2 = f"{sp[0]} {sp[1]}"
+        if re.match(r"(?i)^(?:par[âãa]metros|parametros)\s+gerais$", dois2):
+            return dois2[:2000], ""
     if len(sp) >= 2:
-        return sp[0][:120], " ".join(sp[1:])[:500]
-    return r[:120], ""
+        return sp[0][:2000], " ".join(sp[1:])[:2000]
+    return r[:2000], ""
 
 
 def _merge_gerais_parametros_ind_pat(ind: str, pat: str) -> tuple[str, str]:
@@ -1378,14 +1450,14 @@ def _merge_gerais_parametros_ind_pat(ind: str, pat: str) -> tuple[str, str]:
             resto = (m.group(1) or "").strip()
             base = "Gerais (Parâmetros)"
             novo_p = f"{base} — {resto}" if resto else base
-            return "", novo_p[:500]
+            return "", novo_p[:2000]
         if re.search(r"(?is)par[âa]metros", p):
-            return "", f"Gerais — {p}"[:500]
+            return "", f"Gerais — {p}"[:2000]
     if re.match(r"(?is)^gerais$", p) and re.search(r"(?is)par[âa]metros", i):
         resto = re.sub(r"(?is)^\(?\s*par[âa]metros\b[)\s:.-]*\s*", "", i).strip()
         base = "Gerais (Parâmetros)"
         novo = f"{base} — {resto}" if resto else base
-        return "", novo[:500]
+        return "", novo[:2000]
     return ind, pat
 
 
@@ -1420,10 +1492,121 @@ _GRUPO_FISCALIZACAO_ARTEMIG = "CONSOL"
 _GRUPO_EAF_ARTEMIG_ANALISE = 50
 
 
+def _par_km_rotulo_artemig(blob: str, label_re: str) -> tuple[int, int] | None:
+    m = re.search(
+        rf"(?is){label_re}\s*:?\s*(\d{{1,4}})\s*[\+\u002c,]\s*(\d{{1,3}})\b",
+        blob,
+    )
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def _par_km_metros_numa_linha_artemig(ln: str) -> tuple[int, int] | None:
+    s = (ln or "").strip()
+    if not s:
+        return None
+    m = re.match(r"^(\d{1,4})\s*\+\s*(\d{1,3})$", s) or re.match(r"^(\d{1,4}),(\d{3})$", s)
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2))
+
+
+def _extrair_km_pdf_artemig_vertical_linhas(linhas: list[str]) -> tuple[int, int, int, int] | None:
+    """Tabela PDF: valores «km+metros» (653+500 ou 653,400) podem vir antes dos rótulos Km Inicial / Km Final."""
+    idx_ini = next(
+        (i for i, l in enumerate(linhas) if re.match(r"(?is)^km\.?\s*inicial$", l.strip())),
+        None,
+    )
+    if idx_ini is None:
+        return None
+    idx_fin = next(
+        (i for i, l in enumerate(linhas) if re.match(r"(?is)^km\.?\s*final$", l.strip())),
+        None,
+    )
+    if idx_fin is None:
+        idx_fin = idx_ini
+    lo = max(0, min(idx_ini, idx_fin) - 30)
+    hi = min(idx_ini, idx_fin)
+    pairs: list[tuple[int, int]] = []
+    for l in linhas[lo:hi]:
+        p = _par_km_metros_numa_linha_artemig(l)
+        if p:
+            pairs.append(p)
+    if not pairs:
+        return None
+    if len(pairs) >= 2:
+        a, b = pairs[0], pairs[1]
+    else:
+        a = b = pairs[0]
+    return (a[0], a[1], b[0], b[1])
+
+
+def _extrair_km_pdf_artemig(bloco_loc: str, texto_completo: str) -> tuple[float, float, str, str] | None:
+    """Km Inicial / Km Final no PDF (rótulo na mesma linha ou tabela linearizada). Não usa malha."""
+    blob_src = f"{(bloco_loc or '').strip()} {(texto_completo or '').strip()}".strip()
+    if not blob_src:
+        return None
+    try:
+        from nc_artemig.texto_pdf import normalizar_texto_extraido_pdf
+
+        blob_lin = normalizar_texto_extraido_pdf(blob_src)
+    except Exception:
+        blob_lin = blob_src
+    linhas = [x.strip() for x in blob_lin.splitlines() if x.strip()]
+    blob = re.sub(r"\s+", " ", blob_lin)
+
+    ini = _par_km_rotulo_artemig(blob, r"km\.?\s*inicial")
+    fim_l = _par_km_rotulo_artemig(blob, r"km\.?\s*final")
+    if ini:
+        fim = fim_l or ini
+    else:
+        vert = _extrair_km_pdf_artemig_vertical_linhas(linhas)
+        if not vert:
+            return None
+        ini = (vert[0], vert[1])
+        fim = (vert[2], vert[3])
+
+    def _pair_str(p: tuple[int, int]) -> str:
+        return f"{p[0]} + {p[1]}"
+
+    ki_s, kf_s = _pair_str(ini), _pair_str(fim)
+    return (_km_para_float(ki_s), _km_para_float(kf_s), ki_s, kf_s)
+
+
+def _tabela_ind_pat_pre_localizacao_artemig(texto: str) -> tuple[str, str, str, str] | None:
+    """Notificação + Indicador/Patologia em colunas (pipes ou linhas) antes do bloco LOCALIZAÇÃO."""
+    for pat in (
+        r"(?is)Indicador\s*\|\s*Patologia\s*\|\s*(\d{8,10})\s*\|\s*(\d{2}/\d{2}/\d{2,4})\s*\|\s*"
+        r"(\d{1,2}:\d{2})\s*\|\s*([\s\S]+?)(?=\s*\|\s*Local\s*\|)",
+        r"(?is)Indicador\s*\n\s*Patologia\s*\n\s*(\d{8,10})\s*\n\s*(\d{2}/\d{2}/\d{2,4})\s*\n\s*"
+        r"(\d{1,2}:\d{2})\s*\n\s*([\s\S]+?)(?=\n\s*Local\b|\n\s*Tipo\s*:|\n\s*LOCALIZA[ÇC])",
+    ):
+        m = re.search(pat, texto)
+        if not m:
+            continue
+        resto = m.group(4).strip()
+        resto = re.sub(r"\s*\|\s*", " ", resto)
+        resto = re.sub(r"\s+", " ", resto).strip()
+        return (
+            m.group(1).strip(),
+            m.group(2).strip(),
+            m.group(3).replace(" ", "").strip(),
+            resto,
+        )
+    return None
+
+
 def _parse_artemig_texto(texto: str) -> NcItem | None:
     """Layout Artemig MG; código NC = coluna Notificação da tabela."""
     if not texto or len(texto.strip()) < 40:
         return None
+    try:
+        from nc_artemig.texto_pdf import normalizar_texto_extraido_pdf
+
+        texto = normalizar_texto_extraido_pdf(texto)
+    except ImportError:
+        pass
     if not re.search(r"(NOTIFICA[OÇ]|CONSOL|LOCALIZA[OÇ][AÃ]O)", texto, re.I):
         return None
     if not re.search(r"(MG[- ]?050|BR[- ]?265|BR[- ]?491)", texto, re.I):
@@ -1445,17 +1628,43 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
     hora = ""
     indicador = ""
     patologia = ""
-    linha_tab = re.search(
-        r"(?m)^\s*(\d{8,10})\s+(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+)$",
+    linha_tab = None
+    pre_loc = _tabela_ind_pat_pre_localizacao_artemig(texto)
+    loc_tab = None
+    for m in re.finditer(
+        r"(?is)\bLOCALIZA[ÇC][AÃ]?O\b\s*\n\s*(\d{8,10})",
         texto,
-    )
+    ):
+        loc_tab = m
+    slice_tab = texto[loc_tab.start(1) :].lstrip() if loc_tab else ""
+    if slice_tab:
+        linha_tab = re.search(
+            r"(?s)^\s*(\d{8,10})\s+(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2})\s+"
+            r"([\s\S]+?)(?=\n\s*(?:Tipo\s*:|Notifica[çc][aã]o\s*\n\s*Data\b))",
+            slice_tab,
+            re.I,
+        )
+    if not linha_tab:
+        linha_tab = re.search(
+            r"(?m)^\s*(\d{8,10})\s+(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+)$",
+            texto,
+        )
     if not linha_tab:
         linha_tab = re.search(
             r"(?s)(\d{8,10})\s+(\d{2}/\d{2}/\d{2,4})\s+(\d{1,2}:\d{2})\s+(.+?)(?=\n\s*\n|LOCALIZA[ÇC]|Prazo\s+para|N[ºo°]?\s*da\s*CONSOL)",
             texto,
             re.I,
         )
-    if linha_tab:
+    use_pre = False
+    if pre_loc:
+        lr = len((linha_tab.group(4) or "").strip()) if linha_tab else 0
+        if not linha_tab or len(pre_loc[3]) > lr + 12:
+            use_pre = True
+    if use_pre and pre_loc:
+        notificacao, d_raw, hora, resto = pre_loc
+        data_con = _data_artemig_dd_mm_yyyy(d_raw)
+        indicador, patologia = _indicador_patologia_de_resto_artemig(resto)
+    elif linha_tab:
         notificacao = linha_tab.group(1).strip()
         data_con = _data_artemig_dd_mm_yyyy(linha_tab.group(2).strip())
         hora = linha_tab.group(3).replace(" ", "").strip()
@@ -1498,9 +1707,17 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
 
     sh_artemig = _sh_de_texto(bloco_loc) or _sh_de_texto(texto)
 
-    kms = re.findall(r"\d{2,3}[,.]\d{3}", bloco_loc) or re.findall(r"\d{2,3}[,.]\d{3}", texto)
-    km_ini = _float_br(kms[0]) if len(kms) >= 1 else 0.0
-    km_fim = _float_br(kms[1]) if len(kms) >= 2 else km_ini
+    km_blk = _extrair_km_pdf_artemig(bloco_loc if loc_m else "", texto)
+    if km_blk:
+        km_ini, km_fim, km_ini_str, km_fim_str = km_blk
+    else:
+        kms = re.findall(r"\d{2,3}[,.]\d{3}", bloco_loc) or re.findall(
+            r"\d{2,3}[,.]\d{3}", texto
+        )
+        km_ini = _float_br(kms[0]) if len(kms) >= 1 else 0.0
+        km_fim = _float_br(kms[1]) if len(kms) >= 2 else km_ini
+        km_ini_str = str(km_ini).replace(".", ",")
+        km_fim_str = str(km_fim).replace(".", ",")
 
     sentido_m = re.search(
         r"(?i)(?:Sentido\s*:?\s*)?(CRESCENTE|DECRESCENTE|AMBOS)\b",
@@ -1523,15 +1740,15 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
                     ind_pat = hm2.group(3).strip()
                     pp = [p.strip() for p in re.split(r"\s{2,}", ind_pat) if p.strip()]
                     if len(pp) >= 2:
-                        indicador, patologia = pp[0][:120], " ".join(pp[1:])[:500]
+                        indicador, patologia = pp[0][:2000], " ".join(pp[1:])[:2000]
                     elif pp:
-                        patologia = pp[0][:500]
+                        patologia = pp[0][:2000]
                 break
             if re.match(r"^\d{1,2}\s*:\s*\d{2}$|^\d{1,2}:\d{2}$", ln):
                 if i + 1 < len(linhas):
-                    indicador = linhas[i + 1][:100]
+                    indicador = linhas[i + 1][:2000]
                 if i + 2 < len(linhas):
-                    patologia = linhas[i + 2][:100]
+                    patologia = linhas[i + 2][:2000]
                 break
 
     indicador = _limpar_legendas_campo_artemig(indicador)
@@ -1611,9 +1828,16 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
         grp_a = patologia or indicador or grp_a
 
     prazo_str, prazo_dias, emerg_p = _prazo_artemig(texto, data_con)
-    prazo_str = _prazo_str_valido_artemig(prazo_str)
-    if not prazo_str:
-        prazo_dias = None
+    prazo_str_limpa = _prazo_str_valido_artemig(prazo_str)
+    if prazo_str_limpa:
+        prazo_str = prazo_str_limpa
+    else:
+        prazo_str = ""
+        if prazo_dias is not None and data_con:
+            d0p = _parse_data(data_con)
+            if d0p:
+                prazo_str = (d0p.date() + timedelta(days=int(prazo_dias))).strftime("%d/%m/%Y")
+    if prazo_dias is None:
         emerg_p = False
 
     obs_parts: list[str] = []
@@ -1651,8 +1875,8 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
         lote="50",
         km_ini=km_ini,
         km_fim=km_fim,
-        km_ini_str=str(km_ini).replace(".", ","),
-        km_fim_str=str(km_fim).replace(".", ","),
+        km_ini_str=km_ini_str,
+        km_fim_str=km_fim_str,
         sentido=_cx(sentido or "", multiline=False),
         tipo_atividade=_cx(tipo_a or "", multiline=False),
         grupo_atividade=_cx(grp_a or "", multiline=False),
@@ -1668,8 +1892,8 @@ def _parse_artemig_texto(texto: str) -> NcItem | None:
         tipo_artemig=tipo_artemig,
         sh_artemig=_cx(sh_artemig or "", multiline=False),
         num_consol=num_consol,
-        patologia_artemig=_cx(patologia or "", multiline=False)[:500],
-        indicador_artemig=_cx(indicador or "", multiline=False)[:200],
+        patologia_artemig=_cx(patologia or "", multiline=False)[:2000],
+        indicador_artemig=_cx(indicador or "", multiline=False)[:2000],
     )
 
 
@@ -1677,6 +1901,86 @@ def _stem_pdf_upload(nome_arquivo: str) -> str:
     s = (nome_arquivo or "").strip().replace("\\", "/")
     base = s.rsplit("/", 1)[-1]
     return Path(base).stem if base else ""
+
+
+def _ordem_sufixo_nc_jpg_kcor(nome: str) -> int:
+    m = re.match(r"(?i)nc \(([^)]+)\)(?:_(\d+))?\.(jpg|jpeg)$", (nome or "").strip())
+    if not m:
+        return 9999
+    return int(m.group(2) or 0)
+
+
+def _norm_cod_de_nome_nc_jpg(cod_bruto: str) -> str:
+    from nc_artemig.texto_pdf import identificador_pdf_sem_whitespace
+
+    c = identificador_pdf_sem_whitespace((cod_bruto or "").strip())
+    if not c:
+        return ""
+    if re.fullmatch(r"\d{6,14}", c):
+        return c
+    m = re.search(r"\b(\d{8,10})\b", c)
+    return identificador_pdf_sem_whitespace(m.group(1)) if m else c
+
+
+def _artemig_enriquecer_nomes_jpg_kcor_extracao(
+    pdf_bytes: bytes, parcial: list[NcItem], nome_fonte_pdf: str
+) -> None:
+    """Preenche ``artemig_kcor_nomes_arquivos`` a partir da mesma extração que gera o ZIP (várias fotos por código)."""
+    if not parcial or not FITZ_OK:
+        return
+    import tempfile
+    from pathlib import Path as _P
+
+    try:
+        from nc_artesp import pdf_extractor as _pex
+    except ImportError:
+        return
+    nome_pdf = (nome_fonte_pdf or "doc.pdf").strip()
+    if not nome_pdf.lower().endswith(".pdf"):
+        nome_pdf = f"{nome_pdf}.pdf"
+    try:
+        with tempfile.TemporaryDirectory(prefix="am_jpg_kcor_") as td:
+            p = _P(td) / "upload.pdf"
+            p.write_bytes(pdf_bytes)
+            out = _P(td) / "out"
+            out.mkdir(parents=True, exist_ok=True)
+            salvos, _ = _pex.extrair_arquivo_pdf_para_pasta(
+                p,
+                out,
+                dpi=None,
+                nomear_por_indice_fiscalizacao=False,
+                pasta_unica=True,
+                raiz_unica_sem_subpastas=False,
+                nome_pdf_original=nome_pdf,
+            )
+            por_cod: dict[str, list[str]] = {}
+            for fstr in salvos:
+                fp = _P(fstr)
+                if not fp.is_file() or fp.suffix.lower() not in (".jpg", ".jpeg"):
+                    continue
+                name = fp.name
+                if not name.lower().startswith("nc ("):
+                    continue
+                m = re.match(r"(?i)nc \(([^)]+)\)(?:_(\d+))?\.(jpg|jpeg)$", name)
+                if not m:
+                    continue
+                ck = _norm_cod_de_nome_nc_jpg(m.group(1))
+                if not ck:
+                    continue
+                por_cod.setdefault(ck, []).append(name)
+            for lst in por_cod.values():
+                lst.sort(key=lambda n: (_ordem_sufixo_nc_jpg_kcor(n), n.lower()))
+            from nc_artemig.exportar_kcor_planilha import _codigo_fiscalizacao_arquivos
+
+            for nc in parcial:
+                ck = _codigo_fiscalizacao_arquivos(nc)
+                if not ck:
+                    ck = _norm_cod_de_nome_nc_jpg((nc.codigo or "").strip())
+                nomes = list(por_cod.get(ck, []))
+                if nomes:
+                    nc.artemig_kcor_nomes_arquivos = nomes
+    except Exception as ex:
+        logger.debug("artemig_kcor_nomes_arquivos: %s", ex)
 
 
 def _artemig_paginas_foto_kcor(pdf_bytes: bytes) -> list[int]:
@@ -2255,15 +2559,16 @@ COLUNAS_TEMPLATE_SAIDA: dict[str, int] = {
 
 
 def _detectar_colunas_saida_template(ws, cabecalho_fim: int = 4) -> dict[str, int]:
-    """Detecta coluna Responsável Técnico no cabeçalho do template de saída."""
+    """Detecta colunas no cabeçalho: Responsável Técnico; Observações (texto alinhado à col. U do Kcor)."""
     col_map = dict(COLUNAS_TEMPLATE_SAIDA)
     for r in range(1, min(cabecalho_fim + 1, ws.max_row + 1)):
         for c in range(1, min(ws.max_column + 1, 30)):
             v = ws.cell(row=r, column=c).value
             s = (str(v or "")).strip().lower().replace("é", "e").replace("á", "a")
+            if v and ("observa" in s or "observac" in s) and "gestor" not in s:
+                col_map["obs_linha_kcor"] = c
             if v and ("responsavel" in s or "responsável" in s or ("respons" in s and "tecnico" in s)):
                 col_map["nome_fiscal"] = c
-                return col_map
     return col_map
 
 
@@ -2299,7 +2604,7 @@ def _coluna_data_reparo_relatorio(val: str) -> str:
     v = (val or "").strip()
     if not v:
         return ""
-    if re.match(r"(?i)^em\s+at[eé]\s+", v):
+    if re.match(r"(?i)^em\s+at[eé]?\s+", v):
         return v
     return _data_sem_hora_celula(v)
 
@@ -2529,6 +2834,17 @@ def gerar_relatorio_xlsx(
             if _colapsar_pdf:
                 consol_v = _colapsar_pdf(consol_v, multiline=False)
             ws.cell(row=row_idx, column=22, value=(consol_v or "")[:120])
+            oc = col_map.get("obs_linha_kcor")
+            if oc:
+                try:
+                    from nc_artemig.exportar_kcor_planilha import _texto_observacoes_nas01
+
+                    u_txt = (_texto_observacoes_nas01(nc) or "")[:32700]
+                    if _colapsar_pdf:
+                        u_txt = _colapsar_pdf(u_txt, multiline=True)
+                    ws.cell(row=row_idx, column=oc, value=u_txt)
+                except Exception:
+                    pass
 
     if ncs and wb is not None and ws is not None and template_path.is_file() and template_path.suffix.lower() == ".xlsx":
         ult = PRIMEIRA_LINHA_DADOS + len(ncs) - 1
@@ -3165,6 +3481,21 @@ CAMPOS_TEMPLATE_LIST: tuple[str, ...] = (
     "atividade", "prazo_str", "empresa", "nome_fiscal",
 )
 
+
+def _excel_complemento_pode_mesclar_campo(lote_val: str, campo: str) -> bool:
+    """Lote 50 Artemig: planilha complementar não substitui texto de NC usado no Kcor (fonte = PDF)."""
+    if _norm_lote_numero(lote_val) == "50" and campo in (
+        "tipo_atividade",
+        "grupo_atividade",
+        "atividade",
+        "prazo_str",
+        "km_ini_str",
+        "km_fim_str",
+    ):
+        return False
+    return True
+
+
 # (campo, termos no cabeçalho para detectar coluna, termos que desqualificam). Primeiro match ganha.
 MAPEAMENTO_EXCEL_PARA_TEMPLATE: list[tuple[str, list[str], list[str]]] = [
     ("codigo", ["cod", "fiscal", "codigo"], []),
@@ -3465,8 +3796,9 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
                                 teste_local: bool = False) -> tuple[bytes, bytes, dict]:
     """
     Pipeline completo para múltiplos PDFs.
-    Se excel_bytes for informado (Excel que acompanha os PDFs), preenche horário (E), tipo (O) e grupo (P)
-    a partir do Excel por correspondência de código fiscalização.
+    Se excel_bytes for informado (Excel que acompanha os PDFs), preenche lacunas do PDF
+    (horário, km, sentido, etc.) por correspondência de código — exceto lote 50 Artemig:
+    tipo, grupo, atividade e prazo ficam só do PDF (export Kcor/Kria).
     Retorna (pdf_relatorio_bytes, xlsx_bytes, resumo_dict).
     """
     from .analisar_pdf_ma import parse_pdf_ma
@@ -3527,6 +3859,8 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
                 if stem_u:
                     nc.artemig_pdf_stem = stem_u
                 nc.artemig_kcor_paginas_jpg = list(pags)
+            fn_pdf = src if str(src).lower().endswith(".pdf") else f"{src}.pdf"
+            _artemig_enriquecer_nomes_jpg_kcor_extracao(pdf_bytes, parcial, fn_pdf)
         for nc in parcial:
             setattr(nc, "_origem", src)
         bloques.append((src, texto_pdf, parcial))
@@ -3570,6 +3904,17 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
                 nc, "artemig_kcor_paginas_jpg", None
             ):
                 existente.artemig_kcor_paginas_jpg = list(nc.artemig_kcor_paginas_jpg)
+            nn_arq = list(getattr(nc, "artemig_kcor_nomes_arquivos", None) or [])
+            if nn_arq:
+                ex_arq = list(getattr(existente, "artemig_kcor_nomes_arquivos", None) or [])
+                visto_arq: set[str] = set()
+                merged_arq: list[str] = []
+                for x in ex_arq + nn_arq:
+                    if x not in visto_arq:
+                        visto_arq.add(x)
+                        merged_arq.append(x)
+                merged_arq.sort(key=lambda n: (_ordem_sufixo_nc_jpg_kcor(n), n.lower()))
+                existente.artemig_kcor_nomes_arquivos = merged_arq
             # Trecho (rodovia/km) define EAF; preencher lacunas ou preferir NEP/EBP 22 sobre Autoroutes
             if not (existente.rodovia or "").strip() and (nc.rodovia or "").strip():
                 existente.rodovia = nc.rodovia
@@ -3627,6 +3972,8 @@ def analisar_e_gerar_pdf_multi(pdfs_bytes: list[bytes],
                         continue
                     for attr in CAMPOS_TEMPLATE_LIST:
                         if attr == "codigo" or attr == "empresa":
+                            continue
+                        if not _excel_complemento_pode_mesclar_campo(lote_num, attr):
                             continue
                         val_nc = (getattr(nc, attr, None) or "") if hasattr(nc, attr) else ""
                         val_excel = (row.get(attr) or "").strip()

@@ -4,7 +4,7 @@ Gera «Exportar Kcor.xlsx» (lote 50 Artemig), alinhado às macros Nas01 (col. T
 Inserções: uma linha por NC a partir da **linha 2** (aba Dados), como Nas01; insere linhas se o modelo tiver menos linhas que o lote.
 
 T (Obs. Gestor): Trecho + Notificação + Nº Consol **numa única linha** (sem ``\\n`` — o Excel parte o texto ao editar se houver quebras).
-U (Observações): corpo + mesmo rodapé; **uma linha** (quebras vindas do PDF viram espaço).
+U (Observações): valores na ordem (código · SH · indicador · patologia · …) **sem** rótulos «Notificação:» etc.; consol no fim; **uma linha**; limite ~32k (Excel).
 G/H (KMi/KMf): se valor > 500, divide por 1000 (metros → km), como Nas01.
 V (Diretório): barras só ``\\``, por segmento (letra ``C:\\`` + pastas); W (Arquivos): nomes sem ``\\``/``/``; PDF primeiro, depois nc (.jpg), «;» (Nas02).
 
@@ -140,6 +140,61 @@ def _linha_unica_espacos(s: str) -> str:
     return limpeza_profunda(s)
 
 
+def _patologia_fonte_nc_kcor(nc: Any) -> str:
+    """Patologia para Nas01/Kcor: campo PDF; se vazio, col. Tipo da planilha de análise; por último Grupo."""
+    for attr in ("patologia_artemig", "tipo_atividade", "grupo_atividade"):
+        v = (getattr(nc, attr, None) or "").strip()
+        if v:
+            return v
+    return ""
+
+
+_RE_ATIVIDADE_COMO_PAT_U = re.compile(
+    r"(?i)e\s*/\s*ou|pista\s+de\s+rolamento|panelas?\s+na\s+pista|buracos?\s+e/ou",
+)
+_RE_PAT_U_INCOMPLETA_E = re.compile(r"(?i)(?:panelas?|buracos?|pavimento)\s+e\s*$")
+
+
+def _patologia_fonte_observacao_col_u(nc: Any) -> str:
+    """Col. U: patologia truncada no PDF — prolongar com tipo/grupo do mesmo registo ou com atividade típica."""
+    p = (getattr(nc, "patologia_artemig", None) or "").strip()
+    t = (getattr(nc, "tipo_atividade", None) or "").strip()
+    g = (getattr(nc, "grupo_atividade", None) or "").strip()
+    base = (_patologia_fonte_nc_kcor(nc) or "").strip()
+    if p and _RE_PAT_U_INCOMPLETA_E.search(p):
+        if t and p.lower() in t.lower() and len(t) >= len(p) + 3:
+            base = t
+        elif g and p.lower() in g.lower() and len(g) >= len(p) + 3:
+            base = g
+    atv = _linha_unica_espacos(getattr(nc, "atividade", None) or "").strip()
+    if atv:
+        try:
+            from nc_artesp.modulos.analisar_pdf_nc import _texto_e_bloco_legenda_atividade_artemig
+
+            if _texto_e_bloco_legenda_atividade_artemig(atv):
+                atv = ""
+        except Exception:
+            pass
+    cands = [base] if base else []
+    if atv and _RE_ATIVIDADE_COMO_PAT_U.search(atv):
+        cands.append(atv)
+    if not cands:
+        return ""
+    return max(cands, key=len)
+
+
+def _indicador_fonte_nc_kcor(nc: Any, patologia_bruta: str) -> str:
+    """Indicador dedicado; Grupo só se distinto da patologia já resolvida (Grupo = indicador no Excel Artemig)."""
+    i = (getattr(nc, "indicador_artemig", None) or "").strip()
+    if i:
+        return i
+    g = (getattr(nc, "grupo_atividade", None) or "").strip()
+    pb = (patologia_bruta or "").strip()
+    if g and pb and g != pb:
+        return g
+    return ""
+
+
 def _normalizar_texto_celula_kcor(s: str) -> str:
     """Multilinha (ex. observação PDF): NFKC + colapso por linha."""
     from nc_artemig.texto_pdf import colapsar_espacos_pdf
@@ -243,7 +298,86 @@ def _workbook_modelo_kcor_minimo() -> Any:
 _CLASS = "Eng. QID"
 
 
+def _norm_macro_patologia(s: str) -> str:
+    import unicodedata
+
+    t = unicodedata.normalize("NFKC", (s or "").strip())
+    return " ".join(t.lower().split())
+
+
 def _patologia_para_kcor(pat: str, indicador: str, atividade: str) -> tuple[str, str]:
+    """
+    Col. E (Tipo Kcor) a partir do texto de patologia (Nas01 / macro VBA).
+    Regras na mesma ordem que o VBA: vários ``If`` seguidos — a última condição verdadeira prevalece.
+    """
+    p0_raw = (pat or "").strip()
+    pl = _norm_macro_patologia(_linha_unica_espacos(p0_raw))
+    kcor: str | None = None
+
+    def _set(v: str) -> None:
+        nonlocal kcor
+        kcor = v.rstrip() + (" " if v.endswith(" ") else "")
+
+    if len(pl) >= 6 and pl[:6] == "trilha":
+        _set("Afundamento nas trilhas de rodas")
+    if len(pl) >= 9 and pl[:9] == "alambrado":
+        _set("Alambrado")
+    if pl == _norm_macro_patologia("Dispositivo de segurança (alambrado)"):
+        _set("Alambrado")
+    if pl.startswith("guarda corpo"):
+        _set("Barreira rígida ")
+    if len(pl) >= 7 and pl[:7] == "buracos":
+        _set("Buracos e panelas - Emergencial ")
+    if len(pl) >= 7 and pl[-7:] == "caiação":
+        _set("Caiação")
+    if len(pl) >= 5 and pl[:5] == "cerca":
+        _set("Cerca")
+    if len(pl) >= 6 and pl[:6] == "erosão":
+        _set("Conservação de terraplenos e contenções")
+    if len(pl) >= 7 and pl[:7] == "defensa":
+        _set("Defensa metálica")
+    if pl == _norm_macro_patologia("Inexistência de elementos refletivos"):
+        _set("Defensa metálica")
+    if len(pl) >= 11 and pl[:11] == "deformações":
+        _set("Deformação permanente ")
+    if len(pl) >= 6 and pl[:6] == "degrau":
+        _set("Degrau em acostamento")
+    if len(pl) >= 20 and pl[:20] == "sinalização vertical":
+        _set("Demais placas")
+    if len(pl) >= 13 and pl[:13] == "demais placas":
+        _set("Demais placas")
+    if pl == _norm_macro_patologia("Vandalismo demais placas"):
+        _set("Demais placas")
+    if len(pl) >= 6 and pl[-6:] == "perigo":
+        _set("Demais placas")
+    if len(pl) >= 8 and pl[-8:] == "vertical":
+        _set("Demais placas")
+    if len(pl) >= 10 and pl[:10] == "iluminação":
+        _set("Dispositivos de Iluminação")
+    if len(pl) >= 20 and pl[:20] == "drenagem subterrânea":
+        _set("Drenagem Subterrânea")
+    if len(pl) >= 20 and pl[:20] == "drenagem superficial":
+        _set("Drenagem Superficial")
+    if len(pl) >= 6 and pl[:6] == "grelha":
+        _set("Drenagem Superficial")
+    if len(pl) >= 7 and pl[:7] == "entulho":
+        _set("Entulho")
+    if len(pl) >= 32 and pl[:32] == "vandalismo placas de advertência":
+        _set("Placas - Regulam. / Advertência")
+    if len(pl) >= 21 and pl[:21] == "placas de advertência":
+        _set("Placas - Regulam. / Advertência")
+    if len(pl) >= 10 and pl[-10:] == "horizontal":
+        _set("Sinalização horizontal")
+    if len(pl) >= 22 and pl[:22] == "sinalização horizontal":
+        _set("Sinalização horizontal")
+    if len(pl) >= 7 and pl[-7:] == "tachões":
+        _set("Tachas e tachões")
+    if len(pl) >= 9 and pl[:9] == "vegetação":
+        _set("Vegetação")
+
+    if kcor is not None:
+        return kcor, _CLASS
+
     s = f"{pat} {indicador} {atividade}".lower()
     rules: list[tuple[str, str]] = [
         ("buraco", "Buracos e panelas - Emergencial "),
@@ -278,12 +412,12 @@ def _patologia_para_kcor(pat: str, indicador: str, atividade: str) -> tuple[str,
         ("vegetação", "Vegetação"),
         ("vegetacao", "Vegetação"),
     ]
-    for kw, kcor in rules:
+    for kw, k in rules:
         if kw in s:
-            return kcor.rstrip() + (" " if kcor.endswith(" ") else ""), _CLASS
+            return k.rstrip() + (" " if k.endswith(" ") else ""), _CLASS
     if "buraco" in s or "panela" in s:
         return "Buracos e panelas - Reparo técnico", _CLASS
-    p0 = (pat or "").strip()[:120]
+    p0 = p0_raw[:120]
     return (p0 or "Patologia — conferir mapeamento Kcor"), _CLASS
 
 
@@ -338,7 +472,12 @@ def _rodovia_coluna_f(rod: str) -> str:
 
 def _local_coluna_j(nc: Any) -> str:
     blob = f"{nc.atividade or ''} {getattr(nc, 'tipo_atividade', None) or ''} {getattr(nc, 'grupo_atividade', None) or ''}".upper()
-    if "DOM" in blob and "NIO" in blob or "FAIXA DE DOM" in blob or "FX." in blob:
+    if (
+        ("DOM" in blob and "NIO" in blob)
+        or "FAIXA DE DOM" in blob
+        or "FAIXA DE DOMINIO" in blob
+        or "FX." in blob
+    ):
         return "Faixa de Domínio"
     return "Faixa de Rolamento"
 
@@ -352,17 +491,52 @@ def _data_kcor_so_data(nc: Any) -> tuple[str, datetime.date | None]:
     return d.strftime("%d/%m/%Y"), d
 
 
+def _inferir_tag_subpasta_artemig_fallback(nc: Any) -> str:
+    from nc_artemig.texto_pdf import limpeza_profunda
+
+    blob = limpeza_profunda(
+        " ".join(
+            str(x)
+            for x in (
+                getattr(nc, "grupo_atividade", None) or "",
+                getattr(nc, "tipo_atividade", None) or "",
+                getattr(nc, "indicador_artemig", None) or "",
+                getattr(nc, "patologia_artemig", None) or "",
+                getattr(nc, "atividade", None) or "",
+            )
+            if x
+        )
+    ).upper()
+    b = blob.replace("Â", "A").replace("Ã", "A")
+    if "SINALIZ" in b:
+        return "SINALIZACAO"
+    if "DRENAGEM" in b:
+        return "DRENAGEM"
+    if "PARAMETROS" in b and "GERAIS" in b:
+        return "PARAMETROS_GERAIS"
+    if "DEFENS" in b:
+        return "DEFENSA"
+    if any(k in b for k in ("PAVIMENTO", "BURACO", "PANELA", "RECAP")):
+        return "PAVIMENTO"
+    return "OUTROS"
+
+
 def _stem_subpasta_fotos(nc: Any) -> str:
-    """Pasta por NC: NOT-yy-xxxxx_PAVIMENTO_CE{consol} se houver código+consol; senão stem do PDF."""
+    """Pasta col. V: stem do PDF (NOT-…_DRENAGEM_CE…); só sintetiza NOT-…_TAG_CE… se stem ausente."""
     from nc_artemig.texto_pdf import identificador_pdf_sem_whitespace, limpeza_profunda
+
+    stem = limpeza_profunda((getattr(nc, "artemig_pdf_stem", None) or ""))
+    if stem:
+        return stem
 
     cod = _codigo_fiscalizacao_arquivos(nc)
     cons = identificador_pdf_sem_whitespace(getattr(nc, "num_consol", None) or "")
     if len(cod) >= 9 and cons.isdigit():
         yy = cod[2:4]
         seq = cod[4:9]
-        return f"NOT-{yy}-{seq}_PAVIMENTO_CE{cons}"
-    return limpeza_profunda((getattr(nc, "artemig_pdf_stem", None) or ""))
+        tag = _inferir_tag_subpasta_artemig_fallback(nc)
+        return f"NOT-{yy}-{seq}_{tag}_CE{cons}"
+    return stem
 
 
 def _parte_texto_caminho_v(p: str) -> str:
@@ -439,15 +613,18 @@ def _excel_valor_texto_ou_none(s: str | None) -> str | None:
 
 
 def _km_normalizado_nas01(val: float | None) -> float | None:
-    """Nas01: km vindo como metros (> 500) → divide por 1000."""
+    """Nas01: só divide por 1000 quando o valor parece metros inteiros (ex.: 653400), nunca km decimal (653,4)."""
     if val is None:
         return None
     try:
         x = float(val)
     except (TypeError, ValueError):
         return None
-    if x > 500:
-        return x / 1000.0
+    if abs(x - round(x)) > 1e-6:
+        return x
+    xi = int(round(x))
+    if xi >= 10_000:
+        return xi / 1000.0
     return x
 
 
@@ -488,10 +665,21 @@ def _bloco_obs_gestor_nas01(nc: Any) -> str:
 
 
 def _observacao_para_col_u(nc: Any, desc: str) -> str:
-    """Não repetir na U o que já está em T (SH / notificação / consol) nem só o número CE."""
+    """Trecho extra do PDF: não repetir só código/notificação, Nº Consol nem texto já igual à atividade."""
     from nc_artemig.texto_pdf import identificador_pdf_sem_whitespace
 
     obs = _normalizar_texto_celula_kcor(getattr(nc, "observacao", None) or "")
+    try:
+        from nc_artesp.modulos.analisar_pdf_nc import (
+            _limpar_legendas_campo_artemig,
+            _texto_e_bloco_legenda_atividade_artemig,
+        )
+
+        obs = _limpar_legendas_campo_artemig(obs)
+        if _texto_e_bloco_legenda_atividade_artemig(obs):
+            return ""
+    except Exception:
+        pass
     if not obs:
         return ""
     if obs == desc or (desc and obs in desc):
@@ -515,23 +703,100 @@ def _observacao_para_col_u(nc: Any, desc: str) -> str:
         obs = "\n".join(linhas).strip()
     if not obs:
         return ""
-    return obs[:800]
-
-
-def _fechar_parentese_cabeca_obs_u(cabeca: str) -> str:
-    """Fecha «(» órfão (PDF / tabela Kcor) para não partir o texto na col. U."""
-    c = (cabeca or "").strip()
-    if not c:
-        return c
-    if c.count("(") > c.count(")"):
-        return c + ")"
-    return c
+    return obs.strip()[:32000]
 
 
 def _sanear_rotulo_pdf_col_u(s: str) -> str:
     """Remove «/» inicial típico de cópia de tabela; trim."""
     t = (s or "").strip()
     return re.sub(r"^[/\\|]+\s*", "", t).strip()
+
+
+def _patologia_texto_completo_col_u(nc: Any, pat_san: str) -> str:
+    tipo = _sanear_rotulo_pdf_col_u(_linha_unica_espacos((getattr(nc, "tipo_atividade", None) or "")))
+    grp = _sanear_rotulo_pdf_col_u(_linha_unica_espacos((getattr(nc, "grupo_atividade", None) or "")))
+    atv = _sanear_rotulo_pdf_col_u(_linha_unica_espacos((getattr(nc, "atividade", None) or "")))
+    p, t, g, a = (pat_san or "").strip(), (tipo or "").strip(), (grp or "").strip(), (atv or "").strip()
+    if not p:
+        return t or g or a
+    lowp = p.lower()
+    for cand in (t, g):
+        if cand and lowp in cand.lower() and len(cand) >= len(p) + 3:
+            return cand
+    atv_ok = a
+    if atv_ok:
+        try:
+            from nc_artesp.modulos.analisar_pdf_nc import _texto_e_bloco_legenda_atividade_artemig
+
+            if _texto_e_bloco_legenda_atividade_artemig(atv_ok):
+                atv_ok = ""
+        except Exception:
+            pass
+    if (
+        atv_ok
+        and _RE_ATIVIDADE_COMO_PAT_U.search(atv_ok)
+        and len(atv_ok) > len(p)
+        and _RE_PAT_U_INCOMPLETA_E.search(p)
+    ):
+        return atv_ok
+    return p or t or g
+
+
+def _indicador_texto_completo_col_u(nc: Any, ind_san: str) -> str:
+    grp = _sanear_rotulo_pdf_col_u(_linha_unica_espacos((getattr(nc, "grupo_atividade", None) or "")))
+    i, g = (ind_san or "").strip(), (grp or "").strip()
+    if g and i and "/" not in i and "/" in g and (
+        g.lower().startswith(i.lower() + " ")
+        or g.lower().startswith(i.lower() + "/")
+    ):
+        return g
+    return i if i else g
+
+
+def _indicador_patologia_deduplicados_col_u(ind: str, pat: str) -> tuple[str, str]:
+    """Indicador e patologia iguais (ex.: Excel/planilha repetem «Gerais (Parâmetros)») → só patologia na U."""
+    i, p = (ind or "").strip(), (pat or "").strip()
+    if i and p and _norm_macro_patologia(i) == _norm_macro_patologia(p):
+        return "", p
+    return i, p
+
+
+def _indicador_prefixo_patologia_col_u(ind: str, pat: str) -> str:
+    """«Buracos» só como token e patologia já traz «Buracos e/ou …» → não repetir na U."""
+    i, p = (ind or "").strip(), (pat or "").strip()
+    if not i or not p or " " in i or "/" in i:
+        return i
+    low = p.lower()
+    if len(p) > len(i) + 12 and low.startswith(i.lower()) and (
+        "e/ou" in low or "rolamento" in low
+    ):
+        return ""
+    return i
+
+
+def _bloco_observacao_col_u_valores(nc: Any, pat: str, ind: str) -> str:
+    """Col. U: só conteúdos (sem títulos), ordem estável — código · SH · indicador · patologia."""
+    from nc_artemig.texto_pdf import identificador_pdf_sem_whitespace
+
+    sep = " · "
+    vals: list[str] = []
+    cod = identificador_pdf_sem_whitespace(nc.codigo or "")
+    if cod:
+        vals.append(cod)
+    sh = identificador_pdf_sem_whitespace(getattr(nc, "sh_artemig", None) or "")
+    if sh:
+        vals.append(sh)
+    if (ind or "").strip():
+        vals.append((ind or "").strip())
+    if (pat or "").strip():
+        vals.append((pat or "").strip())
+    return sep.join(vals).strip()
+
+
+def _num_consol_valor_col_u(nc: Any) -> str:
+    from nc_artemig.texto_pdf import identificador_pdf_sem_whitespace
+
+    return identificador_pdf_sem_whitespace(getattr(nc, "num_consol", None) or "")
 
 
 def _limpar_texto_final_obs_u(nc: Any, texto: str) -> str:
@@ -556,27 +821,35 @@ def _colapsar_linhas_duplas_obs_u(texto: str) -> str:
 
 
 def _texto_observacoes_nas01(nc: Any) -> str:
-    """Col. U — Nas01: patologia (indicador) & vbCrLf & Descricao; opcional observação; rodapé = bloco T."""
-    pat = _sanear_rotulo_pdf_col_u(
-        _linha_unica_espacos(
-            (getattr(nc, "patologia_artemig", None) or "")
-            or (getattr(nc, "grupo_atividade", None) or "")
-        )
+    """Col. U — Nas01: valores (código, SH, indicador, patologia, …) sem rótulos; consol só o número no fim."""
+    pat_bruto_kcor = _patologia_fonte_nc_kcor(nc)
+    pat_bruto = _patologia_fonte_observacao_col_u(nc)
+    pat = _sanear_rotulo_pdf_col_u(_linha_unica_espacos(pat_bruto))
+    ind = _sanear_rotulo_pdf_col_u(
+        _linha_unica_espacos(_indicador_fonte_nc_kcor(nc, pat_bruto_kcor))
     )
-    ind = _sanear_rotulo_pdf_col_u(_linha_unica_espacos(getattr(nc, "indicador_artemig", None) or ""))
-    if pat and ind:
-        cabeca = f"{pat} ({ind})"
-    elif pat:
-        cabeca = pat
-    elif ind:
-        cabeca = f"({ind})"
-    else:
-        cabeca = ""
-    cabeca = _fechar_parentese_cabeca_obs_u(cabeca)
+    pat = _patologia_texto_completo_col_u(nc, pat)
+    ind = _indicador_texto_completo_col_u(nc, ind)
+    ind, pat = _indicador_patologia_deduplicados_col_u(ind, pat)
+    ind = _indicador_prefixo_patologia_col_u(ind, pat)
 
-    desc = _sanear_rotulo_pdf_col_u(_linha_unica_espacos(nc.atividade or ""))
+    cabeca = _bloco_observacao_col_u_valores(nc, pat, ind)
+
+    desc_raw = _sanear_rotulo_pdf_col_u(_linha_unica_espacos(nc.atividade or ""))
+    desc = ""
+    if desc_raw:
+        if _norm_macro_patologia(desc_raw) == _norm_macro_patologia(pat):
+            desc = ""
+        else:
+            try:
+                from nc_artesp.modulos.analisar_pdf_nc import _texto_e_bloco_legenda_atividade_artemig
+
+                if not _texto_e_bloco_legenda_atividade_artemig(desc_raw):
+                    desc = desc_raw
+            except Exception:
+                desc = desc_raw
     obs_extra = _observacao_para_col_u(nc, desc)
-    rodape = _bloco_obs_gestor_nas01_linhas_raw(nc)
+    cons_val = _num_consol_valor_col_u(nc)
 
     partes: list[str] = []
     if cabeca:
@@ -586,9 +859,10 @@ def _texto_observacoes_nas01(nc: Any) -> str:
     if obs_extra:
         partes.append(obs_extra)
 
-    corpo = " ".join(p for p in partes if p)
-    if rodape:
-        texto = f"{corpo} {rodape}".strip() if corpo else rodape
+    sep = " · "
+    corpo = sep.join(p for p in partes if p)
+    if cons_val:
+        texto = f"{corpo}{sep}{cons_val}".strip() if corpo else cons_val
     else:
         texto = corpo
     texto = _limpar_texto_final_obs_u(nc, texto)
@@ -596,7 +870,7 @@ def _texto_observacoes_nas01(nc: Any) -> str:
     from nc_artemig.texto_pdf import limpeza_multilinha_excel_pdf
 
     texto = limpeza_multilinha_excel_pdf(texto)
-    t = texto.strip()[:2000]
+    t = texto.strip()[:32700]
     if not t:
         return ""
     # U numa linha: quebras do PDF não podem ficar na célula (Excel segmenta ao editar).
@@ -606,7 +880,7 @@ def _texto_observacoes_nas01(nc: Any) -> str:
 
 
 def _montar_v_w_kcor(nc: Any) -> tuple[str, str]:
-    """V: pasta com \\. W: ordem Nas02 — .pdf primeiro, depois nc (...).jpg (nomes = ZIP analisar-pdf)."""
+    """V: pasta com \\. W: ordem Nas02 — .pdf primeiro, depois nc (...).jpg (lista real da extração quando existir)."""
     from nc_artemig.config import DIR_BASE_FOTOS_KCOR
     from nc_artesp.pdf_extractor import nome_pdf_original_seguro_zip
 
@@ -618,18 +892,26 @@ def _montar_v_w_kcor(nc: Any) -> tuple[str, str]:
     stem = _stem_subpasta_fotos(nc)
     cod = _codigo_fiscalizacao_arquivos(nc)
     pags = list(getattr(nc, "artemig_kcor_paginas_jpg", None) or [])
+    nomes_extraidos = [
+        str(x).strip()
+        for x in (getattr(nc, "artemig_kcor_nomes_arquivos", None) or [])
+        if str(x).strip()
+    ]
 
     v = _caminho_coluna_v_windows(base, stem) if base else ""
 
     if not cod:
         return v, ""
 
-    n_nc = max(1, len(pags)) if pags else 1
     stem_pdf = (getattr(nc, "artemig_pdf_stem", None) or "").strip()
     pdf_nome = nome_pdf_original_seguro_zip(f"{stem_pdf}.pdf" if stem_pdf else None)
-    fotos: list[str] = [f"nc ({cod}).jpg"]
-    for i in range(1, n_nc):
-        fotos.append(f"nc ({cod})_{i}.jpg")
+    if nomes_extraidos:
+        fotos = nomes_extraidos
+    else:
+        n_nc = max(1, len(pags)) if pags else 1
+        fotos = [f"nc ({cod}).jpg"]
+        for i in range(1, n_nc):
+            fotos.append(f"nc ({cod})_{i}.jpg")
     w_s = _lista_arquivos_coluna_w_sanear(";".join([pdf_nome] + fotos))
     return v, w_s
 
@@ -712,6 +994,12 @@ def gerar_exportar_kcor_xlsx_bytes(
             wrap_text=False,
             shrink_to_fit=False,
         )
+        _alinh_s_prazo = Alignment(
+            horizontal="center",
+            vertical="top",
+            wrap_text=False,
+            shrink_to_fit=False,
+        )
         _font_txt_visivel = Font(name="Calibri", size=11, bold=False, color="FF000000")
         _cols_kcor_texto_formato_arroba = (
             c["Origem"],
@@ -749,10 +1037,9 @@ def gerar_exportar_kcor_xlsx_bytes(
                     "Exportar Kcor linha %s: sem código fiscalização; col. W vazia para esta NC",
                     idx,
                 )
-            pat = _linha_unica_espacos(
-                (getattr(nc, "patologia_artemig", None) or "") or (getattr(nc, "grupo_atividade", None) or "")
-            )
-            ind = _linha_unica_espacos(getattr(nc, "indicador_artemig", None) or "")
+            pat_bruto = _patologia_fonte_nc_kcor(nc)
+            pat = _linha_unica_espacos(pat_bruto)
+            ind = _linha_unica_espacos(_indicador_fonte_nc_kcor(nc, pat_bruto))
             kcor, classe = _patologia_para_kcor(pat, ind, _linha_unica_espacos(nc.atividade or ""))
 
             ws.cell(r, c["NumItem"], idx)
@@ -803,12 +1090,7 @@ def gerar_exportar_kcor_xlsx_bytes(
                 ws.cell(r, c["Data_Solicitacao"], ds)
                 ws.cell(r, c["Dt_Inicio_Prog"], ds)
                 ws.cell(r, c["Dt_Inicio_Exec"], ds)
-                if pd and getattr(nc, "emergencial", False):
-                    fim = d0
-                elif pd:
-                    fim = d0 + timedelta(days=pd)
-                else:
-                    fim = d0
+                fim = d0 + timedelta(days=pd) if pd else d0
                 ws.cell(r, c["Dt_Fim_Prog"], fim.strftime("%d/%m/%Y"))
                 if pd:
                     ws.cell(r, c["Data_Suspensao"], (d0 + timedelta(days=pd)).strftime("%d/%m/%Y"))
@@ -846,7 +1128,7 @@ def gerar_exportar_kcor_xlsx_bytes(
                 r,
                 c["Indicador"],
                 _excel_valor_texto_ou_none(
-                    _valor_linha_unica_excel_final(ind[:120] if ind else "")
+                    _valor_linha_unica_excel_final(ind[:2000] if ind else "")
                 ),
             )
             ws.cell(r, c["Unidade"], None)
@@ -880,6 +1162,7 @@ def gerar_exportar_kcor_xlsx_bytes(
                 c["Arquivos"],
             ):
                 ws.cell(r, _ca).alignment = _alinh_t_u_v_w
+            ws.cell(r, c["Prazo"]).alignment = _alinh_s_prazo
             # Altura padrão (não forçar pt por nº de quebras): com wrap_text=False, uma altura
             # calculada por \n deixava a linha «alta» como várias linhas mescladas e o modo
             # edição empilhava o texto. Limpar altura herdada do modelo.
