@@ -3,7 +3,7 @@
 ## Remote
 
 ```
-origin  https://github.com/OzeiasEngler/Automacao-de-Ralatorios-ViaAppia-.git
+origin  https://github.com/gestao-rodovias/Automacao-de-Ralatorios-ViaAppia.git
 ```
 
 ---

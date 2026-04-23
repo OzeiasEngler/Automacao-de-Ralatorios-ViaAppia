@@ -5,7 +5,7 @@ services:
   name: artesp-geojson-api
   runtime: docker
   # Repositório do projeto (Automacao-de-Ralatorios-ViaAppia)
-  repo: https://github.com/OzeiasEngler/Automacao-de-Ralatorios-ViaAppia
+  repo: https://github.com/gestao-rodovias/Automacao-de-Ralatorios-ViaAppia
   plan: standard
   envVars:
   - key: ARTESP_JWT_SECRET

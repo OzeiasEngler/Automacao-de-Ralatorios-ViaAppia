@@ -4,7 +4,7 @@ services:
 - type: web
   name: artesp-geojson-api
   runtime: docker
-  repo: https://github.com/OzeiasEngler/Automacao-de-Ralatorios-ViaAppia
+  repo: https://github.com/gestao-rodovias/Automacao-de-Ralatorios-ViaAppia
   plan: standard
   envVars:
   - key: ARTESP_OWNER_EMAIL

@@ -48,7 +48,7 @@ sudo apt install -y docker-compose-plugin
 ```bash
 sudo apt install -y git
 cd /opt   # ou outro diretório de sua preferência
-sudo git clone https://github.com/OzeiasEngler/Automacao-de-Ralatorios-ViaAppia.git api-artesp
+sudo git clone https://github.com/gestao-rodovias/Automacao-de-Ralatorios-ViaAppia.git api-artesp
 cd api-artesp
 ```
 

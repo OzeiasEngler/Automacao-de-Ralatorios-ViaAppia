@@ -6,7 +6,7 @@
 2. Abra o serviço **artesp-geojson-api** (ou o nome atual).
 3. Vá em **Settings** → **Build & Deploy** → **Repository**.
 4. Clique em **Change repository** e selecione:
-   - **OzeiasEngler / Automacao-de-Ralatorios-ViaAppia**
+   - **gestao-rodovias / Automacao-de-Ralatorios-ViaAppia**
 5. Confirme. **Root Directory** deve ficar vazio (raiz do repositório).
 6. Vá em **Manual Deploy** → **Deploy latest commit**.
 
@@ -15,7 +15,7 @@
 ## Ou criar um serviço novo (Blueprint)
 
 1. Em **Dashboard** → **New** → **Blueprint**.
-2. Conecte o GitHub e selecione **OzeiasEngler/Automacao-de-Ralatorios-ViaAppia**.
+2. Conecte o GitHub e selecione **gestao-rodovias/Automacao-de-Ralatorios-ViaAppia**.
 3. O Render detecta o `render.yaml` (ou `render_api/render.yaml`).
 4. Se pedir **Root Directory**, deixe vazio ou use `.` (raiz).
 5. Ajuste as variáveis de ambiente e clique em **Apply**.
@@ -38,5 +38,5 @@
 ## URL do repositório
 
 ```
-https://github.com/OzeiasEngler/Automacao-de-Ralatorios-ViaAppia
+https://github.com/gestao-rodovias/Automacao-de-Ralatorios-ViaAppia
 ```
