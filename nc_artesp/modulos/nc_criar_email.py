@@ -34,6 +34,7 @@ Requer: Windows + Outlook instalado + pywin32
 import base64
 import html
 import logging
+from datetime import date, datetime, time
 from pathlib import Path
 import re
 import unicodedata
@@ -81,9 +82,29 @@ _V  = 22  # nº foto
 _LINHA_INICIO = 5
 
 
+def _str_valor_celula_email(val) -> str:
+    if val is None:
+        return ""
+    if isinstance(val, datetime):
+        if val.hour or val.minute or val.second:
+            if val.second:
+                return val.strftime("%H:%M:%S")
+            return val.strftime("%H:%M")
+        return val.strftime("%d/%m/%Y")
+    if isinstance(val, date):
+        return val.strftime("%d/%m/%Y")
+    if isinstance(val, time):
+        if val.second:
+            return val.strftime("%H:%M:%S")
+        return val.strftime("%H:%M")
+    if isinstance(val, float):
+        if val.is_integer():
+            return str(int(val))
+    return str(val).strip()
+
+
 def _cell(ws, row: int, col: int) -> str:
-    v = ws.cell(row=row, column=col).value
-    return str(v).strip() if v is not None else ""
+    return _str_valor_celula_email(ws.cell(row=row, column=col).value)
 
 
 def _norm_header(s: str) -> str:
@@ -128,11 +149,11 @@ def _normalizar_rodovia(valor: str) -> str:
     return valor[:6].strip()
 
 
-def _hdr_planilha_linha1(ws) -> dict[str, int]:
-    """Mapa cabeçalho normalizado (linha 1) → índice de coluna."""
+def _hdr_planilha_linha(ws, row: int) -> dict[str, int]:
+    """Mapa cabeçalho normalizado (row informada) → índice de coluna."""
     hdr: dict[str, int] = {}
     for c in range(1, ws.max_column + 1):
-        v = ws.cell(row=1, column=c).value
+        v = ws.cell(row=row, column=c).value
         if v is None:
             continue
         k = _norm_header(v)
@@ -141,8 +162,194 @@ def _hdr_planilha_linha1(ws) -> dict[str, int]:
     return hdr
 
 
+def _chave_parece_codigo_fiscal(k: str) -> bool:
+    if ("codigo" in k) or ("cod." in k) or k.startswith("cod ") or k.startswith("cod-") or k == "cod":
+        return ("fiscal" in k) or ("fisc" in k) or k.endswith(" nc") or " da nc" in k or k.startswith("n ") or "numero" in k
+    if "fiscal" in k:
+        return ("codigo" in k) or ("cod." in k) or k.startswith("cod ") or k.startswith("cod-") or k == "cod"
+    return k in ("numero da nc", "numero nc", "n da nc", "codigo nc", "codigo da nc")
+
+
 def _layout_kartado_por_hdr(hdr: dict[str, int]) -> bool:
-    return ("codigo de fiscalizacao" in hdr) or ("codigo fiscalizacao" in hdr)
+    for k in hdr:
+        if _chave_parece_codigo_fiscal(k):
+            return True
+    return False
+
+
+def _detectar_hdr_kartado(ws, max_linhas: int = 8) -> tuple[int | None, dict[str, int]]:
+    """Deteta em que linha está o cabeçalho Kartado e devolve (linha, mapa)."""
+    melhor_row = None
+    melhor_hdr: dict[str, int] = {}
+    melhor_score = -1
+    limite = min(int(ws.max_row or 1), max_linhas)
+    for r in range(1, limite + 1):
+        hdr = _hdr_planilha_linha(ws, r)
+        if not hdr:
+            continue
+        score = 0
+        if _layout_kartado_por_hdr(hdr):
+            score += 10
+        if "rodovia" in hdr:
+            score += 2
+        if "km" in hdr:
+            score += 2
+        if "prazo" in hdr:
+            score += 1
+        if "foto_2" in hdr or "foto 2" in hdr or "foto2" in hdr:
+            score += 1
+        if score > melhor_score:
+            melhor_score = score
+            melhor_row = r
+            melhor_hdr = hdr
+    if melhor_row is not None and _layout_kartado_por_hdr(melhor_hdr):
+        return melhor_row, melhor_hdr
+    return None, {}
+
+
+def _col_kartado_foto(hdr: dict[str, int], numero: int) -> int | None:
+    nomes = (
+        f"foto_{numero}",
+        f"foto {numero}",
+        f"foto{numero}",
+    )
+    for n in nomes:
+        c = hdr.get(n)
+        if c:
+            return c
+    for k, c in hdr.items():
+        if "foto" in k and str(numero) in k:
+            return c
+    return None
+
+
+def _merge_hdr_linhas(ws, linha_ini: int, linha_fim: int, max_col: int = 80) -> dict[str, int]:
+    """Cabeçalhos nas linhas linha_ini..linha_fim fundidos num único mapa (primeira ocorrência ganha)."""
+    hdr: dict[str, int] = {}
+    lim_r = min(int(ws.max_row or 1), linha_fim)
+    lim_c = min(int(ws.max_column or 1), max_col)
+    for r in range(linha_ini, lim_r + 1):
+        for c in range(1, lim_c + 1):
+            v = ws.cell(row=r, column=c).value
+            if v is None:
+                continue
+            k = _norm_header(v)
+            if k and k not in hdr:
+                hdr[k] = c
+    return hdr
+
+
+def _col_codigo_por_hdr(hdr: dict[str, int]) -> int | None:
+    for key in (
+        "codigo de fiscalizacao",
+        "codigo fiscalizacao",
+        "cod. fiscalizacao",
+        "cod fiscalizacao",
+        "codigo fisc",
+    ):
+        col = hdr.get(key)
+        if col:
+            return col
+    for k, c in hdr.items():
+        if _chave_parece_codigo_fiscal(k):
+            return c
+    return None
+
+
+def _col_foto_seq_por_hdr(hdr: dict[str, int]) -> int | None:
+    for key in (
+        "foto_2",
+        "foto 2",
+        "foto2",
+        "foto_1",
+        "foto 1",
+        "foto1",
+        "numero foto",
+        "n foto",
+        "numero da nc",
+        "numero nc",
+        "n da nc",
+        "seq foto",
+    ):
+        c = hdr.get(key)
+        if c:
+            return c
+    for k, c in hdr.items():
+        if "foto" in k and "pdf" in k:
+            return c
+    return None
+
+
+def _eh_texto_horario(s: str) -> bool:
+    t = (s or "").strip()
+    return bool(re.fullmatch(r"\d{1,2}:\d{2}(:\d{2})?", t))
+
+
+def _eh_codigo_fiscal_plausivel(s: str) -> bool:
+    t = (s or "").strip()
+    if not t or _eh_texto_horario(t):
+        return False
+    if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", t):
+        return False
+    return True
+
+
+def _cols_codigo_fiscal_por_hdr(hdr: dict[str, int]) -> list[int]:
+    cols: list[int] = []
+    visto: set[int] = set()
+
+    def _add(c: int | None) -> None:
+        if c and c not in visto:
+            visto.add(c)
+            cols.append(c)
+
+    _add(_col_codigo_por_hdr(hdr))
+    for k, c in hdr.items():
+        if _chave_parece_codigo_fiscal(k):
+            _add(c)
+    for k, c in hdr.items():
+        if k in ("codigo nc", "codigo da nc", "numero da nc", "numero nc", "n da nc"):
+            _add(c)
+    return cols
+
+
+def _ler_codigo_fiscal_na_linha(ws, row: int, cols_cod: list[int]) -> str:
+    for c in cols_cod:
+        s = _cell(ws, row, c)
+        if _eh_codigo_fiscal_plausivel(s):
+            return s.strip()
+    return ""
+
+
+def _inferir_linha_inicio_dados_kartado(
+    ws, hdr_row: int | None, cols_cod: list[int], *, linha_min: int = 2
+) -> int:
+    base = max((hdr_row + 1) if hdr_row else 2, int(linha_min))
+    limite_busca = min(int(ws.max_row or base), base + 80)
+    for r in range(base, limite_busca + 1):
+        if _ler_codigo_fiscal_na_linha(ws, r, cols_cod):
+            return r
+    return base
+
+
+def _escolher_ws_para_email(wb) -> tuple:
+    """Devolve (ws, hdr_row, hdr) com cabeçalho Kartado; senão (active, None, {})."""
+    nomes_pref = ("sheet0", "sheet1", "planilha1", "folha1")
+    for nome in wb.sheetnames:
+        if nome.lower() not in nomes_pref:
+            continue
+        cand = wb[nome]
+        r, h = _detectar_hdr_kartado(cand)
+        if r is not None:
+            return cand, r, h
+    for nome in wb.sheetnames:
+        cand = wb[nome]
+        r, h = _detectar_hdr_kartado(cand)
+        if r is not None:
+            return cand, r, h
+    ws = wb.active
+    r, h = _detectar_hdr_kartado(ws)
+    return ws, r, h
 
 
 def _filtrar_ncs_para_email(ncs: list[dict]) -> list[dict]:
@@ -173,54 +380,32 @@ def _ler_xls(arq: Path) -> list[dict]:
 
     wb = load_workbook(str(path_use), data_only=True)
     try:
-        # Tenta planilha "Sheet0" primeiro (formato VBA), depois ativa
-        ws = None
-        for nome in wb.sheetnames:
-            if nome.lower() in ("sheet0", "sheet1", "planilha1", "folha1"):
-                ws = wb[nome]
-                break
-        if ws is None:
-            ws = wb.active
-
-        hdr = _hdr_planilha_linha1(ws)
-        if not _layout_kartado_por_hdr(hdr):
-            for nome in wb.sheetnames:
-                cand = wb[nome]
-                h2 = _hdr_planilha_linha1(cand)
-                if _layout_kartado_por_hdr(h2):
-                    ws, hdr = cand, h2
-                    break
+        ws, hdr_row, hdr = _escolher_ws_para_email(wb)
         is_kartado = _layout_kartado_por_hdr(hdr)
 
         ncs: list[dict] = []
         if is_kartado:
-            col_cod = hdr.get("codigo de fiscalizacao") or hdr.get("codigo fiscalizacao")
+            cols_cod = _cols_codigo_fiscal_por_hdr(hdr)
+            col_cod = cols_cod[0] if cols_cod else None
             col_rod = hdr.get("rodovia")
             col_km = hdr.get("km")
             col_sent = hdr.get("sentido")
             col_prazo = hdr.get("prazo")
             col_desc = hdr.get("descricao")
             col_classe = hdr.get("classe")
-            col_foto2 = (
-                hdr.get("foto_2")
-                or hdr.get("foto 2")
-                or hdr.get("foto2")
-            )
-            col_foto1 = (
-                hdr.get("foto_1")
-                or hdr.get("foto 1")
-                or hdr.get("foto1")
-            )
+            col_foto2 = _col_kartado_foto(hdr, 2)
+            col_foto1 = _col_kartado_foto(hdr, 1)
             col_encontrado = hdr.get("encontrado em")
 
             ultima = ws.max_row
             for r in range(ultima, 1, -1):
-                if col_cod and ws.cell(row=r, column=col_cod).value:
+                if cols_cod and any(ws.cell(row=r, column=c).value for c in cols_cod):
                     ultima = r
                     break
 
-            for r in range(2, ultima + 1):
-                cod = _cell(ws, r, col_cod) if col_cod else ""
+            linha_inicio_dados = _inferir_linha_inicio_dados_kartado(ws, hdr_row, cols_cod, linha_min=2)
+            for r in range(linha_inicio_dados, ultima + 1):
+                cod = _ler_codigo_fiscal_na_linha(ws, r, cols_cod)
                 if not cod:
                     continue
                 rod_raw = _cell(ws, r, col_rod) if col_rod else ""
@@ -242,6 +427,10 @@ def _ler_xls(arq: Path) -> list[dict]:
                     f1 = _cell(ws, r, col_foto1)
                     if f1:
                         foto_ref = _extrair_numero_de_pdf(f1)
+                if foto_ref and _eh_texto_horario(foto_ref):
+                    foto_ref = ""
+                if not foto_ref:
+                    foto_ref = cod
                 ncs.append(
                     {
                         "cod": cod,
@@ -259,28 +448,50 @@ def _ler_xls(arq: Path) -> list[dict]:
                 )
             return _filtrar_ncs_para_email(ncs)
 
-        # Layout antigo (EAF individual)
+        hdr_eaf = _merge_hdr_linhas(ws, 1, _LINHA_INICIO - 1)
+        cols_cod_eaf = _cols_codigo_fiscal_por_hdr(hdr_eaf) or [_C]
+        col_foto_eaf = _col_foto_seq_por_hdr(hdr_eaf) or _V
+        col_rod_eaf = hdr_eaf.get("rodovia") or _F
+        col_data_con = hdr_eaf.get("data da constatacao") or hdr_eaf.get("data constatacao") or _D
+        col_ativ = hdr_eaf.get("atividade") or hdr_eaf.get("evento") or _Q
+        col_rep = hdr_eaf.get("data reparo") or _T
+        col_resp = hdr_eaf.get("responsavel") or hdr_eaf.get("responsavel tecnico") or _U
+        col_grupo = hdr_eaf.get("grupo") or hdr_eaf.get("grupo atividade") or _P
+        col_km_i = hdr_eaf.get("km inicial") or hdr_eaf.get("km") or _H
+        col_m_i = hdr_eaf.get("metros inicial") or hdr_eaf.get("m inicial") or _I
+        col_sent = hdr_eaf.get("sentido") or _L
+
         ultima = ws.max_row
         for r in range(ultima, _LINHA_INICIO - 1, -1):
-            if ws.cell(row=r, column=_C).value:
+            if any(ws.cell(row=r, column=c).value for c in cols_cod_eaf):
                 ultima = r
                 break
 
-        for r in range(_LINHA_INICIO, ultima + 1):
-            rod_raw = _cell(ws, r, _F)
+        linha_ini_eaf = _inferir_linha_inicio_dados_kartado(
+            ws, None, cols_cod_eaf, linha_min=_LINHA_INICIO
+        )
+
+        for r in range(linha_ini_eaf, ultima + 1):
+            rod_raw = _cell(ws, r, col_rod_eaf)
+            cod = _ler_codigo_fiscal_na_linha(ws, r, cols_cod_eaf)
+            foto = _cell(ws, r, col_foto_eaf)
+            if foto and _eh_texto_horario(foto):
+                foto = cod or ""
+            if not foto:
+                foto = cod
             ncs.append(
                 {
-                    "cod": _cell(ws, r, _C),
-                    "data_fisc": _cell(ws, r, _D),
+                    "cod": cod,
+                    "data_fisc": _cell(ws, r, col_data_con),
                     "rodovia": _normalizar_rodovia(rod_raw),
-                    "km_i": _cell(ws, r, _H),
-                    "m_i": _cell(ws, r, _I),
-                    "sentido": _cell(ws, r, _L),
-                    "atividade": _cell(ws, r, _Q),
-                    "data_rep": _cell(ws, r, _T),
-                    "responsavel": _cell(ws, r, _U),
-                    "foto": _cell(ws, r, _V),
-                    "grupo": _cell(ws, r, _P),
+                    "km_i": _cell(ws, r, col_km_i),
+                    "m_i": _cell(ws, r, col_m_i),
+                    "sentido": _cell(ws, r, col_sent),
+                    "atividade": _cell(ws, r, col_ativ),
+                    "data_rep": _cell(ws, r, col_rep),
+                    "responsavel": _cell(ws, r, col_resp),
+                    "foto": foto,
+                    "grupo": _cell(ws, r, col_grupo),
                 }
             )
         return _filtrar_ncs_para_email(ncs)
@@ -669,9 +880,8 @@ def _criar_via_outlook(pasta_xls: Path,
                         pasta_fotos_nc: Path | None = None,
                         callback_progresso=None) -> int:
     """
-    Para cada XLS, identifica o fiscal responsável (col U) e cria o reply no e-mail
-    selecionado cujo remetente corresponda a esse fiscal. Assim cada planilha gera
-    resposta para o fiscal correto (múltiplas planilhas = múltiplos fiscais).
+    Para cada NC, identifica o fiscal responsável (col U) e cria o reply no e-mail
+    selecionado cujo remetente corresponda a esse fiscal.
     Retorna número de e-mails rascunhados.
 
     ``pasta_fotos_nc`` mantém compatibilidade da API; o corpo automático usa só ``pasta_fotos_pdf``
@@ -728,66 +938,64 @@ def _criar_via_outlook(pasta_xls: Path,
             logger.warning(f"  Nenhuma NC em {arq.name}")
             continue
 
-        nc_ref = ncs[0]
-        responsavel = (nc_ref.get("responsavel") or "").strip()
+        for nc_ref in ncs:
+            responsavel = (nc_ref.get("responsavel") or "").strip()
 
-        # Encontrar o e-mail selecionado cujo remetente corresponde ao responsável pelo apontamento (col U)
-        item_correspondente = None
-        for item, sender_email, sender_name in itens_selecao:
-            if _responsavel_casa_com_remetente(responsavel, sender_email, sender_name):
-                item_correspondente = item
-                break
+            # Encontrar o e-mail selecionado cujo remetente corresponde ao responsável pelo apontamento (col U)
+            item_correspondente = None
+            for item, sender_email, sender_name in itens_selecao:
+                if _responsavel_casa_com_remetente(responsavel, sender_email, sender_name):
+                    item_correspondente = item
+                    break
 
-        if item_correspondente is None:
-            logger.warning(
-                f"  Planilha {arq.name}: responsável pelo apontamento (col U) '{responsavel or '(vazio)'}' não corresponde a nenhum remetente dos e-mails selecionados. "
-                "Rascunho não criado. Verifique a coluna U (responsável) e selecione os e-mails dos fiscais corretos."
-            )
-            continue
+            if item_correspondente is None:
+                logger.warning(
+                    f"  Planilha {arq.name}: responsável pelo apontamento (col U) '{responsavel or '(vazio)'}' não corresponde a nenhum remetente dos e-mails selecionados. "
+                    "Rascunho não criado. Verifique a coluna U (responsável) e selecione os e-mails dos fiscais corretos."
+                )
+                continue
 
-        reply = item_correspondente.ReplyAll()
-        reply.Subject = _assunto_enriquecido(reply.Subject, nc_ref)
-        reply.CC = _cc_str()
-        to_addr = _destinatario_responsavel_automatico(nc_ref)
-        reply.To = to_addr if to_addr else ""
+            reply = item_correspondente.ReplyAll()
+            reply.Subject = _assunto_enriquecido(reply.Subject, nc_ref)
+            reply.CC = _cc_str()
+            to_addr = _destinatario_responsavel_automatico(nc_ref)
+            reply.To = to_addr if to_addr else ""
 
-        corpo_html = _html_saudacao()
-        img_seq_outlook = 0
-        for nc in ncs:
-            pdf_path = _path_pdf_apontamento_para_corpo_email(nc, pasta_fotos_pdf)
+            corpo_html = _html_saudacao()
+            img_seq_outlook = 0
+            pdf_path = _path_pdf_apontamento_para_corpo_email(nc_ref, pasta_fotos_pdf)
             if not pdf_path:
                 logger.warning(
                     "  Imagem PDF de apontamento não encontrada para NC cod=%s foto=%s",
-                    nc.get("cod"),
-                    nc.get("foto"),
+                    nc_ref.get("cod"),
+                    nc_ref.get("foto"),
                 )
-                corpo_html += _bloco_html_macro_sem_pdf(nc)
-                continue
-            img_seq_outlook += 1
-            cid_u = _cid_imagem_inline_email(img_seq_outlook)
+                corpo_html += _bloco_html_macro_sem_pdf(nc_ref)
+            else:
+                img_seq_outlook += 1
+                cid_u = _cid_imagem_inline_email(img_seq_outlook)
+                try:
+                    attach = reply.Attachments.Add(str_caminho_outlook_mapi(pdf_path))
+                    attach.PropertyAccessor.SetProperty(PR_ATTACH_CONTENT_ID, cid_u)
+                except Exception as ex_att:
+                    logger.warning("  Anexo Outlook omitido %s: %s", pdf_path, ex_att)
+                    corpo_html += _bloco_html_macro_sem_pdf(nc_ref)
+                else:
+                    corpo_html += _bloco_html_macro_so_pdf(nc_ref, [(pdf_path, cid_u)])
+
+            olFormatHTML = 2
+            # Imagens cid: só aparecem com corpo HTML; modo texto ignora anexos inline.
             try:
-                attach = reply.Attachments.Add(str_caminho_outlook_mapi(pdf_path))
-                attach.PropertyAccessor.SetProperty(PR_ATTACH_CONTENT_ID, cid_u)
-            except Exception as ex_att:
-                logger.warning("  Anexo Outlook omitido %s: %s", pdf_path, ex_att)
-                img_seq_outlook -= 1
-                corpo_html += _bloco_html_macro_sem_pdf(nc)
-                continue
-            corpo_html += _bloco_html_macro_so_pdf(nc, [(pdf_path, cid_u)])
+                reply.BodyFormat = olFormatHTML
+            except Exception as ex_bf:
+                logger.warning("  BodyFormat HTML não aplicado (imagens podem falhar): %s", ex_bf)
+            # Não prefixar um segundo <html><body> — o Outlook já traz um documento em HTMLBody.
+            existente = reply.HTMLBody or ""
+            reply.HTMLBody = f'<div style="{_EMAIL_BODY_STYLE}">{corpo_html}</div>' + existente
 
-        olFormatHTML = 2
-        # Imagens cid: só aparecem com corpo HTML; modo texto ignora anexos inline.
-        try:
-            reply.BodyFormat = olFormatHTML
-        except Exception as ex_bf:
-            logger.warning("  BodyFormat HTML não aplicado (imagens podem falhar): %s", ex_bf)
-        # Não prefixar um segundo <html><body> — o Outlook já traz um documento em HTMLBody.
-        existente = reply.HTMLBody or ""
-        reply.HTMLBody = f'<div style="{_EMAIL_BODY_STYLE}">{corpo_html}</div>' + existente
-
-        reply.Save()
-        rascunhos += 1
-        logger.info(f"  Rascunho salvo (fiscal: {responsavel or 'N/A'}): {reply.Subject[:60]}")
+            reply.Save()
+            rascunhos += 1
+            logger.info(f"  Rascunho salvo (fiscal: {responsavel or 'N/A'}): {reply.Subject[:60]}")
 
     return rascunhos
 
@@ -835,7 +1043,7 @@ def _criar_eml(pasta_xls: Path,
                callback_progresso=None,
                pasta_fotos_nc: Path | None = None) -> list[Path]:
     """
-    Gera ficheiros .eml por XLS. Mesmo padrão clássico de tutoriais smtplib: ``MIMEMultipart('related')``,
+    Gera ficheiros .eml por NC (individual). Mesmo padrão clássico de tutoriais smtplib: ``MIMEMultipart('related')``,
     primeiro ``MIMEText(..., 'html')``, depois imagens com ``MIMEImage`` (ou fallback MIMEBase),
     ``cid:img0001`` ↔ ``Content-ID: <img0001>``, ``as_bytes`` com ``compat32`` em primeiro lugar.
 
@@ -876,77 +1084,75 @@ def _criar_eml(pasta_xls: Path,
             if not ncs:
                 logger.warning("  Planilha sem NC válida para e-mail: %s", arq.name)
                 continue
+            for nc_i, nc_ref in enumerate(ncs):
+                assunto = _assunto_enriquecido("RE: Apontamento NC Artesp", nc_ref)
 
-            nc_ref = ncs[0]
-            assunto = _assunto_enriquecido("RE: Apontamento NC Artesp", nc_ref)
+                msg = mm.MIMEMultipart("related")
+                msg["Subject"] = str(Header(assunto, "utf-8"))
+                msg["From"]    = "artesp.nc@conservacao.br"
+                msg["CC"]      = _cc_str()
+                # Abre como rascunho não enviado no Outlook; útil para conferência antes do envio.
+                msg["X-Unsent"] = "1"
+                to_addr = _destinatario_responsavel_automatico(nc_ref)
+                if to_addr:
+                    msg["To"] = to_addr
 
-            msg = mm.MIMEMultipart("related")
-            msg["Subject"] = str(Header(assunto, "utf-8"))
-            msg["From"]    = "artesp.nc@conservacao.br"
-            msg["CC"]      = _cc_str()
-            # Abre como rascunho não enviado no Outlook; útil para conferência antes do envio.
-            msg["X-Unsent"] = "1"
-            to_addr = _destinatario_responsavel_automatico(nc_ref)
-            if to_addr:
-                msg["To"] = to_addr
-
-            corpo_html = _html_saudacao()
-            partes_img: list[tuple[Path, str]] = []
-            img_seq = 0
-
-            for nc in ncs:
-                pdf_path = _path_pdf_apontamento_para_corpo_email(nc, pasta_fotos_pdf)
+                corpo_html = _html_saudacao()
+                partes_img: list[tuple[Path, str]] = []
+                pdf_path = _path_pdf_apontamento_para_corpo_email(nc_ref, pasta_fotos_pdf)
                 if not pdf_path:
                     logger.warning(
                         "  Imagem PDF de apontamento não encontrada para NC cod=%s foto=%s",
-                        nc.get("cod"),
-                        nc.get("foto"),
+                        nc_ref.get("cod"),
+                        nc_ref.get("foto"),
                     )
-                    corpo_html += _bloco_html_macro_sem_pdf(nc)
-                    continue
-                img_seq += 1
-                cid_u = _cid_imagem_inline_email(img_seq)
-                partes_img.append((pdf_path, cid_u))
-                corpo_html += _bloco_html_macro_so_pdf(nc, [(pdf_path, cid_u)])
+                    corpo_html += _bloco_html_macro_sem_pdf(nc_ref)
+                else:
+                    cid_u = _cid_imagem_inline_email(1)
+                    partes_img.append((pdf_path, cid_u))
+                    corpo_html += _bloco_html_macro_so_pdf(nc_ref, [(pdf_path, cid_u)])
 
-            if partes_img:
-                msg["X-MS-Has-Attach"] = "yes"
+                if partes_img:
+                    msg["X-MS-Has-Attach"] = "yes"
 
-            # 1) HTML primeiro (como em smtplib/tutorials); 2) depois cada imagem com cid igual ao HTML.
-            html_doc = (
-                "<html>\n<head><meta charset=\"utf-8\" /></head>\n"
-                f'<body style="{_EMAIL_BODY_STYLE}">\n'
-                f'<div style="{_EMAIL_BODY_STYLE}">{corpo_html}</div>\n'
-                "</body>\n</html>"
-            )
-            msg.attach(mt.MIMEText(html_doc, "html", "utf-8"))
+                html_doc = (
+                    "<html>\n<head><meta charset=\"utf-8\" /></head>\n"
+                    f'<body style="{_EMAIL_BODY_STYLE}">\n'
+                    f'<div style="{_EMAIL_BODY_STYLE}">{corpo_html}</div>\n'
+                    "</body>\n</html>"
+                )
+                msg.attach(mt.MIMEText(html_doc, "html", "utf-8"))
 
-            for foto_path, cid in partes_img:
-                nome_hdr = _nome_arquivo_header_mime_seguro(foto_path)
-                try:
-                    with open(str_caminho_io_windows(foto_path), "rb") as f:
-                        raw = f.read()
-                except OSError as e_io:
-                    logger.warning("  Ficheiro de imagem omitido do .eml: %s (%s)", foto_path, e_io)
-                    continue
-                sub = _mime_subtype_imagem(foto_path)
-                msg.attach(_parte_mime_imagem_inline(raw, sub, cid, nome_hdr))
+                for foto_path, cid in partes_img:
+                    nome_hdr = _nome_arquivo_header_mime_seguro(foto_path)
+                    try:
+                        with open(str_caminho_io_windows(foto_path), "rb") as f:
+                            raw = f.read()
+                    except OSError as e_io:
+                        logger.warning("  Ficheiro de imagem omitido do .eml: %s (%s)", foto_path, e_io)
+                        continue
+                    sub = _mime_subtype_imagem(foto_path)
+                    msg.attach(_parte_mime_imagem_inline(raw, sub, cid, nome_hdr))
 
-            stem_seguro = sanitizar_nome(arq.stem, max_len=120) or "nc"
-            nome_eml = f"{timestamp_agora()} - {idx:03d} - {stem_seguro}.eml"
-            destino = caminho_dentro_limite_windows(pasta_saida / nome_eml)
-            payload = None
-            for pol_name, pol in (("compat32", policy.compat32), ("SMTP", policy.SMTP)):
-                try:
-                    payload = msg.as_bytes(policy=pol)
-                    break
-                except Exception as ex_pol:
-                    logger.warning("  as_bytes(%s) falhou para %s (%s)", pol_name, arq.name, ex_pol)
-            if payload is None:
-                payload = msg.as_string().encode("utf-8", errors="replace")
-            escrever_bytes_caminho(destino, payload)
-            gerados.append(destino)
-            logger.info(f"  .eml gerado: {destino.name}")
+                rodovia_segura = sanitizar_nome(str(nc_ref.get("rodovia") or "sem-rodovia"), max_len=30) or "sem-rodovia"
+                cod_seguro = sanitizar_nome(str(nc_ref.get("cod") or "sem-cod"), max_len=30) or "sem-cod"
+                nome_eml = f"{timestamp_agora()} - {rodovia_segura} - {cod_seguro}.eml"
+                destino = caminho_dentro_limite_windows(pasta_saida / nome_eml)
+                if destino.exists():
+                    nome_eml = f"{timestamp_agora()} - {rodovia_segura} - {cod_seguro} - {idx:03d}-{nc_i:03d}.eml"
+                    destino = caminho_dentro_limite_windows(pasta_saida / nome_eml)
+                payload = None
+                for pol_name, pol in (("compat32", policy.compat32), ("SMTP", policy.SMTP)):
+                    try:
+                        payload = msg.as_bytes(policy=pol)
+                        break
+                    except Exception as ex_pol:
+                        logger.warning("  as_bytes(%s) falhou para %s (%s)", pol_name, arq.name, ex_pol)
+                if payload is None:
+                    payload = msg.as_string().encode("utf-8", errors="replace")
+                escrever_bytes_caminho(destino, payload)
+                gerados.append(destino)
+                logger.info(f"  .eml gerado: {destino.name}")
         except Exception as e_arq:
             logger.error("  Falha ao gerar .eml para %s: %s", arq.name, e_arq, exc_info=True)
             continue

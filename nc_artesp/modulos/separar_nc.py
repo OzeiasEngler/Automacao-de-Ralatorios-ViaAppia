@@ -15,7 +15,8 @@ Fluxo:
   Com M01_COPIA_PLANILHA_MAE=False (padrão desktop): copia o .xlsx Kartado por atividade
   (``M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO`` / ``ART03_ATIVIDADE_PARA_SERVICO_KARTADO``, ficheiros em nc_artesp/assets/templates/),
   apaga linhas de dados do template e preenche a partir da mãe. Nomes no modo Art_011 usam ``M01_SERVICO_ABREV_ART011``
-  (espelho da macro Art_011); o mapa Kartado usa o texto da coluna Q da EAF, não a coluna «Classe» do template Kartado.
+  (espelho da macro Art_011). O texto da coluna Q da EAF escolhe o template; a coluna «Classe» do Kartado replica
+  o rótulo Kartado de ``ART03_ATIVIDADE_PARA_SERVICO_KARTADO`` quando há entrada, senão ``SERVICO_NC``.
   Com M01_COPIA_PLANILHA_MAE=True ou ``executar(..., copia_planilha_mae=True)``: macro Art_011 — base ``Template_EAF.xlsx``
   (cabeçalho 1–4, sem dados); cada grupo recebe um ficheiro com cópia **literal** das linhas da mãe
   (valores e estilos de célula, por coluna); só a agregação por rodovia/atividade muda quais linhas vão juntas.
@@ -26,6 +27,7 @@ Fluxo:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import unicodedata
@@ -41,11 +43,14 @@ from openpyxl import load_workbook
 import xlrd
 
 from config import (
+    ART03_ATIVIDADE_PARA_SERVICO_KARTADO,
     M01_COPIA_PLANILHA_MAE,
     M01_DICAS_PALAVRA_TEMPLATE_KARTADO,
     M01_EXPORTAR,
     M01_LINHA_INICIO,
     M01_LOTE,
+    M01_MALHA_LAT_LON,
+    M01_MALHA_TODOS_OS_XLSX,
     M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO,
     M01_SERVICO_ABREV_ART011,
     M01_TEMPLATE_EAF,
@@ -136,6 +141,15 @@ def _caminho_template_eaf() -> Path:
         if candidato.is_file():
             return candidato
     return M01_TEMPLATE_EAF  # usado na mensagem de erro se não encontrar nenhum
+
+
+def _caminho_template_geral_final() -> Path | None:
+    """Retorna o template único Kartado (Geral 4/5) quando disponível."""
+    pasta = Path(__file__).resolve().parent.parent / "assets" / "templates"
+    candidato = pasta / "Template - Geral - 4 e 5 - Final.xlsx"
+    if candidato.is_file():
+        return candidato
+    return None
 
 
 def _norm_stem_comparar(s: str) -> str:
@@ -348,6 +362,10 @@ def _norm_key_template_lookup(s: str) -> str:
 
 _M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO_NORM: dict[str, str] = {
     _norm_key_template_lookup(k): v for k, v in M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO.items()
+}
+
+_ART03_CLASSE_POR_ATIVIDADE_NORM: dict[str, str] = {
+    _norm_key_template_lookup(k): v for k, v in ART03_ATIVIDADE_PARA_SERVICO_KARTADO.items()
 }
 
 
@@ -581,6 +599,246 @@ def _detectar_col_tipo_nc(ws, fallback: int = COL_TIPO_NC) -> int:
     return melhor_c if melhor_c is not None and melhor_score >= 3 else fallback
 
 
+def _detectar_linha_inicio_dados(ws, col_codigo: int, max_busca: int = 15) -> int:
+    """
+    Detecta a primeira linha com um valor numérico plausível como código de fiscalização.
+    Garante que nunca desce abaixo de M01_LINHA_INICIO para não quebrar planilhas padrão.
+    """
+    limite = min(int(ws.max_row or M01_LINHA_INICIO), max_busca)
+    for r in range(1, limite + 1):
+        v = ws.cell(row=r, column=col_codigo).value
+        if v is None:
+            continue
+        s = str(v).strip()
+        if not s:
+            continue
+        # Rejeitar cabeçalhos (texto) e horários (HH:MM:SS)
+        if re.fullmatch(r"\d{1,2}:\d{2}(:\d{2})?", s):
+            continue
+        if re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", s):
+            continue
+        # Aceitar como primeiro dado se for numérico puro (código fiscalização) ou alfanumérico com dígitos
+        if re.search(r"\d{3,}", s):
+            return r
+    return M01_LINHA_INICIO
+
+
+def _detectar_col_rodovia(ws, fallback: int = COL_RODOVIA) -> int:
+    """Deteta a coluna de rodovia no cabeçalho (linhas 1-8)."""
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 30) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if h == "rodovia":
+                return c
+    return fallback
+
+
+def _detectar_col_km_inicial(ws, fallback: int = COL_KM_I_FULL) -> int:
+    """Deteta a coluna de km inicial (formato 143+800) no cabeçalho (linhas 1-8)."""
+    melhor_c = None
+    melhor_score = -1
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 40) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if not h:
+                continue
+            score = 0
+            if h in {"km inicial", "km inicio", "km ini"}:
+                score = 6
+            elif "km" in h and ("inicial" in h or "inicio" in h):
+                score = 5
+            elif h == "km":
+                score = 4
+            if "projeto" in h:
+                score = 0
+            if score > melhor_score:
+                melhor_score = score
+                melhor_c = c
+    return melhor_c if melhor_c is not None and melhor_score >= 4 else fallback
+
+
+def _detectar_col_km_final(ws, fallback: int = COL_KM_F_FULL) -> int:
+    """Deteta a coluna de km final (formato 143+800) no cabeçalho (linhas 1-8)."""
+    melhor_c = None
+    melhor_score = -1
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 40) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if not h:
+                continue
+            score = 0
+            if h in {"km final", "km fim"}:
+                score = 6
+            elif "km" in h and ("final" in h or "fim" in h):
+                score = 5
+            if "projeto" in h:
+                score = 0
+            if score > melhor_score:
+                melhor_score = score
+                melhor_c = c
+    return melhor_c if melhor_c is not None and melhor_score >= 5 else fallback
+
+
+def _detectar_col_sentido(ws, fallback: int = COL_SENTIDO) -> int:
+    """Deteta a coluna de sentido no cabeçalho (linhas 1-8)."""
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 40) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if h == "sentido":
+                return c
+    return fallback
+
+
+def _detectar_col_km_i_metros(ws, fallback: int = COL_KM_I_M) -> int:
+    """Deteta a coluna de metros do km inicial no cabeçalho (linhas 1-8)."""
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 50) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if h in {"m inicial", "metros inicial", "m ini", "m inicio"}:
+                return c
+            if ("metro" in h or h.startswith("m ")) and ("inicial" in h or "inicio" in h):
+                return c
+    return fallback
+
+
+def _detectar_col_km_f_metros(ws, fallback: int = COL_KM_F_M) -> int:
+    """Deteta a coluna de metros do km final no cabeçalho (linhas 1-8)."""
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 50) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if h in {"m final", "metros final", "m fim"}:
+                return c
+            if ("metro" in h or h.startswith("m ")) and ("final" in h or "fim" in h):
+                return c
+    return fallback
+
+
+def _detectar_col_seq_foto(ws, fallback: int = COL_SEQ_FOTO) -> int:
+    """Deteta a coluna de número/sequência de foto no cabeçalho (linhas 1-8)."""
+    melhor_c = None
+    melhor_score = -1
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 80) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if not h:
+                continue
+            score = 0
+            if h in {"n foto", "numero foto", "n da foto", "sequencia foto", "seq foto"}:
+                score = 6
+            elif ("foto" in h and ("numero" in h or "sequencia" in h or h.startswith("n "))):
+                score = 5
+            if score > melhor_score:
+                melhor_score = score
+                melhor_c = c
+    return melhor_c if melhor_c is not None and melhor_score >= 5 else fallback
+
+
+def _detectar_col_responsavel(ws, fallback: int = COL_RESPONSAVEL) -> int:
+    """Deteta a coluna de responsável/fiscal no cabeçalho (linhas 1-8)."""
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 80) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if h in {"responsavel", "fiscal", "responsavel fiscal"}:
+                return c
+            if "responsavel" in h or ("fiscal" in h and "codigo" not in h):
+                return c
+    return fallback
+
+
+def _parece_km(s: str) -> bool:
+    t = _limpar_str(s).replace(" ", "")
+    return bool(re.fullmatch(r"\d{1,4}\+\d{1,3}", t))
+
+
+def _normalizar_km_final_e_sentido(km_f, sentido):
+    """
+    Corrige linhas com layout inconsistente:
+    - se km final vier como sentido textual (Norte/Sul/Marginal...) e sentido estiver vazio,
+      move o valor para sentido e deixa km final vazio.
+    """
+    kmf_s = _limpar_str(km_f)
+    sen_s = _limpar_str(sentido)
+    if sen_s:
+        return km_f, sentido
+    if not kmf_s:
+        return km_f, sentido
+    kmf_norm = _norm_header(kmf_s)
+    sentidos_txt = {
+        "norte",
+        "sul",
+        "leste",
+        "oeste",
+        "marginal norte",
+        "marginal sul",
+        "norte/sul",
+        "sul/norte",
+    }
+    if kmf_norm in sentidos_txt:
+        return "", kmf_s
+    return km_f, sentido
+
+
+def _detectar_col_data_con(ws, fallback: int = COL_DATA_CON) -> int:
+    """Deteta a coluna de data da constatação/fiscalização no cabeçalho (linhas 1-8)."""
+    alvos = {"data fiscalizacao", "data da fiscalizacao", "data constatacao", "data da constatacao", "data envio", "data do envio"}
+    melhor_c = None
+    melhor_score = -1
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 30) + 1):
+            h = _norm_header(str(ws.cell(row=r, column=c).value or ""))
+            if not h:
+                continue
+            score = 0
+            if h in alvos:
+                score = 5
+            elif "data" in h and ("fiscal" in h or "constat" in h):
+                score = 4
+            elif "data" in h and "envio" in h:
+                score = 3
+            if score > melhor_score:
+                melhor_score = score
+                melhor_c = c
+    return melhor_c if melhor_c is not None and melhor_score >= 3 else fallback
+
+
+def _detectar_col_codigo_fiscalizacao(ws, fallback: int = COL_CODIGO) -> int:
+    """Deteta a coluna de código de fiscalização no cabeçalho (linhas 1-8)."""
+    candidatos = {
+        "codigo de fiscalizacao",
+        "codigo fiscalizacao",
+        "codigo da fiscalizacao",
+        "cod. fiscalizacao",
+        "cod fiscalizacao",
+        "codigo fisc",
+        "numero da nc",
+        "numero nc",
+        "n da nc",
+    }
+    melhor_c = None
+    melhor_score = -1
+    for r in range(1, min(ws.max_row + 1, 8) + 1):
+        for c in range(1, min(ws.max_column + 1, 80) + 1):
+            v = ws.cell(row=r, column=c).value
+            if v is None:
+                continue
+            h = _norm_header(str(v))
+            if not h:
+                continue
+            score = 0
+            if h in candidatos:
+                score = 5
+            elif "fiscalizacao" in h and ("codigo" in h or h.startswith("cod")):
+                score = 4
+            elif "nc" in h and ("numero" in h or h.startswith("n ")):
+                score = 3
+            elif h == "codigo":
+                score = 2
+            if score > melhor_score:
+                melhor_score = score
+                melhor_c = c
+    return melhor_c if melhor_c is not None and melhor_score >= 3 else fallback
+
+
 def _valor_tipo_nc(ws, row: int, col_tipo_nc: int):
     """Lê tipo NC evitando usar acidentalmente coluna de data."""
     v = _cell(ws, row, col_tipo_nc)
@@ -761,6 +1019,259 @@ def _set_if_header(ws, row: int, cols: dict[str, int], header: str, valor) -> No
     c = cols.get(_norm_header(header))
     if c:
         ws.cell(row=row, column=c).value = valor
+
+
+def _rodovia_chave(s: str) -> str:
+    t = _norm_header(s or "")
+    t = t.replace("-", "").replace(" ", "").replace("/", "")
+    return t
+
+
+def _sentido_chave(s: str) -> str:
+    return _norm_header(s or "").replace("-", " ").strip()
+
+
+def _km_para_float(v) -> float | None:
+    s = _limpar_str(v)
+    if not s:
+        return None
+    s = s.replace(" ", "")
+    if "+" in s:
+        a, b = s.split("+", 1)
+        try:
+            return float(a.replace(",", ".")) + (float(b.replace(",", ".")) / 1000.0)
+        except Exception:
+            return None
+    try:
+        return float(s.replace(",", "."))
+    except Exception:
+        return None
+
+
+def _rodovia_fmt_eaf_para_kartado(rodovia_raw: str) -> str:
+    rr = _limpar_str(rodovia_raw).replace(" ", "")
+    return {
+        "SP075": "SP-075",
+        "SP127": "SP-127",
+        "SP280": "SP-280",
+        "SP300": "SP-300",
+        "SPI102/300": "SPI-102/300",
+    }.get(rr, rr or "FORA")
+
+
+def _m01_lote_num() -> str:
+    m = re.search(r"\d+", M01_LOTE or "")
+    return m.group(0) if m else "13"
+
+
+def _malha_xlsx_para_lote(pasta: Path) -> list[Path]:
+    """Por defeito só o Excel da malha do ``ARTESP_LOTE``; todos se ``M01_MALHA_TODOS_OS_XLSX``."""
+    todos = sorted(pasta.glob("*.xlsx"))
+    if not todos:
+        return []
+    if M01_MALHA_TODOS_OS_XLSX:
+        return todos
+    m = re.search(r"\d+", M01_LOTE or "")
+    if not m:
+        return todos
+    num = m.group(0)
+    sel: list[Path] = []
+    for p in todos:
+        stem_cf = unicodedata.normalize("NFC", p.stem).casefold()
+        if f"lote {num}" in stem_cf or f"lote{num}" in stem_cf.replace(" ", ""):
+            sel.append(p)
+    if sel:
+        return sorted(sel)
+    logger.warning(
+        "Malha: nenhum Excel com «Lote %s» em %s (defina ARTESP_MALHA_TODOS_OS_XLSX=1 ou ajuste o nome do ficheiro).",
+        num,
+        pasta,
+    )
+    return []
+
+
+def _nc_carregar_malha_via_geojson_core() -> bool:
+    """
+    Mesmo pipeline que o GeoJSON: ``gerador_artesp_core.carregar_malha`` com o **Eixo** do lote.
+    Ordem: ``assets/malha`` na raiz do projeto (core), depois ``nc_artesp/assets/malha`` ou
+    ``nc_artesp/assets/Malha`` com o mesmo nome de ficheiro; por fim «Relação Total» em
+    ``nc_artesp/assets/Malha``.
+    """
+    try:
+        import gerador_artesp_core as gac
+    except ImportError:
+        logger.warning("Malha: gerador_artesp_core não importável — lat/long omitidos.")
+        return False
+
+    lote_num = _m01_lote_num()
+    sigla = f"L{lote_num}"
+    path: str | None = None
+    info = gac.LOTES.get(lote_num)
+    if info:
+        sub, nome = info["eixo"]
+        p = gac._path_asset(sub, nome)
+        if p and os.path.isfile(p):
+            path = p
+        if not path:
+            base_nc = Path(__file__).resolve().parent.parent / "assets"
+            for malha_sub in ("malha", "Malha"):
+                p2 = base_nc / malha_sub / nome
+                if p2.is_file():
+                    path = str(p2.resolve())
+                    break
+    if not path:
+        base_nc = Path(__file__).resolve().parent.parent / "assets" / "Malha"
+        cand = _malha_xlsx_para_lote(base_nc)
+        if cand:
+            path = str(cand[0].resolve())
+    if not path:
+        logger.warning(
+            "Malha: sem eixo (assets/malha na raiz nem nc_artesp/assets/malha) "
+            "nem Relação Total em nc_artesp/assets/Malha.",
+        )
+        return False
+    try:
+        gac.carregar_malha(path, sigla)
+        logger.info("Malha (GeoJSON core) carregada: %s", path)
+        return True
+    except Exception as ex:
+        logger.warning("Malha (GeoJSON core): falha ao carregar %s — %s", path, ex)
+        return False
+
+
+def _buscar_lat_lon_malha(
+    rodovia: str,
+    sentido: str,
+    km_ref,
+    *,
+    usar_core: bool,
+) -> tuple[float | None, float | None]:
+    """Lat/long via CACHE do gerador_artesp_core (igual ao GeoJSON)."""
+    if not usar_core:
+        return (None, None)
+    try:
+        import gerador_artesp_core as gac
+    except ImportError:
+        return (None, None)
+    rod = gac.normalizar_rodovia(rodovia)
+    km = _km_para_float(km_ref)
+    if not rod or km is None:
+        return (None, None)
+    s_busca = gac.normalizar_sentido_para_cache(str(sentido or "").strip(), rod)
+    pt = gac.extrair_ponto_geom(rod, km, s_busca)
+    if not pt and s_busca is not None:
+        pt = gac.extrair_ponto_geom(rod, km, None)
+    if not pt:
+        return (None, None)
+    lon, lat = float(pt[0]), float(pt[1])
+    return (lat, lon)
+
+
+def consolidar_kartados_em_unico_excel(
+    arqs: list[Path],
+    pasta_destino: Path,
+    nome_saida: str | None = None,
+) -> Path | None:
+    """
+    Junta todas as linhas de dados de vários Excel Kartado (layout 1 cabeçalho + N linhas)
+    num único ficheiro baseado no template único.
+
+    Ordena por Rodovia → Classe → Código Fiscalização.
+    Devolve o Path do ficheiro gerado, ou None se não houver linhas.
+    """
+    from openpyxl import load_workbook as _lw
+
+    tpl = _caminho_template_geral_final()
+    if tpl is None or not tpl.is_file():
+        raise FileNotFoundError("Template 'Template - Geral - 4 e 5 - Final.xlsx' não encontrado.")
+
+    # 1. Ler cabeçalho do template
+    wb_tpl = _lw(str_caminho_io_windows(tpl), data_only=True)
+    ws_tpl = wb_tpl.active
+    hdr_tpl: dict[str, int] = {}
+    for c in range(1, int(ws_tpl.max_column or 0) + 1):
+        v = ws_tpl.cell(row=1, column=c).value
+        if v is not None:
+            k = _norm_header(str(v))
+            if k and k not in hdr_tpl:
+                hdr_tpl[k] = c
+    max_col_tpl = int(ws_tpl.max_column or 0)
+    max_idx_tpl = max(max(hdr_tpl.values()) if hdr_tpl else 0, max_col_tpl)
+    wb_tpl.close()
+
+    # 2. Agregar todas as linhas de todos os Excels
+    todas_linhas: list[tuple[list, tuple]] = []  # (valores, chave_ordem)
+    for arq in arqs:
+        if not arq.is_file():
+            continue
+        try:
+            wb = _lw(str_caminho_io_windows(arq), data_only=True)
+            ws = wb.active
+            hdr_arq: dict[str, int] = {}
+            for c in range(1, int(ws.max_column or 0) + 1):
+                v = ws.cell(row=1, column=c).value
+                if v is not None:
+                    k = _norm_header(str(v))
+                    if k and k not in hdr_arq:
+                        hdr_arq[k] = c
+            col_cod_arq = hdr_arq.get("codigo fiscalizacao") or hdr_arq.get("codigo de fiscalizacao") or hdr_arq.get("cod. fiscalizacao")
+            col_rod_arq = hdr_arq.get("rodovia")
+            col_cls_arq = hdr_arq.get("classe")
+            for r in range(2, int(ws.max_row or 0) + 1):
+                # Verificar se linha tem dado
+                tem = any(ws.cell(row=r, column=c).value not in (None, "") for c in range(1, int(ws.max_column or 0) + 1))
+                if not tem:
+                    continue
+                # Mapear colunas do ficheiro origem → colunas do template (por nome de cabeçalho)
+                valores = [None] * (max_idx_tpl + 1)
+                for h_nome, c_tpl in hdr_tpl.items():
+                    c_arq = hdr_arq.get(h_nome)
+                    if c_arq and 0 < int(c_tpl) <= max_idx_tpl:
+                        valores[int(c_tpl)] = ws.cell(row=r, column=c_arq).value
+                cod = _limpar_str(ws.cell(row=r, column=col_cod_arq).value) if col_cod_arq else ""
+                rod = _limpar_str(ws.cell(row=r, column=col_rod_arq).value) if col_rod_arq else ""
+                cls = _limpar_str(ws.cell(row=r, column=col_cls_arq).value) if col_cls_arq else ""
+                chave = (rod.casefold(), cls.casefold(), cod)
+                todas_linhas.append((valores, chave))
+            wb.close()
+        except Exception as e:
+            logger.warning("consolidar_kartados: erro a ler %s — %s", arq.name, e)
+
+    if not todas_linhas:
+        return None
+
+    todas_linhas.sort(key=lambda x: x[1])
+
+    # 3. Criar ficheiro final baseado no template
+    garantir_pasta(pasta_destino)
+    if not nome_saida:
+        from datetime import datetime as _dt
+        nome_saida = _sanitizar_nome_xlsx(
+            f"{_dt.now().strftime('%Y%m%d')} - CONSTATAÇÕES NC {M01_LOTE} - Kartado Consolidado.xlsx"
+        )
+    destino = encurtar_nome_em_pasta(pasta_destino, nome_saida)
+    shutil.copy2(str_caminho_io_windows(tpl), str_caminho_io_windows(destino))
+
+    wb_out = _lw(str_caminho_io_windows(destino))
+    ws_out = wb_out.active
+    # Apagar linhas de dados do template (mantém linha 1 = cabeçalho)
+    while ws_out.max_row >= 2:
+        ws_out.delete_rows(ws_out.max_row, 1)
+
+    for seq, (valores, _) in enumerate(todas_linhas, start=2):
+        for c_tpl in range(1, len(valores)):
+            val = valores[c_tpl]
+            if val is None:
+                continue
+            ws_out.cell(row=seq, column=c_tpl).value = val
+
+    destino_xls = destino.with_suffix(".xls")
+    if destino_xls.exists():
+        destino_xls.unlink()
+    wb_out.save(str_caminho_io_windows(destino))
+    wb_out.close()
+    logger.info("Kartado consolidado: %d linhas → %s", len(todas_linhas), destino.name)
+    return destino
 
 
 def _fingerprint_linha_mae(
@@ -957,14 +1468,10 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
     if um_arquivo_por_nc:
         consolidar_um_ficheiro = False
     elif unico_arquivo_organizado is None:
-        consolidar_um_ficheiro = bool(usar_copia_mae)
+        # Com template único Kartado, consolidar por defeito mesmo sem cópia mãe
+        consolidar_um_ficheiro = True
     else:
         consolidar_um_ficheiro = bool(unico_arquivo_organizado)
-    if consolidar_um_ficheiro and not usar_copia_mae:
-        raise ValueError(
-            "Saída num único ficheiro organizado só é suportada com cópia planilha-mãe / Template EAF "
-            "(copia_planilha_mae=True). Com templates Kartado, cada atividade gera o seu .xlsx."
-        )
 
     ValidadorArquivoEAF.validar(arquivo_mae)
     suff = arquivo_mae.suffix.lower()
@@ -989,58 +1496,80 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
 
         col_data_reparo = _detectar_col_data_reparo(ws, fallback=COL_DATA_NC)
         col_tipo_nc = _detectar_col_tipo_nc(ws, fallback=COL_TIPO_NC)
+        col_codigo = _detectar_col_codigo_fiscalizacao(ws, fallback=COL_CODIGO)
+        col_rodovia = _detectar_col_rodovia(ws, fallback=COL_RODOVIA)
+        col_data_con = _detectar_col_data_con(ws, fallback=COL_DATA_CON)
+        col_km_i_full = _detectar_col_km_inicial(ws, fallback=COL_KM_I_FULL)
+        col_km_f_full = _detectar_col_km_final(ws, fallback=COL_KM_F_FULL)
+        col_km_i_m = _detectar_col_km_i_metros(ws, fallback=COL_KM_I_M)
+        col_km_f_m = _detectar_col_km_f_metros(ws, fallback=COL_KM_F_M)
+        col_sentido = _detectar_col_sentido(ws, fallback=COL_SENTIDO)
+        col_seq_foto = _detectar_col_seq_foto(ws, fallback=COL_SEQ_FOTO)
+        col_responsavel = _detectar_col_responsavel(ws, fallback=COL_RESPONSAVEL)
+        linha_inicio = _detectar_linha_inicio_dados(ws, col_codigo)
         logger.info(f"Coluna 'Data Reparo': {col_data_reparo}")
         logger.info(f"Coluna 'Tipo NC/Atividade': {col_tipo_nc}")
+        logger.info(f"Coluna 'Código Fiscalização': {col_codigo}")
+        logger.info(f"Coluna 'Rodovia': {col_rodovia}")
+        logger.info(f"Coluna 'Data Constatação': {col_data_con}")
+        logger.info(f"Coluna 'km inicial': {col_km_i_full}")
+        logger.info(f"Coluna 'km final': {col_km_f_full}")
+        logger.info(f"Coluna 'm inicial': {col_km_i_m}")
+        logger.info(f"Coluna 'm final': {col_km_f_m}")
+        logger.info(f"Coluna 'Sentido': {col_sentido}")
+        logger.info(f"Coluna 'Seq. foto': {col_seq_foto}")
+        logger.info(f"Coluna 'Responsável': {col_responsavel}")
+        logger.info(f"Linha início dados: {linha_inicio}")
 
-        ultima_linha = M01_LINHA_INICIO - 1
-        for r in range(ws.max_row, M01_LINHA_INICIO - 1, -1):
-            if ws.cell(row=r, column=COL_CODIGO).value:
+        ultima_linha = linha_inicio - 1
+        for r in range(ws.max_row, linha_inicio - 1, -1):
+            if ws.cell(row=r, column=col_codigo).value:
                 ultima_linha = r
                 break
 
-        total_linhas = ultima_linha - M01_LINHA_INICIO + 1
-        logger.info(f"Linhas de dados: {total_linhas} (L{M01_LINHA_INICIO}–L{ultima_linha})")
+        total_linhas = ultima_linha - linha_inicio + 1
+        logger.info(f"Linhas de dados: {total_linhas} (L{linha_inicio}–L{ultima_linha})")
 
         linhas_info = []
-        for r in range(M01_LINHA_INICIO, ultima_linha + 1):
+        for r in range(linha_inicio, ultima_linha + 1):
             tipo_nc = _valor_tipo_nc(ws, r, col_tipo_nc)
             if not tipo_nc or not str(tipo_nc).strip():
-                tipo_nc = _cell(ws, r, COL_CODIGO) or "NC"
+                tipo_nc = _cell(ws, r, col_codigo) or "NC"
             linhas_info.append((
                 _cell(ws, r, col_data_reparo),
-                _cell(ws, r, COL_RODOVIA),
+                _cell(ws, r, col_rodovia),
                 tipo_nc,
-                _cell(ws, r, COL_DATA_CON),
+                _cell(ws, r, col_data_con),
             ))
 
         fallback_tpl = _caminho_template_eaf()
         max_col = ws.max_column
 
         if usar_copia_mae:
-            for r in range(M01_LINHA_INICIO, ultima_linha + 1):
+            for r in range(linha_inicio, ultima_linha + 1):
                 _padronizar_colunas_km(ws, r)
             qseq = 1
-            for r in range(M01_LINHA_INICIO, ultima_linha + 1):
-                ws.cell(row=r, column=COL_SEQ_FOTO).value = qseq
+            for r in range(linha_inicio, ultima_linha + 1):
+                ws.cell(row=r, column=col_seq_foto).value = qseq
                 qseq += 1
             wb_mae.save(str_caminho_io_windows(arquivo_mae))
             logger.info("Planilha-mãe gravada (I, K, V) — modo cópia mãe (Art_011).")
 
-        if consolidar_um_ficheiro and usar_copia_mae:
+        if consolidar_um_ficheiro:
             candidatos: list[int] = []
-            for r in range(M01_LINHA_INICIO, ultima_linha + 1):
+            for r in range(linha_inicio, ultima_linha + 1):
                 tipo_nc = _valor_tipo_nc(ws, r, col_tipo_nc)
                 if not tipo_nc or not str(tipo_nc).strip():
-                    tipo_nc = _cell(ws, r, COL_CODIGO) or "NC"
+                    tipo_nc = _cell(ws, r, col_codigo) or "NC"
                 if not tipo_nc or not str(tipo_nc).strip():
                     continue
                 candidatos.append(r)
 
             def _chave_ordem_consolidado(rr: int) -> tuple:
                 return (
-                    _limpar_str(_cell(ws, rr, COL_RODOVIA)).casefold(),
+                    _limpar_str(_cell(ws, rr, col_rodovia)).casefold(),
                     _limpar_str(_valor_tipo_nc(ws, rr, col_tipo_nc)).casefold(),
-                    _limpar_str(_cell(ws, rr, COL_CODIGO)),
+                    _limpar_str(_cell(ws, rr, col_codigo)),
                     rr,
                 )
 
@@ -1052,10 +1581,10 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
         else:
             index_fp: dict[tuple[str, ...], int] = {}
             grupos_ord = []
-            for r in range(M01_LINHA_INICIO, ultima_linha + 1):
+            for r in range(linha_inicio, ultima_linha + 1):
                 tipo_nc = _valor_tipo_nc(ws, r, col_tipo_nc)
                 if not tipo_nc or not str(tipo_nc).strip():
-                    tipo_nc = _cell(ws, r, COL_CODIGO) or "NC"
+                    tipo_nc = _cell(ws, r, col_codigo) or "NC"
                 if not tipo_nc or not str(tipo_nc).strip():
                     continue
                 fp = _fingerprint_linha_mae(ws, r, max_col, forcar_linha_unica=um_arquivo_por_nc)
@@ -1071,22 +1600,26 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
         processadas: set[str] = set()
         nomes_emitidos: set[str] = set()
 
+        malha_core_ok = False
+        if not usar_copia_mae and M01_MALHA_LAT_LON:
+            malha_core_ok = _nc_carregar_malha_via_geojson_core()
+
         for fp, linhas_do_grupo in grupos_ord:
             r0 = linhas_do_grupo[0]
-            idx0 = r0 - M01_LINHA_INICIO
+            idx0 = r0 - linha_inicio
             data_nc, rodov_raw, tipo_nc, data_con = linhas_info[idx0]
 
             if not tipo_nc:
                 continue
 
-            if consolidar_um_ficheiro and usar_copia_mae:
+            if consolidar_um_ficheiro:
                 nome_arq = _nome_arquivo_consolidado_eaf(
-                    linhas_info, linhas_do_grupo, M01_LINHA_INICIO, arquivo_mae
+                    linhas_info, linhas_do_grupo, linha_inicio, arquivo_mae
                 )
             else:
                 nome_arq = _nome_arquivo(rodov_raw, tipo_nc, data_con, data_nc)
             if um_arquivo_por_nc and not consolidar_um_ficheiro:
-                codigo = _cell(ws, r0, COL_CODIGO)
+                codigo = _cell(ws, r0, col_codigo)
                 codigo_safe = sanitizar_nome(str(codigo).strip())[:80] if codigo and str(codigo).strip() else f"NC-{r0}"
                 stem, ext = Path(nome_arq).stem, Path(nome_arq).suffix
                 nome_base = f"{stem} - {codigo_safe}{ext}"
@@ -1096,8 +1629,6 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                     nome_arq = _sanitizar_nome_xlsx(f"{stem} - {codigo_safe}_{n}{ext}")
                     n += 1
                 processadas.add(nome_arq)
-            elif not consolidar_um_ficheiro:
-                nomes_emitidos.add(nome_arq)
 
             destino = encurtar_nome_em_pasta(pasta_destino, nome_arq)
             garantir_pasta(pasta_destino)
@@ -1110,9 +1641,22 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                     processadas.add(nome_arq)
                     destino = encurtar_nome_em_pasta(pasta_destino, nome_arq)
                     cont += 1
-            elif destino.exists() and not sobrescrever:
-                logger.debug("Já existe, pulando: %s", nome_arq)
-                continue
+            elif not consolidar_um_ficheiro and destino.exists() and not sobrescrever:
+                cont = 1
+                while destino.exists() and not sobrescrever:
+                    stem, ext = Path(nome_arq).stem, Path(nome_arq).suffix
+                    nome_arq = _sanitizar_nome_xlsx(f"{stem}_{cont}{ext}")
+                    destino = encurtar_nome_em_pasta(pasta_destino, nome_arq)
+                    cont += 1
+                if cont > 1:
+                    logger.warning(
+                        "Colisão de nome (modo agrupado); a gravar variante numerada: %s (%d linhas no grupo)",
+                        nome_arq,
+                        len(linhas_do_grupo),
+                    )
+
+            if not consolidar_um_ficheiro and not um_arquivo_por_nc:
+                nomes_emitidos.add(nome_arq)
 
             tipo_str = _limpar_str(tipo_nc)
 
@@ -1127,14 +1671,18 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                 },
             )
 
-            if usar_copia_mae:
-                tpl_eaf = fallback_tpl
-                if not tpl_eaf.is_file():
-                    raise FileNotFoundError(
-                        f"Template EAF não encontrado: {tpl_eaf}. "
-                        "Coloque Template_EAF.xlsx em nc_artesp/assets/templates (ou defina ARTESP_TEMPLATE_EAF)."
-                    )
-                shutil.copy2(str_caminho_io_windows(tpl_eaf), str_caminho_io_windows(destino))
+            template_src = _caminho_template_geral_final()
+            if template_src is None and usar_copia_mae:
+                template_src = fallback_tpl
+            if template_src is None or not template_src.is_file():
+                raise FileNotFoundError(
+                    "Template único Kartado não encontrado: "
+                    "'Template - Geral - 4 e 5 - Final.xlsx'. "
+                    "Coloque o arquivo em nc_artesp/assets/templates/."
+                )
+
+            if usar_copia_mae and (template_src == fallback_tpl or (fallback_tpl.is_file() and template_src.resolve() == fallback_tpl.resolve())):
+                shutil.copy2(str_caminho_io_windows(template_src), str_caminho_io_windows(destino))
                 with abrir_workbook(arquivo_mae, read_only=False, data_only=False) as wb_mae_linhas:
                     ws_mae_linhas = wb_mae_linhas.active
                     ultima_col = max(int(ws_mae_linhas.max_column or 0), 1)
@@ -1154,16 +1702,8 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                 arquivos_gerados.append(destino)
                 logger.info("  ✓ Salvo (Template EAF + linhas da mãe): %s", destino.name)
                 continue
-    
-            tipo_para_tpl = (_limpar_str(tipo_nc) if um_arquivo_por_nc else tipo_str) or "NC"
-            template_src = _resolver_template_kartado_para_atividade(tipo_para_tpl, None)
-            if template_src is None or not template_src.is_file():
-                raise FileNotFoundError(
-                    f"Template Kartado não encontrado para atividade '{tipo_para_tpl}'. "
-                    "Verifique o .xlsx em nc_artesp/assets/templates/ ou fotos_campo/assets/templates/, "
-                    "ou o mapeamento M01_MAPA_ATIVIDADE_TEMPLATE_KARTADO."
-                )
-            logger.info(f"  Template base: {template_src.name} (atividade={tipo_para_tpl!r})")
+
+            logger.info(f"  Template base (único): {template_src.name}")
     
             # 1) Cópia binária do template Kartado ou fallback EAF (cabeçalho / formatação)
             shutil.copy2(str_caminho_io_windows(template_src), str_caminho_io_windows(destino))
@@ -1171,6 +1711,7 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
             with abrir_workbook(destino) as wb_copia:
                 ws_copia = wb_copia.active
                 cols_tpl = _colunas_kartado_por_header(ws_copia)
+                col_envio_tpl, col_reparo_tpl = _detectar_colunas_data_no_template(ws_copia)
     
                 try:
                     mesmo_que_template_eaf = template_src.resolve() == fallback_tpl.resolve()
@@ -1187,9 +1728,8 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                 # 3) Preencher linhas por cabeçalho Kartado + manter colunas técnicas para M02/M03
                 for seq, row_origem in enumerate(linhas_do_grupo, start=1):
                     row_dest = primeira_linha_dados + seq - 1
-                    val_envio = ws.cell(row=row_origem, column=COL_DATA_CON).value
+                    val_envio = ws.cell(row=row_origem, column=col_data_con).value
                     val_reparo = ws.cell(row=row_origem, column=col_data_reparo).value
-                    col_envio_tpl, col_reparo_tpl = _detectar_colunas_data_no_template(ws_copia)
                     if col_envio_tpl is not None:
                         ws_copia.cell(row=row_dest, column=col_envio_tpl).value = _kartado_data_sem_hora_celula(
                             val_envio
@@ -1211,38 +1751,37 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                                 val_reparo
                             )
     
-                    codigo = _limpar_str(ws.cell(row=row_origem, column=COL_CODIGO).value)
+                    codigo = _limpar_str(ws.cell(row=row_origem, column=col_codigo).value)
                     tipo_txt = _limpar_str(_valor_tipo_nc(ws, row_origem, col_tipo_nc))
-                    classifica = SERVICO_NC.get(tipo_txt, ("Conservação Rotina", "Conservação Rotina", ""))[1]
-                    rodovia_raw = _limpar_str(ws.cell(row=row_origem, column=COL_RODOVIA).value).replace(" ", "")
-                    rodovia_fmt = {
-                        "SP075": "SP-075",
-                        "SP127": "SP-127",
-                        "SP280": "SP-280",
-                        "SP300": "SP-300",
-                        "SPI102/300": "SPI-102/300",
-                    }.get(rodovia_raw, rodovia_raw or "FORA")
-                    km_i_int = ws.cell(row=row_origem, column=COL_KM_I_FULL).value
-                    km_f_int = ws.cell(row=row_origem, column=COL_KM_F_FULL).value
-                    km_i_m = ws.cell(row=row_origem, column=COL_KM_I_M).value
-                    km_f_m = ws.cell(row=row_origem, column=COL_KM_F_M).value
+                    classifica = ART03_ATIVIDADE_PARA_SERVICO_KARTADO.get(tipo_txt) or _ART03_CLASSE_POR_ATIVIDADE_NORM.get(
+                        _norm_key_template_lookup(tipo_txt)
+                    )
+                    if not classifica:
+                        classifica = SERVICO_NC.get(tipo_txt, ("Conservação Rotina", "Conservação Rotina", ""))[1]
+                    rodovia_raw = _limpar_str(ws.cell(row=row_origem, column=col_rodovia).value).replace(" ", "")
+                    rodovia_fmt = _rodovia_fmt_eaf_para_kartado(rodovia_raw)
+                    km_i_int = ws.cell(row=row_origem, column=col_km_i_full).value
+                    km_f_int = ws.cell(row=row_origem, column=col_km_f_full).value
+                    km_i_m = ws.cell(row=row_origem, column=col_km_i_m).value
+                    km_f_m = ws.cell(row=row_origem, column=col_km_f_m).value
                     # Padrão VBA: coluna "km" no Kartado recebe km+metros (ex.: '68+100').
                     km_i_formato = km_formato_arquivo(km_i_int, km_i_m)
                     km_f_formato = km_formato_arquivo(km_f_int, km_f_m)
-                    sentido = ws.cell(row=row_origem, column=COL_SENTIDO).value
+                    sentido = ws.cell(row=row_origem, column=col_sentido).value
+                    km_f_formato, sentido = _normalizar_km_final_e_sentido(km_f_formato, sentido)
     
                     dt_envio = parse_data(val_envio)
                     dt_reparo = parse_data(val_reparo)
                     if dt_reparo is None and dt_envio is not None:
                         dt_reparo = dt_envio + timedelta(days=PRAZO_DIAS_APOS_ENVIO)
                     # Texto só do EAF; uma linha na célula (sem \\n — evita confusão no Excel).
-                    relatorio_ref = _limpar_str(ws.cell(row=row_origem, column=COL_DATA_CON).value)
+                    relatorio_ref = _limpar_str(ws.cell(row=row_origem, column=col_data_con).value)
                     descricao_kartado = _strip_descricao_kartado_excel(
                         f"{tipo_txt} --> Relatório EAF Conservação Rotina nº: {relatorio_ref} "
                         f"--> Código NC: {codigo}"
                     )
     
-                    foto_seq = _foto_ref_numerica(ws.cell(row=row_origem, column=COL_SEQ_FOTO).value)
+                    foto_seq = _foto_ref_numerica(ws.cell(row=row_origem, column=col_seq_foto).value)
                     foto_ref_nc = codigo or foto_seq
                     foto_ref_pdf = foto_seq or codigo
                     foto_1 = f"nc ({foto_ref_nc}).jpg" if foto_ref_nc else ""
@@ -1250,11 +1789,20 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                     foto_2 = f"PDF ({foto_ref_pdf}).jpg" if foto_ref_pdf else ""
     
                     _set_if_header(ws_copia, row_dest, cols_tpl, "Origem", "Artesp")
-                    _set_if_header(ws_copia, row_dest, cols_tpl, "Classe", classifica or tipo_txt)
+                    _set_if_header(
+                        ws_copia,
+                        row_dest,
+                        cols_tpl,
+                        "Classe",
+                        _strip_descricao_kartado_excel(str(classifica or tipo_txt or "")),
+                    )
                     _set_if_header(ws_copia, row_dest, cols_tpl, "Rodovia", rodovia_fmt)
                     _set_if_header(ws_copia, row_dest, cols_tpl, "km", km_i_formato)
                     _set_if_header(ws_copia, row_dest, cols_tpl, "km final", km_f_formato)
                     _set_if_header(ws_copia, row_dest, cols_tpl, "Sentido", sentido)
+                    lat, lon = _buscar_lat_lon_malha(rodovia_fmt, sentido, km_i_formato, usar_core=malha_core_ok)
+                    _set_if_header(ws_copia, row_dest, cols_tpl, "Latitude", lat)
+                    _set_if_header(ws_copia, row_dest, cols_tpl, "Longitude", lon)
                     _set_if_header(ws_copia, row_dest, cols_tpl, "Status", "Solicitado")
                     _set_if_header(ws_copia, row_dest, cols_tpl, "Equipe", "Sala Técnica - Soluciona")
                     _set_if_header(ws_copia, row_dest, cols_tpl, "Menu", "Não Conformidades")
@@ -1293,18 +1841,18 @@ def executar(arquivo_mae: Path, pasta_destino: Path | None = None,
                         ws_copia.cell(row=row_dest, column=COL_DATA_CON).value = (
                             dt_envio.strftime("%d/%m/%Y") if dt_envio else val_envio
                         )
-                        ws_copia.cell(row=row_dest, column=COL_RODOVIA).value = ws.cell(row=row_origem, column=COL_RODOVIA).value
+                        ws_copia.cell(row=row_dest, column=COL_RODOVIA).value = ws.cell(row=row_origem, column=col_rodovia).value
                         ws_copia.cell(row=row_dest, column=COL_KM_I_FULL).value = km_i_int
                         ws_copia.cell(row=row_dest, column=COL_KM_F_FULL).value = km_f_int
-                        ws_copia.cell(row=row_dest, column=COL_KM_I_M).value = _cell(ws, row_origem, COL_KM_I_M)
-                        ws_copia.cell(row=row_dest, column=COL_KM_F_M).value = _cell(ws, row_origem, COL_KM_F_M)
+                        ws_copia.cell(row=row_dest, column=COL_KM_I_M).value = _cell(ws, row_origem, col_km_i_m)
+                        ws_copia.cell(row=row_dest, column=COL_KM_F_M).value = _cell(ws, row_origem, col_km_f_m)
                         _padronizar_colunas_km(ws_copia, row_dest)
                         ws_copia.cell(row=row_dest, column=COL_SENTIDO).value = sentido
                         ws_copia.cell(row=row_dest, column=COL_TIPO_NC).value = tipo_txt
                         ws_copia.cell(row=row_dest, column=COL_DATA_NC).value = (
                             dt_reparo.strftime("%d/%m/%Y") if dt_reparo else val_reparo
                         )
-                        ws_copia.cell(row=row_dest, column=COL_RESPONSAVEL).value = ws.cell(row=row_origem, column=COL_RESPONSAVEL).value
+                        ws_copia.cell(row=row_dest, column=COL_RESPONSAVEL).value = ws.cell(row=row_origem, column=col_responsavel).value
                         ws_copia.cell(row=row_dest, column=COL_SEQ_FOTO).value = foto_ref_pdf
     
                 destino_xls = destino.with_suffix(".xls")

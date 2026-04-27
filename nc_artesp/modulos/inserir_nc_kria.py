@@ -8,6 +8,7 @@ Conservação: col W = «arquivo.jpg;pdf (ref).jpg» como na macro Art_03.
 """
 
 import logging
+import unicodedata
 from pathlib import Path
 from datetime import datetime, timedelta
 import re
@@ -16,6 +17,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
 from config import (
+    ART03_ATIVIDADE_PARA_SERVICO_KARTADO,
     M03_ENTRADA, M03_IMAGENS, M03_MODELO_KCOR, M03_SAIDA,
     M03_LINHA_INICIO, M03_BLOCO,
     M07_ENTRADA, M07_IMAGENS, M07_MODELO_KCOR, M07_SAIDA,
@@ -53,6 +55,20 @@ from utils.captura_celulas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _norm_key_template_lookup(s: str) -> str:
+    t = unicodedata.normalize("NFD", str(s or ""))
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    t = t.lower()
+    t = re.sub(r"[^0-9a-zA-Z]+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+_ART03_CLASSE_POR_ATIVIDADE_NORM: dict[str, str] = {
+    _norm_key_template_lookup(k): v for k, v in ART03_ATIVIDADE_PARA_SERVICO_KARTADO.items()
+}
 
 
 def _metros_de_km_t(km_t: str) -> str:
@@ -763,13 +779,18 @@ def _processar_arquivo(arq_path: Path,
 
         if eh_conservacao:
             descricao = texto
-            nc_info   = SERVICO_NC.get(descricao, None)
+            desc_s = (descricao or "").strip()
+            classifica_kartado = ART03_ATIVIDADE_PARA_SERVICO_KARTADO.get(desc_s) or _ART03_CLASSE_POR_ATIVIDADE_NORM.get(
+                _norm_key_template_lookup(desc_s)
+            )
+            nc_info = SERVICO_NC.get(desc_s) or SERVICO_NC.get(descricao)
             if nc_info:
-                serv_nc, classifica, executor = nc_info
+                serv_nc, classifica_srv, executor = nc_info
+                classifica = classifica_kartado or classifica_srv
             else:
-                serv_nc    = ""
-                classifica = "Conservação Rotina"
-                executor   = "Soluciona - Conserva"
+                serv_nc = ""
+                classifica = classifica_kartado or "Conservação Rotina"
+                executor = "Soluciona - Conserva"
         else:
             serv_nc    = "Reclassificar"
             classifica = "Conservação Rotina"
@@ -938,7 +959,7 @@ def _processar_arquivo(arq_path: Path,
         ws_out.cell(row=r, column=_K_B).value = "Artesp"
         ws_out.cell(row=r, column=_K_C).value = "2"
         ws_out.cell(row=r, column=_K_D).value = reg["classifica"]
-        ws_out.cell(row=r, column=_K_E).value = reg["serv_nc"]
+        ws_out.cell(row=r, column=_K_E).value = (reg.get("texto") or "").strip() or reg["serv_nc"]
         ws_out.cell(row=r, column=_K_F).value = reg["rod_tag"]
         ws_out.cell(row=r, column=_K_G).value = reg["kminicial_t"]
         ws_out.cell(row=r, column=_K_H).value = reg.get("kmfinal_t") or reg.get("kminicial_t") or ""

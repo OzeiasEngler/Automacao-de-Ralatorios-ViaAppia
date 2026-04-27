@@ -50,6 +50,9 @@ desktop.ini
 nc_artemig/Arquivos/
 render_api/web/*.code-workspace
 
+# Pastas temporárias de comparação / debug local
+_tmp_*/
+
 # Dados, Logs e Saídas
 *.log
 temp/

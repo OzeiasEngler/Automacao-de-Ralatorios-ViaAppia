@@ -182,7 +182,7 @@ def _criar_via_ical(arquivo_acumulado: Path,
     garantir_pasta(pasta_saida)
     from utils.helpers import timestamp_agora
 
-    destino = pasta_saida / f"{timestamp_agora()} - eventos_kria.ics"
+    destino = pasta_saida / f"{timestamp_agora()} - eventos_kartado.ics"
     escrever_bytes_caminho(destino, ics_bytes)
     logger.info("  .ics gerado: %s (%s evento(s))", destino.name, adicionados)
     return destino

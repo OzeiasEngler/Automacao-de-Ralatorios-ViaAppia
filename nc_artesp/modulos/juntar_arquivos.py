@@ -6,7 +6,9 @@ Ao gravar, normaliza texto nas colunas T e U (sem quebra de linha na célula).
 """
 
 import logging
+import re
 import shutil
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import Border, Side
 
 from config import (
+    ART03_ATIVIDADE_PARA_SERVICO_KARTADO,
     M01_LINHA_INICIO,
     KCOR_KRIA_DIRETORIO_TEXTO_CONSERVACAO,
     M04_ACUMULADO,
@@ -47,6 +50,20 @@ _SIDE_THIN = Side(style="thin", color="000000")
 _BORDA_PADRAO = Border(
     left=_SIDE_THIN, right=_SIDE_THIN, top=_SIDE_THIN, bottom=_SIDE_THIN
 )
+
+
+def _norm_key_template_lookup(s: str) -> str:
+    t = unicodedata.normalize("NFD", str(s or ""))
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    t = t.lower()
+    t = re.sub(r"[^0-9a-zA-Z]+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+_ART03_CLASSE_POR_ATIVIDADE_NORM: dict[str, str] = {
+    _norm_key_template_lookup(k): v for k, v in ART03_ATIVIDADE_PARA_SERVICO_KARTADO.items()
+}
 
 
 def _texto_sem_quebra_linha(val):
@@ -486,12 +503,16 @@ def _eaf_linha_para_registro_kcor(
 
     descricao = sn._valor_tipo_nc(ws, row, col_tipo_nc)
     desc_s = _str_eaf(descricao)
+    classifica_kartado = ART03_ATIVIDADE_PARA_SERVICO_KARTADO.get(desc_s) or _ART03_CLASSE_POR_ATIVIDADE_NORM.get(
+        _norm_key_template_lookup(desc_s)
+    )
     nc_info = SERVICO_NC.get(desc_s, None)
     if nc_info:
-        serv_nc, classifica, executor = nc_info
+        serv_nc, classifica_srv, executor = nc_info
+        classifica = classifica_kartado or classifica_srv
     else:
         serv_nc = ""
-        classifica = "Conservação Rotina"
+        classifica = classifica_kartado or "Conservação Rotina"
         executor = "Soluciona - Conserva"
 
     rod_raw = _str_eaf(sn._cell(ws, row, sn.COL_RODOVIA))
@@ -578,7 +599,7 @@ def _eaf_linha_para_registro_kcor(
     linha[1] = "Artesp"
     linha[2] = "2"
     linha[3] = classifica
-    linha[4] = serv_nc
+    linha[4] = desc_s or serv_nc
     linha[5] = rod_tag
     linha[6] = kmi
     linha[7] = kmf

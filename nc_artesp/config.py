@@ -92,6 +92,10 @@ PRAZO_DIAS_APOS_ENVIO   = _env_int("ARTESP_PRAZO_DIAS_APOS_ENVIO", 10)
 # True (ARTESP_M01_COPIA_PLANILHA_MAE=1): igual macro Art_011 — cópia da planilha-mãe EAF com linhas apagadas.
 # API (FastAPI): por omissão força cópia mãe via ``m01_kartado=false`` nos endpoints; use m01_kartado=true para Kartado.
 M01_COPIA_PLANILHA_MAE = _env_bool("ARTESP_M01_COPIA_PLANILHA_MAE", False)
+# Lat/long Kartado via assets/Malha (ficheiros grandes): desligar com ARTESP_M01_MALHA_LAT_LON=0 para não bloquear o M01.
+M01_MALHA_LAT_LON = _env_bool("ARTESP_M01_MALHA_LAT_LON", True)
+# Por defeito só o Excel da malha do ARTESP_LOTE; 1 = ler todos os .xlsx da pasta (mais lento).
+M01_MALHA_TODOS_OS_XLSX = _env_bool("ARTESP_MALHA_TODOS_OS_XLSX", False)
 
 # Texto exato coluna Q da planilha-mãe EAF → token no nome do ficheiro exportado (Art_011).
 # Manter em sincronia com os ElseIf serv = … em:
@@ -151,9 +155,10 @@ M01_DICAS_PALAVRA_TEMPLATE_KARTADO: list[tuple[str, str]] = [
 
 # M01 modo Kartado (templates por atividade): texto da coluna Q da EAF (tipo de NC / atividade)
 # → nome do ficheiro .xlsx do Kartado (ex. «Pav. - Panela_Buraco.xlsx»), alinhado à macro Art_03_KTD / planilhas padrão.
-# Isto NÃO é a coluna «Classe» do Excel layout Kartado: essa coluna (cabeçalho linha 1) serve no M02/ZIP
-# para o stem do .zip, enquanto a chave aqui é sempre o texto da coluna Q da mãe EAF.
+# O valor (antes de «.xlsx») é também o texto da coluna «Classe» no export M01 Kartado quando há match;
+# sem match, M01 usa SERVICO_NC. Chave = texto da coluna Q da mãe EAF.
 ART03_ATIVIDADE_PARA_SERVICO_KARTADO: dict[str, str] = {
+    # Texto coluna Q (EAF) / ARTESP → coluna «Classe» no Kartado consolidado (e template .xlsx homónimo).
     "Reparo e reposição de alambrado": "CTA - Alambrado - Danificado",
     "Reparo e reposição de cerca": "CTA - Cerca - Danificada",
     "Elemento antiofuscante(substituição ou reposição)": "CTA - Tela Antiofuscante - Danificada",
@@ -182,12 +187,19 @@ ART03_ATIVIDADE_PARA_SERVICO_KARTADO: dict[str, str] = {
     "Pichações e vandalismo": "FD - Pichação",
     "Pichação ao longo da rodovia": "FD - Pichação",
     "Hidráulica/ Esgoto/ Drenagem": "FD - Prédio e Pátio",
+    "Hidráulica_ Esgoto_ Drenagem": "FD - Prédio e Pátio",
+    "Pintura _ Revestimento": "FD - Prédio e Pátio",
+    "Pintura  Revestimento": "FD - Prédio e Pátio",
+    "Conservação preventiva e corretiva": "FD - Prédio e Pátio",
+    "Substituição, reparo ou limpeza": "FD - Prédio e Pátio",
+    "Caixilhos  Esquadrias": "FD - Prédio e Pátio",
     "Pavimentação/ Passeio/ Alambrado": "FD - Prédio e Pátio",
     "Limpeza ou pintura de superfície exposta ao trafego": "FD - Utilidades Públicas - Limpeza_Reparo",
     "Substituição de aparelho de apoio": "OAE - Estrutura - Danos",
     "Guarda-corpo danificado": "OAE - Guarda corpos e Balaústres - Danificado",
     "Substituição de junta de dilatação": "OAE - Junta de Dilatação",
     "Juntas e trincas: Limpeza e Resselagem": "OAE - Limpeza",
+    "Limpeza ou pintura de superficie exposta ao tráfego": "OAE - Limpeza",
     "Correção de degrau entre pista e acostam. não pavimentado": "Pav. - Degrau",
     "Correção de degrau entre a pista e acostamento": "Pav. - Degrau",
     "Depressão ou recalque de pequena extensão": "Pav. - Depressão ou Recalque",

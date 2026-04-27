@@ -13,8 +13,8 @@ Modos de uso:
 Ordem típica (etapas isoladas): separar → gerar-modelo-foto → inserir-conservacao → juntar →
 exportar-calendario; **M05 inserir-número** só se precisar preencher coluna Y manualmente.
 **POST /nc/separar** (por omissão `entrega_completa=true`), **POST /nc/completo** e **POST /nc/stage2**
-encadeiam M01→e-mail→M02→M04→M06 **sem** M03/M05; o ZIP final agrupa `respostas_kria_fotos/` (Kria, Respostas, `Pacotes_KTD/`),
-`Kartado/` (só pacotes do Excel **layout Kartado** do M01),
+encadeiam M01→e-mail→M02→M04→M06 **sem** M03/M05; o ZIP final agrupa `respostas_kartado_fotos/` (`Kartado_relatorio_fotos/`, `Respostas_Pendentes/`, `Pacotes_KTD/`),
+`Kartado/` (um ZIP **Kartado NCs Consolidadas** com Excel **layout Kartado** do M01 + imagens),
 `acumulado/`, `calendario/`, `emails/` com caminhos internos limitados para extração no Windows (MAX_PATH).
 Quando houver PDFs no pedido, as imagens são extraídas no servidor; o ZIP interno dessa extração
 é também empacotado em `backup/nc_<job_id>_imagens_extraidas_backup.zip` dentro do ZIP final
@@ -143,7 +143,8 @@ def _pastas_artemig_busca() -> list[Path]:
 # ── Nomes de pastas dos relatórios (alinhados às macros nc_artesp/config.py) ───
 DIR_EXPORTAR = "Exportar"
 DIR_IMAGENS_PDF = "Imagens Provisórias - PDF"
-DIR_KRIA = "Kria"
+DIR_KARTADO_RELATORIO_FOTOS = "Kartado_relatorio_fotos"
+DIR_RESPOSTAS_KARTADO_FOTOS = "respostas_kartado_fotos"
 DIR_RESPOSTAS_PENDENTES = "Respostas Pendentes"
 DIR_IMAGENS_CONSERVACAO = "Imagens Conservação"
 DIR_CONSERVACAO = "Conservação"
@@ -151,8 +152,9 @@ DIR_IMAGENS_MA = "Imagens Meio Ambiente"
 DIR_MA = "Meio Ambiente"
 DIR_ACUMULADO = "Acumulado"
 DIR_KCOR_CONSERVACAO = "Kcor Conservação"
-# Trabalho interno: pacotes ZIP (Kartado M01 vs Kria M02 — pastas distintas na entrega)
+# ZIP único (Excel + fotos) gerado após M02; copiado para entrega `Kartado/`.
 _SUB_PACOTES_KARTADO_M01 = "_pacotes_kartado"
+_NC_KARTADO_ZIP_STEM = "Kartado NCs Consolidadas"
 _SUB_PACOTES_KRIA_KTD = "_pacotes_kria_ktd"
 # Pasta no ZIP final: ZIPs M02 (modelo Kria + fotos), estilo macro KTD — não misturar com Kartado/
 DIR_PACOTES_KRIA_KTD_ENTREGA = "Pacotes_KTD"
@@ -624,7 +626,12 @@ def _nc_workbook_primeira_linha_eh_layout_kartado(xls: Path) -> bool:
                     hdr_keys.add(k)
         finally:
             wb.close()
-        return ("codigo de fiscalizacao" in hdr_keys) or ("codigo fiscalizacao" in hdr_keys)
+        if ("codigo de fiscalizacao" in hdr_keys) or ("codigo fiscalizacao" in hdr_keys):
+            return True
+        for k in hdr_keys:
+            if "codigo" in k and "fiscal" in k:
+                return True
+        return False
     except Exception:
         return False
 
@@ -705,106 +712,163 @@ def _nc_gravar_pacotes_kria_ktd_zip(pacotes: Any, pasta_pacotes: Path) -> None:
                 zf.write(ip, arc)
 
 
-def _nc_gravar_pacotes_kartado_de_m01(pasta_xls: Path, pasta_fotos_pdf: Optional[Path], pasta_pacotes: Path) -> None:
+def _nc_m01_kartado_consolidar_multiplos_excels(
+    mod: Any,
+    arqs_all: list[Path | str],
+    pasta_destino: Path,
+    *,
+    m01_kartado: bool,
+) -> list[Path]:
+    paths = [Path(a) for a in arqs_all if Path(a).exists()]
+    if not m01_kartado or len(paths) <= 1:
+        return paths
+    if not all(_nc_workbook_primeira_linha_eh_layout_kartado(p) for p in paths):
+        return paths
+    try:
+        merged = mod.consolidar_kartados_em_unico_excel(paths, pasta_destino=pasta_destino)
+        if merged and merged.is_file():
+            m_res = merged.resolve()
+            for p in paths:
+                if p.resolve() != m_res:
+                    p.unlink(missing_ok=True)
+            logger.info("M01 Kartado: consolidado em ficheiro único → %s", merged.name)
+            return [merged]
+    except Exception as e:
+        logger.warning("M01 consolidação Kartado falhou (%s); usando ficheiros individuais.", e)
+    return paths
+
+
+def _nc_gravar_pacotes_kartado_de_m01(
+    pasta_xls: Path, pasta_fotos_pdf: Optional[Path] = None
+) -> None:
     """
-    Regra do Kartado no fluxo web:
-    - um ZIP por planilha/evento do M01;
-    - dentro do ZIP: Excel + fotos "soltas" (sem subpasta).
-    Eventos iguais permanecem na mesma planilha (regra do M01 por fingerprint total);
-    prazo diferente gera planilha separada, logo pacote separado.
+    Após M02: funde Excels **layout Kartado** num único .xlsx se houver mais de um;
+    grava ``_pacotes_kartado/{Kartado NCs Consolidadas}.zip`` com esse Excel e as imagens
+    referenciadas (Foto_1 / Foto_2) quando existirem em ``pasta_fotos_pdf``.
     """
     if not pasta_xls.is_dir():
         return
+    out_dir = pasta_xls / _SUB_PACOTES_KARTADO_M01
+    if out_dir.is_dir():
+        shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    kartado_pre: list[Path] = []
+    for x in sorted(pasta_xls.rglob("*.xlsx")):
+        if x.name.startswith("~") or x.name.startswith("_"):
+            continue
+        if _nc_workbook_primeira_linha_eh_layout_kartado(x):
+            kartado_pre.append(x)
+    if not kartado_pre:
+        return
+
+    if len(kartado_pre) > 1:
+        try:
+            mod_sep = _importar_modulo("separar_nc")
+            merged_p = mod_sep.consolidar_kartados_em_unico_excel(
+                kartado_pre, pasta_destino=pasta_xls
+            )
+            if merged_p and merged_p.is_file():
+                m_res = merged_p.resolve()
+                for p in kartado_pre:
+                    if p.resolve() != m_res:
+                        p.unlink(missing_ok=True)
+                logger.info(
+                    "Kartado: %s Excels fundidos em único ficheiro → %s",
+                    len(kartado_pre),
+                    merged_p.name,
+                )
+            else:
+                logger.warning(
+                    "Kartado: fusão de %d Excels não gerou ficheiro único; mantêm-se os .xlsx individuais.",
+                    len(kartado_pre),
+                )
+        except Exception as ex:
+            logger.warning("Kartado: fusão multi-xlsx falhou (%s)", ex)
+
+    xs = [
+        p
+        for p in sorted(pasta_xls.rglob("*.xlsx"))
+        if p.is_file()
+        and not p.name.startswith("~")
+        and not p.name.startswith("_")
+        and _nc_workbook_primeira_linha_eh_layout_kartado(p)
+    ]
+    if not xs:
+        return
+    prefer = [p for p in xs if "Kartado Consolidado" in p.stem]
+    xls_k = prefer[0] if prefer else xs[0]
+    if len(xs) > 1 and not prefer:
+        logger.warning(
+            "Kartado ZIP: %d Excels layout Kartado; a empacotar %s.",
+            len(xs),
+            xls_k.name,
+        )
+
     fotos_idx: dict[str, Path] = {}
     if pasta_fotos_pdf and pasta_fotos_pdf.is_dir():
-        for img in pasta_fotos_pdf.rglob("*.jpg"):
+        for img in pasta_fotos_pdf.rglob("*"):
+            if not img.is_file():
+                continue
+            if img.suffix.lower() not in (".jpg", ".jpeg"):
+                continue
             k = img.name.strip().lower()
             if k and k not in fotos_idx:
                 fotos_idx[k] = img
 
-    def _norm_header(s: str) -> str:
+    def _norm_h(s: str) -> str:
         t = unicodedata.normalize("NFD", str(s or ""))
         t = "".join(c for c in t if unicodedata.category(c) != "Mn")
         return re.sub(r"\s+", " ", t).strip().lower()
 
+    fotos_evento: list[Path] = []
     try:
-        from openpyxl import load_workbook  # import local para não pesar boot da API
+        from openpyxl import load_workbook as _lw
     except Exception:
-        load_workbook = None  # type: ignore
-
-    pasta_pacotes.mkdir(parents=True, exist_ok=True)
-    for xls in sorted(pasta_xls.rglob("*.xlsx")):
-        if xls.name.startswith("~") or xls.name.startswith("_"):
-            continue
-        # Segurança: pacote Kartado só pode usar planilhas no layout Kartado (linha 1 com Código de Fiscalização).
-        if not _nc_workbook_primeira_linha_eh_layout_kartado(xls):
-            continue
-        # Nome do ZIP como na macro Kartado (Art_03_KTD): ArquivoZip = … & serv(1) & ".zip"
-        # Preferir coluna «Classe» no Excel layout Kartado (linha 1); fallback pelo stem Art_011.
-        fotos_do_evento: list[Path] = []
-        classe_zip_nome: Optional[str] = None
-        if load_workbook is not None:
-            try:
-                wb = load_workbook(str(xls), read_only=False, data_only=True)
-                ws = wb.active
-                max_c = int(ws.max_column or 0)
-                max_r = int(ws.max_row or 0)
-                hdr: dict[str, int] = {}
-                for c in range(1, max_c + 1):
-                    v = ws.cell(row=1, column=c).value
-                    if v is None:
-                        continue
-                    k = _norm_header(v)
-                    if k and k not in hdr:
-                        hdr[k] = c
-                cf1 = hdr.get("foto_1")
-                cf2 = hdr.get("foto_2")
-                cclasse = hdr.get("classe")
-                if cclasse and max_r >= 2:
-                    for r in range(2, max_r + 1):
-                        val = ws.cell(row=r, column=cclasse).value
-                        if val is None:
+        _lw = None  # type: ignore[assignment, misc]
+    if _lw is not None:
+        try:
+            wb = _lw(str(xls_k), read_only=False, data_only=True)
+            ws = wb.active
+            max_c = int(ws.max_column or 0)
+            max_r = int(ws.max_row or 0)
+            hdr: dict[str, int] = {}
+            for c in range(1, max_c + 1):
+                v = ws.cell(row=1, column=c).value
+                if v is None:
+                    continue
+                k = _norm_h(str(v))
+                if k and k not in hdr:
+                    hdr[k] = c
+            cf1 = hdr.get("foto_1")
+            cf2 = hdr.get("foto_2")
+            if cf1 or cf2:
+                for r in range(2, max_r + 1):
+                    for c in (cf1, cf2):
+                        if not c:
                             continue
-                        s = str(val).strip()
-                        if s:
-                            classe_zip_nome = s
-                            break
-                if cf1 or cf2:
-                    for r in range(2, max_r + 1):
-                        for c in (cf1, cf2):
-                            if not c:
-                                continue
-                            v = ws.cell(row=r, column=c).value
-                            nm = str(v or "").strip()
-                            if not nm:
-                                continue
-                            p = fotos_idx.get(nm.lower())
-                            if p and p.is_file():
-                                fotos_do_evento.append(p)
-                wb.close()
-            except Exception as exc:
-                logger.warning("Kartado ZIP: leitura de %s falhou (%s)", xls.name, exc)
+                        v = ws.cell(row=r, column=c).value
+                        nm = str(v or "").strip()
+                        if not nm:
+                            continue
+                        pth = fotos_idx.get(nm.lower())
+                        if pth and pth.is_file():
+                            fotos_evento.append(pth)
+            wb.close()
+        except Exception as exc:
+            logger.warning("Kartado ZIP: leitura de %s falhou (%s)", xls_k.name, exc)
 
-        if classe_zip_nome:
-            zip_stem = sanitizar_nome(classe_zip_nome, max_len=180).strip()
-        else:
-            fb = _nc_zip_stem_fallback_constatacao(xls.stem)
-            zip_stem = sanitizar_nome(fb, max_len=180).strip() if fb else ""
-        if not zip_stem:
-            zip_stem = sanitizar_nome(xls.stem, max_len=180).strip()
-        zip_stem = _nc_truncar_nome_zip(zip_stem.rstrip(". "), 160)
-        zip_path = pasta_pacotes / f"{zip_stem}.zip"
-        dupe = 2
-        while zip_path.exists():
-            zip_path = pasta_pacotes / f"{zip_stem} ({dupe}).zip"
-            dupe += 1
-
-        seen_img: set[str] = set()
-        inner_used: set[str] = set()
+    zip_name = sanitizar_nome(f"{_NC_KARTADO_ZIP_STEM}.zip", max_len=180)
+    if not zip_name.lower().endswith(".zip"):
+        zip_name = f"{_NC_KARTADO_ZIP_STEM}.zip"
+    zip_path = out_dir / zip_name
+    inner_used: set[str] = set()
+    try:
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            arc_x = _nc_arcnome_zip_para_extracao_windows(xls.name, usados=inner_used)
-            zf.write(xls, arc_x)
-            for img in fotos_do_evento:
+            arc_x = _nc_arcnome_zip_para_extracao_windows(xls_k.name, usados=inner_used)
+            zf.write(xls_k, arc_x)
+            seen_img: set[str] = set()
+            for img in fotos_evento:
                 try:
                     kimg = str(img.resolve())
                 except OSError:
@@ -812,16 +876,17 @@ def _nc_gravar_pacotes_kartado_de_m01(pasta_xls: Path, pasta_fotos_pdf: Optional
                 if kimg in seen_img:
                     continue
                 seen_img.add(kimg)
-                arc_i = _nc_arcnome_zip_para_extracao_windows(img.name, usados=inner_used)
+                arc_i = _nc_arcnome_zip_para_extracao_windows(
+                    img.name, usados=inner_used
+                )
                 zf.write(img, arc_i)
         logger.info(
-            "Pacote Kria (KTD) gerado",
-            extra={
-                "excel": xls.name,
-                "qtd_fotos": len(seen_img),
-                "nome_zip": zip_path.name,
-            },
+            "Kartado: ZIP %s (Excel + %d imagem(ns)).",
+            zip_path.name,
+            len(seen_img),
         )
+    except OSError as exc:
+        logger.exception("Kartado: falha ao gravar %s — %s", zip_path.name, exc)
 
 
 def _nc_gerar_acumulado_xlsx(
@@ -851,20 +916,47 @@ def _nc_gerar_acumulado_xlsx(
 
 
 def _nc_copiar_kartado_para_entrega(origem_exportar: Path, destino: Path) -> None:
-    """ZIPs gerados a partir do Excel **layout Kartado** (M01) → ``Kartado/pacotes/``. Não inclui M02/Kria."""
+    """Copia o ZIP Kartado (Excel + imagens) para ``Kartado/``; se não houver ZIP, o Excel .xlsx."""
     if not origem_exportar.is_dir():
         return
     destino.mkdir(parents=True, exist_ok=True)
     sub = origem_exportar / _SUB_PACOTES_KARTADO_M01
+    alvo = sanitizar_nome(f"{_NC_KARTADO_ZIP_STEM}.zip", max_len=180)
+    if not alvo.lower().endswith(".zip"):
+        alvo = f"{_NC_KARTADO_ZIP_STEM}.zip"
     if sub.is_dir():
-        out_p = destino / "pacotes"
-        out_p.mkdir(parents=True, exist_ok=True)
         for z in sub.glob("*.zip"):
-            shutil.copy2(z, out_p / z.name)
+            if z.name == alvo or z.stem == Path(alvo).stem:
+                shutil.copy2(z, destino / z.name)
+                return
+        zips = sorted(sub.glob("*.zip"), key=lambda p: p.name.lower())
+        if zips:
+            z = zips[0]
+            shutil.copy2(z, destino / z.name)
+            return
+    xs = [
+        p
+        for p in sorted(origem_exportar.rglob("*.xlsx"))
+        if p.is_file()
+        and not p.name.startswith("~")
+        and not p.name.startswith("_")
+        and _nc_workbook_primeira_linha_eh_layout_kartado(p)
+    ]
+    if not xs:
+        return
+    prefer = [p for p in xs if "Kartado Consolidado" in p.stem]
+    ficheiro = prefer[0] if prefer else xs[0]
+    if len(xs) > 1 and not prefer:
+        logger.warning(
+            "Kartado entrega: %d ficheiros layout Kartado sem nome «Kartado Consolidado»; a copiar %s.",
+            len(xs),
+            ficheiro.name,
+        )
+    shutil.copy2(ficheiro, destino / ficheiro.name)
 
 
 def _nc_copiar_pacotes_kria_ktd_para_entrega(work: Path, destino_respostas_kria: Path) -> None:
-    """ZIPs M02 (Kria + imagens, estilo KTD) → ``respostas_kria_fotos/Pacotes_KTD/`` — separado de Kartado/."""
+    """ZIPs M02 (modelo abertura + imagens, estilo KTD) → ``respostas_kartado_fotos/Pacotes_KTD/`` — separado de Kartado/."""
     if not work.is_dir():
         return
     sub = work / _SUB_PACOTES_KRIA_KTD
@@ -873,17 +965,18 @@ def _nc_copiar_pacotes_kria_ktd_para_entrega(work: Path, destino_respostas_kria:
     zips = list(sub.glob("*.zip"))
     if not zips:
         return
-    # Regra de entrega: Pacotes_KTD é irmão de Kria/, nunca subpasta de Kria/.
+    # Regra de entrega: Pacotes_KTD é irmão de Kartado_relatorio_fotos/, nunca subpasta desta.
     base_entrega = destino_respostas_kria
-    if destino_respostas_kria.name.strip().lower() == "kria":
+    _n_sub = destino_respostas_kria.name.strip().lower()
+    if _n_sub in ("kria", "kartado_relatorio_fotos", DIR_KARTADO_RELATORIO_FOTOS.lower()):
         base_entrega = destino_respostas_kria.parent
     out_p = base_entrega / DIR_PACOTES_KRIA_KTD_ENTREGA
     out_p.mkdir(parents=True, exist_ok=True)
 
-    # Evita duplicar conteúdo: se já existe planilha em respostas_kria_fotos/Kria
+    # Evita duplicar conteúdo: se já existe planilha em respostas_kartado_fotos/Kartado_relatorio_fotos
     # com o mesmo stem do pacote, não copia o ZIP KTD equivalente.
     stems_kria: set[str] = set()
-    pasta_kria = base_entrega / "Kria"
+    pasta_kria = base_entrega / DIR_KARTADO_RELATORIO_FOTOS
     if pasta_kria.is_dir():
         for x in pasta_kria.rglob("*.xlsx"):
             stems_kria.add(x.stem.strip().lower())
@@ -920,6 +1013,50 @@ def _nc_copiar_xlsx_de_pasta(
 # (Downloads, OneDrive). M01: preservar sufixo « - Prazo - dd-mm-aaaa» via truncar_nome_preservando_*.
 _NC_ZIP_MAX_COMPONENTE = 96
 _NC_ZIP_MAX_ARC_TOTAL = 160
+
+_WIN_ZIP_RESERVED_STEMS = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM0",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT0",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9",
+    }
+)
+
+
+def _nc_zip_stem_seguro_ficheiro(stem: str, fallback_stem: str) -> str:
+    """Evita nome de ZIP vazio, só pontos ou reservado no Windows (CON, PRN, …)."""
+    s = (stem or "").strip().strip(". ")
+    if not s:
+        s = (fallback_stem or "").strip().strip(". ")
+    if not s:
+        s = "Kartado_M01"
+    base = Path(s).stem
+    if base.upper() in _WIN_ZIP_RESERVED_STEMS:
+        base = f"_{base}_kartado"
+    if not base.strip("._- "):
+        base = "Kartado_M01"
+    return base
 
 
 def _nc_truncar_nome_zip(nome: str, max_len: int = _NC_ZIP_MAX_COMPONENTE) -> str:
@@ -1721,7 +1858,7 @@ async def nc_separar(
     ),
     entrega_completa: bool = Form(
         True,
-        description="True (padrão): após M01 executa e-mail, M02, M04 e M06; ZIP com respostas_kria_fotos/ (incl. Pacotes_KTD se M02), Kartado/ só se M01 Kartado, etc. False: só ZIP dos XLS.",
+        description="True (padrão): após M01 executa e-mail, M02, M04 e M06; ZIP com respostas_kartado_fotos/ (incl. Pacotes_KTD se M02), Kartado/ só se M01 Kartado, etc. False: só ZIP dos XLS.",
     ),
     pdfs: Optional[List[UploadFile]] = File(
         None,
@@ -1774,6 +1911,10 @@ async def nc_separar(
 
         if not arqs_all:
             raise HTTPException(500, detail="M01 não gerou arquivos.")
+
+        arqs_all = _nc_m01_kartado_consolidar_multiplos_excels(
+            mod, arqs_all, stage1_dir, m01_kartado=m01_kartado
+        )
 
         zip_path_stage1 = ws.stage1 / "nc_separados.zip"
         _used_s: set[str] = set()
@@ -1984,7 +2125,7 @@ async def nc_gerar_modelo_foto(
             pasta_fotos_nc = pasta_fotos_pdf
 
         # Resolver como absolutos; limpar saídas anteriores para devolver só os arquivos desta requisição
-        pasta_kria = (work / DIR_KRIA).resolve()
+        pasta_kria = (work / DIR_KARTADO_RELATORIO_FOTOS).resolve()
         pasta_resp = (work / DIR_RESPOSTAS_PENDENTES).resolve()
         pasta_kria.mkdir(parents=True, exist_ok=True)
         pasta_resp.mkdir(parents=True, exist_ok=True)
@@ -2379,12 +2520,12 @@ async def _inserir_nc(request, kria_zip, modelo_kcor, fotos_zip, modo, job_id: O
         work = ws.stage2 / "_work"
         work.mkdir(parents=True, exist_ok=True)
 
-        pasta_kria = work / DIR_KRIA
+        pasta_kria = work / DIR_KARTADO_RELATORIO_FOTOS
         pasta_kria.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(_ler(kria_zip))) as zf:
             extrair_zipfile_para_pasta(zf, pasta_kria)
         pasta_entrada = pasta_kria
-        for sub in ("Kria", "kria"):
+        for sub in (DIR_KARTADO_RELATORIO_FOTOS, "Kria", "kria"):
             cand = pasta_kria / sub
             if cand.is_dir() and list(cand.glob("*.xlsx")):
                 pasta_entrada = cand
@@ -2802,6 +2943,10 @@ async def nc_start(
         if not arqs_all:
             raise HTTPException(500, detail="M01 não gerou arquivos.")
 
+        arqs_all = _nc_m01_kartado_consolidar_multiplos_excels(
+            mod, arqs_all, ws.stage1, m01_kartado=m01_kartado
+        )
+
         zip_path = ws.stage1 / "nc_separados.zip"
         _used_s1: set[str] = set()
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -2839,8 +2984,8 @@ def _nc_executar_pipeline_stage2_interno(
     Pipeline único após M01: e-mail (rascunhos) → M02 (Kria + Resposta) →
     M04 (acumulado Kcor-Kria a partir dos EAF em ``input/``) → M06 (`.ics` sem Outlook).
     **M03 (inserir Kria → Kcor)** não faz parte deste pipeline (desativado).
-    **Kartado/** no ZIP final: só pacotes ZIP derivados do Excel **layout Kartado** (M01 com ``m01_kartado=true``).
-    **Pacotes KTD** (M02: modelo Kria + fotos) vão para ``respostas_kria_fotos/Pacotes_KTD/``, não para Kartado/.
+    **Kartado/** no ZIP final: um único Excel **layout Kartado** consolidado (M01 com ``m01_kartado=true``).
+    **Pacotes KTD** (M02: modelo abertura + fotos) vão para ``respostas_kartado_fotos/Pacotes_KTD/``, não para Kartado/.
     Se existirem imagens PDF extraídas, grava backup e embute no ZIP final em `backup/`.
     imagens_pdf_zip_bytes: mesmo formato que o ZIP devolvido por POST /nc/extrair-pdf (opcional).
     imagens_pdf_pasta_preparada: diretório com JPG já extraídos (fluxo com baixa retenção em RAM).
@@ -2946,7 +3091,7 @@ def _nc_executar_pipeline_stage2_interno(
 
     lote_mod = (lote or "").strip() or None
 
-    pasta_kria = (work / DIR_KRIA).resolve()
+    pasta_kria = (work / DIR_KARTADO_RELATORIO_FOTOS).resolve()
     pasta_resp = (work / DIR_RESPOSTAS_PENDENTES).resolve()
     pasta_kria.mkdir(parents=True, exist_ok=True)
     pasta_resp.mkdir(parents=True, exist_ok=True)
@@ -2990,7 +3135,6 @@ def _nc_executar_pipeline_stage2_interno(
     qtd_resp = len(list(pasta_resp.glob("*.xlsx"))) if pasta_resp.is_dir() else 0
     _log_etapa(4, total_etapas, f"Executar M02 (Kria + Resposta) — Kria: {qtd_kria}, Respostas: {qtd_resp}", "FIM")
 
-    pasta_pacotes_kartado = pasta_xls / _SUB_PACOTES_KARTADO_M01
     # Kartado (M01): só com Excel **layout Kartado** (templates por atividade).
     # Pacotes KTD de M02 não entram na entrega final deste fluxo.
     tem_base_m01 = any(
@@ -3001,15 +3145,18 @@ def _nc_executar_pipeline_stage2_interno(
         for f in pasta_xls.rglob("*.xlsx")
     )
     m01_eh_kartado = tem_base_m01 and _nc_exportar_contem_excel_layout_kartado(pasta_xls)
-    _log_etapa(5, total_etapas, "Gerar pacotes Kartado (somente layout Kartado)")
+    _log_etapa(5, total_etapas, "Fundir Kartado (um Excel consolidado)")
     if m01_eh_kartado:
-        _nc_gravar_pacotes_kartado_de_m01(
-            pasta_xls=pasta_xls,
-            pasta_fotos_pdf=pasta_fotos_dir,
-            pasta_pacotes=pasta_pacotes_kartado,
-        )
-    qtd_pac_kart = len(list(pasta_pacotes_kartado.glob("*.zip"))) if pasta_pacotes_kartado.is_dir() else 0
-    _log_etapa(5, total_etapas, f"Gerar pacotes Kartado — total: {qtd_pac_kart}", "FIM")
+        _nc_gravar_pacotes_kartado_de_m01(pasta_xls, pasta_fotos_dir)
+    n_kart_xlsx = sum(
+        1
+        for f in pasta_xls.rglob("*.xlsx")
+        if f.is_file()
+        and not f.name.startswith("~")
+        and not f.name.startswith("_")
+        and _nc_workbook_primeira_linha_eh_layout_kartado(f)
+    )
+    _log_etapa(5, total_etapas, f"Fundir Kartado — .xlsx layout Kartado na pasta Exportar: {n_kart_xlsx}", "FIM")
 
     ws.final.mkdir(parents=True, exist_ok=True)
     entrega = ws.final / "_entrega"
@@ -3018,17 +3165,17 @@ def _nc_executar_pipeline_stage2_interno(
     entrega.mkdir(parents=True)
 
     # Pastas legíveis no ZIP final (caminhos curtos nos ficheiros internos continuam limitados por MAX_PATH).
-    p01 = entrega / "respostas_kria_fotos"
+    p01 = entrega / DIR_RESPOSTAS_KARTADO_FOTOS
     p02 = entrega / "Kartado"
     p04 = entrega / "acumulado"
     p05 = entrega / "calendario"
     p06 = entrega / "emails"
 
     p01.mkdir(parents=True, exist_ok=True)
-    # Não levar XLS do M01 (templates Kartado/Art_011) para respostas_kria_fotos.
-    # Nesta pasta entram apenas os resultados do M02 (Kria + Respostas).
+    # Não levar XLS do M01 (templates Kartado/Art_011) para respostas_kartado_fotos.
+    # Nesta pasta entram apenas os resultados do M02 (planilhas modelo abertura + Respostas).
     if pasta_kria.is_dir() and any(pasta_kria.glob("*.xlsx")):
-        pk = p01 / "Kria"
+        pk = p01 / DIR_KARTADO_RELATORIO_FOTOS
         pk.mkdir(parents=True, exist_ok=True)
         _nc_copiar_xlsx_de_pasta(pasta_kria, pk)
     if pasta_resp.is_dir() and any(pasta_resp.glob("*.xlsx")):
@@ -3111,7 +3258,7 @@ def _nc_executar_pipeline_stage2_interno(
             n_img_backup,
         )
 
-    zip_final_name = f"Kartado_Kria_NC_{ws.job_id}_artesp.zip"
+    zip_final_name = f"Kartado_NC_{ws.job_id}_artesp.zip"
     _log_etapa(7, total_etapas, "Empacotar entrega final (.zip)")
     zip_final_path = ws.final / zip_final_name
     _used_final: set[str] = set()
@@ -3189,7 +3336,7 @@ async def nc_completo(
     Pipeline **start + stage2** num único pedido: M01; imagens dos PDFs no servidor quando enviadas;
     em seguida e-mail → **M02** (Kria + Resposta) → **M04** (acumulado a partir da EAF em input/) → **M06** (`.ics`).
     **M03** inserir Kria não corre neste pipeline; **M05** (coluna Y) continua manual.
-    ZIP final: `respostas_kria_fotos/` (`Kria/`, `Respostas_Pendentes/`, `Pacotes_KTD/` com ZIPs M02),
+    ZIP final: `respostas_kartado_fotos/` (`Kartado_relatorio_fotos/`, `Respostas_Pendentes/`, `Pacotes_KTD/` com ZIPs M02),
     `Kartado/` (apenas se M01 gerou layout Kartado), `acumulado/`, `calendario/`, `emails/`, `backup/`.
     """
     _check_auth(request)
@@ -3221,6 +3368,10 @@ async def nc_completo(
             arqs_all.extend(arqs or [])
         if not arqs_all:
             raise HTTPException(500, detail="M01 não gerou arquivos.")
+
+        arqs_all = _nc_m01_kartado_consolidar_multiplos_excels(
+            mod_sep, arqs_all, ws.stage1, m01_kartado=m01_kartado
+        )
 
         zip_path = ws.stage1 / "nc_separados.zip"
         _used_c: set[str] = set()
@@ -3332,7 +3483,7 @@ async def nc_info():
         "nc_proj_path": str(_NC_PROJ),
         "nc_output_path": str(_nc_output_path()),
         "endpoints": [
-            "POST /nc/completo               → EAF + PDF(s)? → ZIP (respostas_kria_fotos/, Kartado/, acumulado/, calendario/, emails/, backup/)",
+            "POST /nc/completo               → EAF + PDF(s)? → ZIP (respostas_kartado_fotos/, Kartado/, acumulado/, calendario/, emails/, backup/)",
             "POST /nc/start                  → Etapa 1: upload 1 arquivo → input/ + stage1/ (job_id)",
             "POST /nc/stage2                 → job_id + ZIP imagens? → ZIP final (com backup/ se aplicável)",
             "GET  /outputs/nc/{job_id}/{subpath} → Download arquivo do job",
