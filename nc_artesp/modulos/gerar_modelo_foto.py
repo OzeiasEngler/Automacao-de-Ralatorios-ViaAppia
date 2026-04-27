@@ -988,6 +988,19 @@ def _gerar_resposta(
     return destino
 
 
+def _grupos_resposta_por_tipo(ncs: list[dict]) -> list[list[dict]]:
+    grupos: dict[str, list[dict]] = {}
+    ordem: list[str] = []
+    for nc in ncs:
+        tipo = str(nc.get("tipo_nc") or "").strip() or "NC"
+        k = tipo.casefold()
+        if k not in grupos:
+            grupos[k] = []
+            ordem.append(k)
+        grupos[k].append(nc)
+    return [grupos[k] for k in ordem]
+
+
 # FUNÇÃO PRINCIPAL
 
 def executar(
@@ -1091,13 +1104,15 @@ def executar(
                 )
 
             modelo_resp_eff = modelo_resp_bytes if modelo_resp_bytes is not None else modelo_resposta
-            arq_resp = _gerar_resposta(
-                ncs,
-                modelo_resp_eff, pasta_saida_resp,
-                pasta_fotos_pdf,  # ← foto do PDF
-            )
-            if arq_resp:
-                resultados["resposta"].append(arq_resp)
+            for ncs_tipo in _grupos_resposta_por_tipo(ncs):
+                arq_resp = _gerar_resposta(
+                    ncs_tipo,
+                    modelo_resp_eff,
+                    pasta_saida_resp,
+                    pasta_fotos_pdf,  # ← foto do PDF
+                )
+                if arq_resp:
+                    resultados["resposta"].append(arq_resp)
 
         except Exception as e:
             logger.error(f"  ERRO em {arq.name}: {e}", exc_info=True)
@@ -1132,7 +1147,7 @@ def executar_kria_resposta_de_lista(
     (dict com codigo, data_con, data_reparo, tipo_nc, rod_codigo, rod_tag,
     sentido, km_i, km_f, num_foto, prazo_dias). Usado pelo pipeline Meio Ambiente
     (equivalente M2 a partir do PDF, sem planilha EAF).
-    Retorna {"kria": Path | None, "resposta": Path | None}.
+    Retorna {"kria": Path | None, "resposta": list[Path]}.
     """
     modelo_kria = resolver_path_ficheiro_ci(modelo_kria or M02_MODELO_KRIA)
     pasta_saida_kria = pasta_saida_kria or M02_SALVAR_FOTO
@@ -1152,8 +1167,14 @@ def executar_kria_resposta_de_lista(
         relatorio,
         pasta_fotos_pdf_fallback=pasta_fotos_pdf,
     )
-    arq_resp = _gerar_resposta(
-        ncs, modelo_resposta, pasta_saida_resp,
-        pasta_fotos_pdf,
-    )
-    return {"kria": arq_kria, "resposta": arq_resp}
+    respostas: list[Path] = []
+    for ncs_tipo in _grupos_resposta_por_tipo(ncs):
+        arq_resp = _gerar_resposta(
+            ncs_tipo,
+            modelo_resposta,
+            pasta_saida_resp,
+            pasta_fotos_pdf,
+        )
+        if arq_resp:
+            respostas.append(arq_resp)
+    return {"kria": arq_kria, "resposta": respostas}

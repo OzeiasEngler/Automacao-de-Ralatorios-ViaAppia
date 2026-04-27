@@ -368,6 +368,28 @@ def _filtrar_ncs_para_email(ncs: list[dict]) -> list[dict]:
     return out
 
 
+def _norm_data_vencimento_email(valor: str) -> str:
+    dt = parse_data(valor)
+    if dt:
+        return dt.strftime("%d/%m/%Y")
+    return str(valor or "").strip()
+
+
+def _agrupar_ncs_para_email(ncs: list[dict]) -> list[list[dict]]:
+    grupos: dict[tuple[str, str, str], list[dict]] = {}
+    ordem: list[tuple[str, str, str]] = []
+    for nc in ncs:
+        rod = str(nc.get("rodovia") or "").strip().casefold()
+        tipo = str(nc.get("atividade") or "").strip().casefold()
+        venc = _norm_data_vencimento_email(nc.get("data_rep") or "").casefold()
+        k = (rod, tipo, venc)
+        if k not in grupos:
+            grupos[k] = []
+            ordem.append(k)
+        grupos[k].append(nc)
+    return [grupos[k] for k in ordem]
+
+
 def _ler_xls(arq: Path) -> list[dict]:
     """Lê todas as NCs de um XLS/XLSX individual (saída mod 01). .xls usa a mesma conversão que o M02."""
     from utils.excel_io import xls_to_xlsx
@@ -938,7 +960,11 @@ def _criar_via_outlook(pasta_xls: Path,
             logger.warning(f"  Nenhuma NC em {arq.name}")
             continue
 
-        for nc_ref in ncs:
+        grupos = _agrupar_ncs_para_email(ncs)
+        for grupo in grupos:
+            if not grupo:
+                continue
+            nc_ref = grupo[0]
             responsavel = (nc_ref.get("responsavel") or "").strip()
 
             # Encontrar o e-mail selecionado cujo remetente corresponde ao responsável pelo apontamento (col U)
@@ -963,15 +989,16 @@ def _criar_via_outlook(pasta_xls: Path,
 
             corpo_html = _html_saudacao()
             img_seq_outlook = 0
-            pdf_path = _path_pdf_apontamento_para_corpo_email(nc_ref, pasta_fotos_pdf)
-            if not pdf_path:
-                logger.warning(
-                    "  Imagem PDF de apontamento não encontrada para NC cod=%s foto=%s",
-                    nc_ref.get("cod"),
-                    nc_ref.get("foto"),
-                )
-                corpo_html += _bloco_html_macro_sem_pdf(nc_ref)
-            else:
+            for item_nc in grupo:
+                pdf_path = _path_pdf_apontamento_para_corpo_email(item_nc, pasta_fotos_pdf)
+                if not pdf_path:
+                    logger.warning(
+                        "  Imagem PDF de apontamento não encontrada para NC cod=%s foto=%s",
+                        item_nc.get("cod"),
+                        item_nc.get("foto"),
+                    )
+                    corpo_html += _bloco_html_macro_sem_pdf(item_nc)
+                    continue
                 img_seq_outlook += 1
                 cid_u = _cid_imagem_inline_email(img_seq_outlook)
                 try:
@@ -979,9 +1006,9 @@ def _criar_via_outlook(pasta_xls: Path,
                     attach.PropertyAccessor.SetProperty(PR_ATTACH_CONTENT_ID, cid_u)
                 except Exception as ex_att:
                     logger.warning("  Anexo Outlook omitido %s: %s", pdf_path, ex_att)
-                    corpo_html += _bloco_html_macro_sem_pdf(nc_ref)
+                    corpo_html += _bloco_html_macro_sem_pdf(item_nc)
                 else:
-                    corpo_html += _bloco_html_macro_so_pdf(nc_ref, [(pdf_path, cid_u)])
+                    corpo_html += _bloco_html_macro_so_pdf(item_nc, [(pdf_path, cid_u)])
 
             olFormatHTML = 2
             # Imagens cid: só aparecem com corpo HTML; modo texto ignora anexos inline.
@@ -1043,7 +1070,7 @@ def _criar_eml(pasta_xls: Path,
                callback_progresso=None,
                pasta_fotos_nc: Path | None = None) -> list[Path]:
     """
-    Gera ficheiros .eml por NC (individual). Mesmo padrão clássico de tutoriais smtplib: ``MIMEMultipart('related')``,
+    Gera ficheiros .eml por agrupamento (vencimento + tipo + rodovia). Mesmo padrão clássico de tutoriais smtplib: ``MIMEMultipart('related')``,
     primeiro ``MIMEText(..., 'html')``, depois imagens com ``MIMEImage`` (ou fallback MIMEBase),
     ``cid:img0001`` ↔ ``Content-ID: <img0001>``, ``as_bytes`` com ``compat32`` em primeiro lugar.
 
@@ -1084,7 +1111,11 @@ def _criar_eml(pasta_xls: Path,
             if not ncs:
                 logger.warning("  Planilha sem NC válida para e-mail: %s", arq.name)
                 continue
-            for nc_i, nc_ref in enumerate(ncs):
+            grupos = _agrupar_ncs_para_email(ncs)
+            for g_i, grupo in enumerate(grupos):
+                if not grupo:
+                    continue
+                nc_ref = grupo[0]
                 assunto = _assunto_enriquecido("RE: Apontamento NC Artesp", nc_ref)
 
                 msg = mm.MIMEMultipart("related")
@@ -1099,18 +1130,21 @@ def _criar_eml(pasta_xls: Path,
 
                 corpo_html = _html_saudacao()
                 partes_img: list[tuple[Path, str]] = []
-                pdf_path = _path_pdf_apontamento_para_corpo_email(nc_ref, pasta_fotos_pdf)
-                if not pdf_path:
-                    logger.warning(
-                        "  Imagem PDF de apontamento não encontrada para NC cod=%s foto=%s",
-                        nc_ref.get("cod"),
-                        nc_ref.get("foto"),
-                    )
-                    corpo_html += _bloco_html_macro_sem_pdf(nc_ref)
-                else:
-                    cid_u = _cid_imagem_inline_email(1)
+                img_seq = 0
+                for item_nc in grupo:
+                    pdf_path = _path_pdf_apontamento_para_corpo_email(item_nc, pasta_fotos_pdf)
+                    if not pdf_path:
+                        logger.warning(
+                            "  Imagem PDF de apontamento não encontrada para NC cod=%s foto=%s",
+                            item_nc.get("cod"),
+                            item_nc.get("foto"),
+                        )
+                        corpo_html += _bloco_html_macro_sem_pdf(item_nc)
+                        continue
+                    img_seq += 1
+                    cid_u = _cid_imagem_inline_email(img_seq)
                     partes_img.append((pdf_path, cid_u))
-                    corpo_html += _bloco_html_macro_so_pdf(nc_ref, [(pdf_path, cid_u)])
+                    corpo_html += _bloco_html_macro_so_pdf(item_nc, [(pdf_path, cid_u)])
 
                 if partes_img:
                     msg["X-MS-Has-Attach"] = "yes"
@@ -1135,11 +1169,16 @@ def _criar_eml(pasta_xls: Path,
                     msg.attach(_parte_mime_imagem_inline(raw, sub, cid, nome_hdr))
 
                 rodovia_segura = sanitizar_nome(str(nc_ref.get("rodovia") or "sem-rodovia"), max_len=30) or "sem-rodovia"
-                cod_seguro = sanitizar_nome(str(nc_ref.get("cod") or "sem-cod"), max_len=30) or "sem-cod"
-                nome_eml = f"{timestamp_agora()} - {rodovia_segura} - {cod_seguro}.eml"
+                tipo_seguro = sanitizar_nome(str(nc_ref.get("atividade") or "sem-tipo"), max_len=45) or "sem-tipo"
+                vencimento = _norm_data_vencimento_email(nc_ref.get("data_rep") or "")
+                vencimento_seguro = sanitizar_nome(vencimento.replace("/", "-"), max_len=20) or "sem-vencimento"
+                nome_eml = f"{timestamp_agora()} - {rodovia_segura} - {tipo_seguro} - {vencimento_seguro}.eml"
                 destino = caminho_dentro_limite_windows(pasta_saida / nome_eml)
                 if destino.exists():
-                    nome_eml = f"{timestamp_agora()} - {rodovia_segura} - {cod_seguro} - {idx:03d}-{nc_i:03d}.eml"
+                    nome_eml = (
+                        f"{timestamp_agora()} - {rodovia_segura} - {tipo_seguro} - "
+                        f"{vencimento_seguro} - {idx:03d}-{g_i:03d}.eml"
+                    )
                     destino = caminho_dentro_limite_windows(pasta_saida / nome_eml)
                 payload = None
                 for pol_name, pol in (("compat32", policy.compat32), ("SMTP", policy.SMTP)):
