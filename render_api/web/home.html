@@ -5,128 +5,398 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="artesp-api-base" content="">
   <title>Plataforma de Conservação e Obras — Início</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Barlow+Condensed:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="/web-static/bloco-padrao.css?v=10">
   <style>
+    /* ── Design System v2 ── */
     :root {
-      --bg-body: #060912;
-      --bg-surface: rgba(17, 24, 39, 0.7);
-      --bg-card: rgba(31, 41, 55, 0.5);
-      --border-glass: rgba(255, 255, 255, 0.08);
+      --bg-body: #050c15;
+      --bg-surface: rgba(10,20,38,.92);
+      --bg-surface-2: rgba(15,28,52,.8);
+      --bg-surface-3: rgba(20,34,60,.75);
+      --border-color: rgba(255,255,255,.08);
+      --border-glass: rgba(255,255,255,.07);
       --accent: #3b82f6;
-      --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+      --accent-light: #60a5fa;
+      --accent-glow: rgba(59,130,246,.2);
+      --accent-gradient: linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);
+      --amber: #f59e0b;
+      --amber-glow: rgba(245,158,11,.18);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #e2e8f0;
+      --text-primary: #f0f4f8;
+      --text-secondary: #94a3b8;
+      --text-muted: #475569;
+      --radius: 14px;
+      --radius-sm: 8px;
+      --shadow-md: 0 8px 24px rgba(0,0,0,.45);
+      --shadow-lg: 0 20px 48px rgba(0,0,0,.5);
+      --font-ui: 'Outfit', system-ui, sans-serif;
+      --font-brand: 'Barlow Condensed','Outfit',sans-serif;
     }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    /* Sobrepor bloco-padrao.css (body overflow:hidden quebra coluna flex + rodapé no fundo). */
+
     body.home-page {
-      font-family: 'Inter', system-ui, sans-serif;
+      font-family: var(--font-ui);
       background: var(--bg-body);
+      background-image:
+        radial-gradient(ellipse 900px 600px at 20% 10%, rgba(59,130,246,.06) 0%, transparent 70%),
+        radial-gradient(ellipse 600px 400px at 85% 80%, rgba(245,158,11,.04) 0%, transparent 70%);
       color: var(--text-primary);
       min-height: 100vh;
       min-height: 100dvh;
       display: flex;
       flex-direction: column;
-      overflow-x: hidden !important;
-      overflow-y: auto !important;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
-    .topbar-sep { width: 1px; min-height: 28px; align-self: center; background: var(--border-color); margin: 0 4px; flex-shrink: 0; }
-    .home-topbar .topbar-right { margin-left: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    /* Área abaixo do header: miolo (#homeLoginSection ou #homeLoggedArea) + .app-footer no fundo (bloco-padrao.css). */
+
+    /* ── Topbar ── */
+    .topbar.app-topbar.home-topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 0 24px;
+      height: 62px;
+      background: rgba(5,12,21,.97);
+      border-bottom: 1px solid rgba(255,255,255,.07);
+      box-shadow: 0 1px 0 rgba(59,130,246,.08);
+      backdrop-filter: blur(20px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .topbar-brand .icon {
+      font-size: 22px !important;
+      line-height: 1 !important;
+      filter: drop-shadow(0 0 8px rgba(245,158,11,.55));
+    }
+
+    .app-brand-text { display: flex; flex-direction: column; gap: 1px; }
+
+    .app-brand-title {
+      font-family: var(--font-brand);
+      font-size: 1rem !important;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      line-height: 1;
+      margin: 0;
+    }
+
+    .app-brand-sub {
+      font-size: .67rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+    .app-brand-platform { display: none; }
+
+    .topbar-sep {
+      width: 1px;
+      height: 28px;
+      background: rgba(255,255,255,.1);
+      flex-shrink: 0;
+    }
+
+    .topbar-fill {
+      font-family: var(--font-brand);
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      flex: 1;
+    }
+
+    .home-topbar .topbar-right {
+      margin-left: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .topbar-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-surface-2);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 4px 14px 4px 8px;
+      font-size: .78rem;
+      color: var(--text-secondary);
+    }
+
+    /* ── Home wrap ── */
     .home-wrap {
       flex: 1 1 0;
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      justify-content: flex-start;
-      /* Sem padding horizontal: rodapé alinha à largura total como o header. */
-      padding: 16px 0 0;
+      padding: 20px 0 0;
       min-height: 0;
       width: 100%;
     }
+
     .home-wrap > #homeLoginSection,
-    .home-wrap > #homeLoggedArea {
-      width: 100%;
-      max-width: 100%;
-      align-self: stretch;
-    }
+    .home-wrap > #homeLoggedArea { width: 100%; max-width: 100%; align-self: stretch; }
+
     #homeLoginSection {
       flex: 1 1 0;
-      min-height: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       overflow-y: auto;
-      padding: 0 16px 24px;
+      padding: 0 16px 32px;
     }
-    /* Coluna: só o miolo dos apps (cresce/rola); rodapé global fica fora, em .home-wrap. */
+
     #homeLoggedArea.home-logged-area {
       flex: 1 1 0;
       display: flex;
       flex-direction: column;
       min-height: 0;
     }
+
     #homeLoggedArea.home-logged-area #homeAppsSection {
       flex: 1 1 0;
       min-height: 0;
       overflow-y: auto;
     }
-    .container { width: 100%; max-width: 960px; margin: 0 auto; padding: 0 16px; }
-    .animate-in { animation: fadeIn 0.4s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    .hero-section { text-align: center; margin-bottom: 0.75rem; }
-    .hero-section .display-4 { font-size: 1.28rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; line-height: 1.25; }
-    .hero-section .text-secondary { font-size: .78rem; color: var(--text-secondary); line-height: 1.45; max-width: 36rem; margin-left: auto; margin-right: auto; }
-    /* Sempre uma coluna (blocos empilhados), como antes. */
-    .grid-main {
+
+    .container {
+      width: 100%;
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* ── Hero ── */
+    .hero-section {
+      text-align: center;
+      margin-bottom: 36px;
+      padding-top: 12px;
+    }
+
+    .hero-title {
+      font-family: var(--font-brand);
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      line-height: 1.1;
+      margin-bottom: 12px;
+    }
+
+    .hero-title span { color: var(--accent-light); }
+
+    .hero-desc {
+      font-size: .88rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* ── App grid ── */
+    .grid-apps {
       display: grid;
       grid-template-columns: 1fr;
       gap: 14px;
       width: 100%;
-      max-width: 480px;
-      margin: 10px auto 0;
+      max-width: 520px;
+      margin: 0 auto 32px;
     }
-    .grid-main .card { background: var(--bg-surface); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border-glass); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 1.05rem 1.15rem; display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s ease; }
-    .grid-main .card:hover { transform: translateY(-2px); border-color: var(--accent); }
-    .grid-main .card .icon-circle { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.05rem; margin-bottom: 8px; }
-    .grid-main .card h3 { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
-    .grid-main .card .text-muted.small { font-size: .76rem; color: var(--text-muted); line-height: 1.45; flex: 1; margin-bottom: 8px; }
-    .grid-main .card .mt-auto { margin-top: auto; }
-    .grid-main .card .text-accent { color: var(--accent); font-weight: 600; font-size: .82rem; display: inline-flex; align-items: center; gap: 6px; }
-    .mb-3 { margin-bottom: 1rem; }
-    .mb-5 { margin-bottom: 1rem; }
-    .ms-2 { margin-inline-start: 0.5rem; }
-    .topbar-user { display: flex; align-items: center; gap: 8px; background: var(--bg-surface-2); border: 1px solid var(--border-color); border-radius: 20px; padding: 4px 14px 4px 8px; font-size: .8rem; color: var(--text-secondary); }
-    .home-wrap .login-card { max-width: 420px; }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; font-size: .78rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-    .form-group .form-input { width: 100%; padding: 10px 14px; background: var(--bg-surface-2); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: .88rem; font-family: inherit; }
-    .form-group .form-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 10px; font-size: .85rem; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s ease; font-family: inherit; }
-    .btn-primary { background: var(--accent-gradient); color: #fff; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
-    .btn-primary:hover { filter: brightness(1.05); }
-    .btn-primary:active { transform: scale(0.96); }
-    .alert { padding: 10px 14px; border-radius: 8px; font-size: .82rem; margin-top: 12px; }
-    .alert-danger { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
-    .home-login-note { font-size: .8rem; color: var(--text-muted); margin-top: 16px; text-align: center; }
-    @media (max-width: 768px) {
-      .grid-main { max-width: 420px; }
-      .hero-section .display-4 { font-size: 1.12rem; }
-      .hero-section .text-secondary { font-size: .72rem; }
-      .home-topbar.app-topbar { flex-wrap: wrap; padding: 10px 14px; gap: 8px; }
-      .home-topbar .topbar-sep { display: none; }
-      .home-topbar .topbar-fill { flex-basis: 100%; order: 3; }
-      .home-topbar .topbar-right { width: 100%; justify-content: flex-end; order: 4; }
-      .home-wrap { padding: 16px 0 0; }
+
+    .app-card {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius);
+      padding: 22px 22px 18px;
+      text-decoration: none;
+      color: inherit;
+      box-shadow: var(--shadow-md);
+      backdrop-filter: blur(16px);
+      transition: transform .3s cubic-bezier(.34,1.56,.64,1), border-color .3s, box-shadow .3s;
+      position: relative;
+      overflow: hidden;
     }
-    @media (max-width: 480px) {
-      .home-wrap { padding: 12px 0 0; }
-      .grid-main { max-width: 100%; padding: 0 12px; box-sizing: border-box; }
-      .grid-main .card { padding: 1.25rem; }
-      .hero-section .display-4 { font-size: 1.02rem; }
-      .hero-section .text-secondary { font-size: .68rem; }
+
+    .app-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,.03) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .app-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255,255,255,.18);
+      box-shadow: 0 12px 32px rgba(0,0,0,.55);
+    }
+
+    .app-card.accent-blue:hover  { border-color: rgba(59,130,246,.45);  box-shadow: 0 10px 30px rgba(59,130,246,.2); }
+    .app-card.accent-green:hover { border-color: rgba(16,185,129,.45);  box-shadow: 0 10px 30px rgba(16,185,129,.2); }
+    .app-card.accent-red:hover   { border-color: rgba(239,68,68,.45);   box-shadow: 0 10px 30px rgba(239,68,68,.2); }
+
+    .app-card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      margin-bottom: 14px;
+      flex-shrink: 0;
+    }
+
+    .icon-blue  { background: rgba(59,130,246,.15);  color: var(--accent-light); border: 1px solid rgba(59,130,246,.25); }
+    .icon-green { background: rgba(16,185,129,.15);  color: #34d399;             border: 1px solid rgba(16,185,129,.25); }
+    .icon-red   { background: rgba(239,68,68,.15);   color: #f87171;             border: 1px solid rgba(239,68,68,.25); }
+
+    .app-card h3 {
+      font-family: var(--font-brand);
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      margin: 0 0 6px;
+    }
+
+    .app-card p {
+      font-size: .78rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+      flex: 1;
+      margin-bottom: 14px;
+    }
+
+    .app-card-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .78rem;
+      font-weight: 600;
+      color: var(--accent-light);
+      margin-top: auto;
+    }
+    .accent-green .app-card-link { color: #34d399; }
+    .accent-red   .app-card-link { color: #f87171; }
+
+    /* ── Login card ── */
+    .home-wrap .login-card {
+      background: var(--bg-surface);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 20px;
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: var(--shadow-lg), 0 0 0 1px rgba(59,130,246,.1);
+      animation: slideUp .35s cubic-bezier(.34,1.56,.64,1);
+    }
+    @keyframes slideUp {
+      from { opacity:0; transform:translateY(20px) scale(.97); }
+      to   { opacity:1; transform:none; }
+    }
+
+    .home-wrap .login-card .logo { text-align:center; margin-bottom:28px; }
+    .home-wrap .login-card .logo .icon {
+      font-size: 40px;
+      display: block;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 0 16px rgba(245,158,11,.45));
+    }
+    .home-wrap .login-card .logo h2 {
+      font-family: var(--font-brand);
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .home-wrap .login-card .logo p { font-size:.78rem; color:var(--text-muted); line-height:1.5; }
+    .login-brand-platform, .login-brand-sub { font-size:.72rem; color:var(--text-muted); }
+    .login-brand-platform { display:none; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display:block; font-size:.74rem; font-weight:600; color:var(--text-secondary); margin-bottom:5px; }
+    .form-input {
+      width:100%; padding:10px 14px;
+      background:var(--bg-surface-2);
+      border:1px solid var(--border-color);
+      border-radius:var(--radius-sm);
+      color:var(--text-primary);
+      font-family:var(--font-ui);
+      font-size:.88rem;
+    }
+    .form-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(59,130,246,.15); }
+
+    .btn {
+      display:inline-flex; align-items:center; gap:7px;
+      padding:10px 20px; border-radius:9px;
+      font-family:var(--font-ui); font-size:.85rem; font-weight:600;
+      border:none; cursor:pointer; transition:all .2s;
+    }
+    .btn-primary {
+      background: var(--accent-gradient); color:#fff;
+      box-shadow: 0 3px 12px rgba(59,130,246,.35), inset 0 1px 0 rgba(255,255,255,.2);
+    }
+    .btn-primary:hover { filter:brightness(1.08); transform:translateY(-1px); }
+
+    .alert { padding:10px 14px; border-radius:8px; font-size:.82rem; margin-top:10px; }
+    .alert-danger { background:rgba(239,68,68,.1); color:#f87171; border:1px solid rgba(239,68,68,.25); }
+
+    .home-login-note { font-size:.74rem; color:var(--text-muted); margin-top:16px; text-align:center; }
+
+    /* ── Footer ── */
+    .app-footer {
+      padding: 16px 24px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      margin-top: auto;
+    }
+    .app-footer-inner {
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+      font-size:.7rem; color:var(--text-muted);
+    }
+    .app-footer-brand {
+      font-family:var(--font-brand); font-weight:700;
+      letter-spacing:.05em; text-transform:uppercase;
+      color:var(--text-secondary);
+    }
+    .app-footer-sep { opacity:.35; }
+    .app-footer-dev { color:var(--accent-light); }
+    .app-footer-tagline { opacity:.5; }
+
+    .animate-in { animation:fadeIn .4s ease-out; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+    @media (max-width:600px) {
+      .home-topbar.app-topbar { padding:0 14px; gap:10px; }
+      .topbar-fill { display:none; }
+      .topbar-sep  { display:none; }
+      .home-wrap { padding:14px 0 0; }
+      .container { padding:0 14px; }
+      .home-wrap .login-card { padding:28px 20px; }
     }
   </style>
 </head>
@@ -134,11 +404,10 @@
 
   <header class="topbar app-topbar home-topbar">
     <div class="topbar-brand">
-      <span class="icon" aria-hidden="true" style="font-size:clamp(36px,6vw,62px);line-height:1;display:inline-flex;align-items:center;flex-shrink:0">🛣️</span>
+      <span class="icon" aria-hidden="true">🛣️</span>
       <div class="app-brand-text">
-        <h1 class="app-brand-title">Início</h1>
-        <p class="app-brand-sub">GeoJSON, Fotos de Campo e NC — acesso unificado. Kartado e Kria.</p>
-        <p class="app-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
+        <h1 class="app-brand-title">Plataforma de Conservação e Obras</h1>
+        <p class="app-brand-sub">GeoJSON · Fotos de Campo · NC ARTESP/ARTEMIG</p>
       </div>
     </div>
     <div class="topbar-sep" aria-hidden="true"></div>
@@ -146,76 +415,82 @@
     <div class="topbar-right">
       <div class="topbar-user" id="topbarUser" style="display:none">
         <span>👤</span><strong id="topbarEmail"></strong>
-        <a href="#" id="topbarLogout" style="color:#5b9bd5;text-decoration:none;font-size:11px">[sair]</a>
+        <a href="#" id="topbarLogout" style="color:#5b9bd5;text-decoration:none;font-size:.72rem;margin-left:4px">[sair]</a>
       </div>
-      <a href="/web/admin" style="color:#f39c12;font-size:11px;text-decoration:none">⚙️ Admin</a>
+      <a href="/web/admin" style="color:var(--amber);font-size:.75rem;text-decoration:none;display:flex;align-items:center;gap:5px;font-family:var(--font-brand);font-weight:600;letter-spacing:.04em">
+        <i class="fas fa-cog" style="font-size:.65rem"></i> ADMIN
+      </a>
     </div>
   </header>
 
   <div class="home-wrap">
-    <!-- Login único: válido para as três aplicações -->
+    <!-- Login -->
     <div id="homeLoginSection" style="display:none">
-      <div class="login-card">
+      <div class="login-card animate-in">
         <div class="logo">
-          <div class="icon" aria-hidden="true" style="font-size:clamp(36px,11vmin,59px);line-height:1">🛣️</div>
+          <div class="icon" aria-hidden="true">🛣️</div>
           <h2>Plataforma de Conservação e Obras</h2>
           <p class="login-brand-sub">Faça login para acessar GeoJSON, Fotos de Campo e NC.</p>
-          <p class="login-brand-platform">PLATAFORMA DE CONSERVAÇÃO E OBRAS — Geração de Relatorios Georreferênciado e Automação de Relatórios Internos</p>
         </div>
         <form id="formLoginHome">
           <div class="form-group">
-            <label>E-mail</label>
+            <label><i class="fas fa-envelope" style="opacity:.6;margin-right:4px"></i> E-mail</label>
             <input type="email" id="loginEmailHome" class="form-input" placeholder="usuario@empresa.com" required>
           </div>
           <div class="form-group">
-            <label>Senha</label>
-            <input type="password" id="loginSenhaHome" class="form-input" placeholder="Senha" required>
+            <label><i class="fas fa-lock" style="opacity:.6;margin-right:4px"></i> Senha</label>
+            <input type="password" id="loginSenhaHome" class="form-input" placeholder="Sua senha" required>
           </div>
-          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Entrar</button>
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">
+            <i class="fas fa-sign-in-alt"></i> Entrar
+          </button>
           <div id="loginFeedbackHome"></div>
         </form>
-        <p class="home-login-note">Um único login vale para as três aplicações.</p>
+        <p class="home-login-note"><i class="fas fa-info-circle" style="opacity:.5;margin-right:4px"></i>Um único login vale para as três aplicações.</p>
       </div>
     </div>
 
+    <!-- Área logada -->
     <div id="homeLoggedArea" class="home-logged-area">
-    <div id="homeAppsSection">
-    <div class="container animate-in">
-      <div class="hero-section text-center mb-5">
-        <h1 class="display-4 fw-bold">Plataforma de Engenharia</h1>
-        <p class="text-secondary">Automação inteligente para processar NCs ARTESP / ARTEMIG e inclusão em sistemas Kria / kartado.</p>
+      <div id="homeAppsSection">
+        <div class="container animate-in">
+
+          <div class="hero-section">
+            <h1 class="hero-title">Plataforma de<br><span>Engenharia Rodoviária</span></h1>
+            <p class="hero-desc">Automação inteligente de relatórios ARTESP e ARTEMIG — GeoJSON, processamento de fotos e pipeline de Não Conformidades.</p>
+          </div>
+
+          <div class="grid-apps">
+            <a href="/web/geojson" class="app-card accent-blue">
+              <div class="app-card-icon icon-blue">
+                <i class="fas fa-map-marked-alt"></i>
+              </div>
+              <h3>GeoJSON ARTESP</h3>
+              <p>Gera relatórios geoespaciais a partir de Excel. Assinatura digital, validação e dashboard interativo por lote.</p>
+              <span class="app-card-link">Acessar módulo <i class="fas fa-arrow-right" style="font-size:.7rem"></i></span>
+            </a>
+
+            <a href="/web/fotos" class="app-card accent-green">
+              <div class="app-card-icon icon-green">
+                <i class="fas fa-camera"></i>
+              </div>
+              <h3>Fotos de Campo</h3>
+              <p>Organização por rodovia/km e renomeação automática de fotos para inclusão nos relatórios de conservação.</p>
+              <span class="app-card-link">Acessar módulo <i class="fas fa-arrow-right" style="font-size:.7rem"></i></span>
+            </a>
+
+            <a href="/web/nc" class="app-card accent-red">
+              <div class="app-card-icon icon-red">
+                <i class="fas fa-file-contract"></i>
+              </div>
+              <h3>NC ARTESP · NC ARTEMIG</h3>
+              <p>Pipeline completo de Não Conformidades — análise de PDF, extração, Kartado, Kria, Kcor e acumulado.</p>
+              <span class="app-card-link">Acessar módulo <i class="fas fa-arrow-right" style="font-size:.7rem"></i></span>
+            </a>
+          </div>
+
+        </div>
       </div>
-
-      <div class="grid-main">
-        <a href="/web/geojson" class="card p-4 text-decoration-none">
-          <div class="icon-circle bg-success-soft mb-3">
-            <i class="fas fa-map-marked-alt"></i>
-          </div>
-          <h3>GeoJSON ARTESP</h3>
-          <p class="text-muted small">Gera relatórios geoespaciais a partir de Excel. Assinatura digital, validação e dashboard interativo.</p>
-          <div class="mt-auto text-accent fw-600">Acessar Módulo <i class="fas fa-chevron-right ms-2"></i></div>
-        </a>
-
-        <a href="/web/fotos" class="card p-4 text-decoration-none">
-          <div class="icon-circle bg-primary-soft mb-3">
-            <i class="fas fa-camera"></i>
-          </div>
-          <h3>Fotos de Campo</h3>
-          <p class="text-muted small">Organização por rodovia/KM e compressão automática para relatórios.</p>
-          <div class="mt-auto text-accent fw-600">Acessar Módulo <i class="fas fa-chevron-right ms-2"></i></div>
-        </a>
-
-        <a href="/web/nc" class="card p-4 text-decoration-none">
-          <div class="icon-circle bg-danger-soft mb-3">
-            <i class="fas fa-file-contract"></i>
-          </div>
-          <h3>NC ARTESP - SP / NC ARTEMIG - MG</h3>
-          <p class="text-muted small">Extração de dados de PDFs, auditoria de KM e integração Kria.</p>
-          <div class="mt-auto text-accent fw-600">Acessar Módulo <i class="fas fa-chevron-right ms-2"></i></div>
-        </a>
-      </div>
-    </div>
-    </div>
     </div>
 
     <footer class="app-footer">
